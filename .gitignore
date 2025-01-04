@@ -4,4 +4,7 @@
 # Photos
 /dish_pics/*.png
 
-# venv/
+# dont wants
+venv/
+__pycache__/
+
