@@ -4,10 +4,14 @@ This is currently in development, eventually it will be an app and website where
 
 The current roadmap is as follows:
 
-1. Clean up the repo and make it more organized
-2. Get a simple local website up and running with user logins
-3. Start to summarize gathered data and build v0 of the ai trainer
-4. Develop good visualizations of the users data
+1. Clean up the repo and make it more organized <-- Check
+2. Get a simple local website up and running with user logins <-- Check
+  a. Clean up website
+  b. Troubleshoot errors with pages
+  c. Make sure all pages load requests from backend
+3. Develop good visualizations of the users data
+  a. Put data on website dashboard
+4. Start to summarize gathered data and build v0 of the ai trainer
 5. Implment trends and cleaner summarized information
 6. Take into account users goals
 7. Start to track workouts and reccomend future workouts

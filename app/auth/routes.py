@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify, current_app  # Imported 'current_app'
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from bson import ObjectId
 
 from app.extensions import mongo
@@ -33,7 +33,7 @@ def register():
     user_doc = {
         "username": username,
         "password": hashed_password,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
         "access_token": None,
         "refresh_token": None,
         "scope": None,

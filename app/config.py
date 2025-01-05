@@ -30,6 +30,8 @@ class Config:
     # OpenAI Configuration
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+    CORS_ORIGIN = os.getenv("CORS_ORIGIN")
+
     # config.py (continued)
 
     # SCHEDULER_JOBSTORES = {

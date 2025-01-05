@@ -27,9 +27,10 @@ def create_app():
     # Adjust CORS based on environment
     if env == 'production':
         cors_origins = os.getenv("CORS_ORIGINS", "https://your-production-domain.com")
-        cors.init_app(app, resources={r"/*": {"origins": cors_origins}})
     else:
-        cors.init_app(app, resources={r"/*": {"origins": "*"}})  # Allow all origins in development
+        cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000, http://localhost:3001")
+
+    cors.init_app(app, resources={r"/*": {"origins": [origin.strip() for origin in cors_origins.split(",")]}})
 
     jwt.init_app(app)
     limiter.init_app(app)
@@ -46,10 +47,11 @@ def create_app():
     # from app.summaries.routes import summaries_bp
     # Register additional blueprints similarly
 
-    app.register_blueprint(auth_bp)
+    app.register_blueprint(auth_bp, url_prefix="/auth")
+    app.register_blueprint(activities_bp, url_prefix="/activities")
     app.register_blueprint(strava_bp, url_prefix="/strava")
     app.register_blueprint(garmin_bp, url_prefix="/garmin")
-    app.register_blueprint(activities_bp)
+    
     # app.register_blueprint(food_logging_bp)
     # app.register_blueprint(goals_bp)
     # app.register_blueprint(summaries_bp)
@@ -63,6 +65,17 @@ def create_app():
         )
         handler.setFormatter(formatter)
         app.logger.addHandler(handler)
+
+    # ROUTES SCANNING FOR DEBUGGING
+    @app.route("/routes")
+    def list_routes():
+        import urllib
+        output = []
+        for rule in app.url_map.iter_rules():
+            methods = ','.join(rule.methods)
+            line = urllib.parse.unquote(f"{rule.endpoint} {methods} {rule.rule}")
+            output.append(line)
+        return "<br>".join(output)
 
     # scheduler = APScheduler()
     # scheduler.init_app(app)
