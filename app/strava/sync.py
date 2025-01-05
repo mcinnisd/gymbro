@@ -1,53 +1,29 @@
-# strava_sync.py
+# app/strava/sync.py
 
 import os
 import requests
-from pymongo import MongoClient
-from datetime import datetime, UTC
-
-# ----------------------
-#  CONFIG / CONSTANTS
-# ----------------------
-
-STRAVA_API_BASE = "https://www.strava.com/api/v3"
-
-# Hard-coded or environment variables (recommended).
-# Make sure these have correct scopes (e.g. activity:read, activity:read_all).
-# In production, do NOT hardcode:
-# STRAVA_CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID", "YOUR_CLIENT_ID")
-# STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "YOUR_CLIENT_SECRET")
-# STRAVA_REFRESH_TOKEN = os.environ.get("STRAVA_REFRESH_TOKEN", "YOUR_REFRESH_TOKEN")
-
-# hardcoded for now
-# STRAVA_CLIENT_ID="144064"
-# STRAVA_CLIENT_SECRET="bc4f5112b3468717230d8746647d8a38aaaebfd5"
-# STRAVA_REFRESH_TOKEN="972c97ad1dd1062b30ed394c46c52f53f375daad"
-
-STRAVA_CLIENT_ID = os.environ.get("STRAVA_CLIENT_ID", "YOUR_CLIENT_ID")
-STRAVA_CLIENT_SECRET = os.environ.get("STRAVA_CLIENT_SECRET", "YOUR_CLIENT_SECRET")
-
-
-# MongoDB setup
-client = MongoClient("mongodb://127.0.0.1:27017/")
-db = client["gymbro_db"]
-activities_collection = db["strava_activities"]
-users_collection = db["users"]
+from flask import current_app
+from bson import ObjectId
+from datetime import datetime, timezone
 
 def refresh_strava_access_token(user_id):
     """
     Use the stored refresh token to get a short-lived access token from Strava.
     """
-    user_doc = users_collection.find_one({"user_id": user_id})
+    user_doc = current_app.mongo.db.users.find_one({"_id": ObjectId(user_id)})
     if not user_doc:
-        print(f"No user doc found for user_id={user_id}")
+        current_app.logger.error(f"No user doc found for user_id={user_id}")
         return None
 
-    refresh_token = user_doc["refresh_token"]
+    refresh_token = user_doc.get("strava_refresh_token")
+    if not refresh_token:
+        current_app.logger.error(f"User {user_id} does not have a Strava refresh token stored.")
+        return None
 
     url = "https://www.strava.com/oauth/token"
     payload = {
-        "client_id": STRAVA_CLIENT_ID,
-        "client_secret": STRAVA_CLIENT_SECRET,
+        "client_id": current_app.config.get("STRAVA_CLIENT_ID"),
+        "client_secret": current_app.config.get("STRAVA_CLIENT_SECRET"),
         "refresh_token": refresh_token,
         "grant_type": "refresh_token",
     }
@@ -58,19 +34,19 @@ def refresh_strava_access_token(user_id):
         new_refresh_token = new_tokens["refresh_token"]
 
         # Update the user doc with new tokens
-        users_collection.update_one(
-            {"user_id": user_id},
+        current_app.mongo.db.users.update_one(
+            {"_id": ObjectId(user_id)},
             {
                 "$set": {
-                    "access_token": new_access_token,
-                    "refresh_token": new_refresh_token,
-                    "last_updated": datetime.now(UTC)
+                    "strava_access_token": new_access_token,
+                    "strava_refresh_token": new_refresh_token,
+                    "strava_last_updated": datetime.now(timezone.utc)
                 }
             }
         )
         return new_access_token
     else:
-        print("Error refreshing access token:", response.text)
+        current_app.logger.error(f"Error refreshing Strava access token for user {user_id}: {response.text}")
         return None
 
 def fetch_strava_activities(access_token, page=1, per_page=30):
@@ -84,9 +60,9 @@ def fetch_strava_activities(access_token, page=1, per_page=30):
     if resp.status_code == 200:
         return resp.json()
     else:
-        print("Error fetching Strava activities:", resp.text)
+        current_app.logger.error(f"Error fetching Strava activities: {resp.text}")
         return []
-    
+
 def sync_strava_activities(user_id):
     """
     Pulls Strava activities for the user, storing new ones in MongoDB.
@@ -94,11 +70,11 @@ def sync_strava_activities(user_id):
     """
     access_token = refresh_strava_access_token(user_id)
     if not access_token:
-        print("Could not get a valid access token. Stopping sync.")
+        current_app.logger.error(f"Could not get a valid access token for user {user_id}. Stopping sync.")
         return
 
     existing_ids = set(
-        doc["activity_id"] for doc in activities_collection.find({}, {"activity_id": 1, "_id": 0})
+        doc["activity_id"] for doc in current_app.mongo.db.strava_activities.find({"user_id": user_id}, {"activity_id": 1, "_id": 0})
     )
 
     page = 1
@@ -129,21 +105,16 @@ def sync_strava_activities(user_id):
                 "calories": act.get("calories"),
                 "user_id": user_id,
                 "raw_data": act,
-                "synced_at": datetime.now(UTC),
+                "synced_at": datetime.now(timezone.utc),
             }
             batch_to_insert.append(doc)
 
-        activities_collection.insert_many(batch_to_insert)
-        total_inserted += len(batch_to_insert)
-
-        # Add newly inserted IDs to the set
-        for doc in batch_to_insert:
-            existing_ids.add(doc["activity_id"])
+        if batch_to_insert:
+            current_app.mongo.db.strava_activities.insert_many(batch_to_insert)
+            total_inserted += len(batch_to_insert)
+            for doc in batch_to_insert:
+                existing_ids.add(doc["activity_id"])
 
         page += 1
 
-    print(f"Sync finished. Inserted {total_inserted} new activities.")
-
-
-
-
+    current_app.logger.info(f"Strava sync finished. Inserted {total_inserted} new activities for user {user_id}.")
