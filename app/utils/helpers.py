@@ -2,7 +2,7 @@
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 from flask import current_app
 from bson import ObjectId
 
@@ -88,7 +88,7 @@ def create_daily_summary(user_id, date=None):
     If date is None, defaults to today's date in UTC.
     """
     if not date:
-        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date = datetime.now(UTC).strftime("%Y-%m-%d")
 
     # Convert string to datetime object for queries
     try:
@@ -134,8 +134,8 @@ def create_daily_summary(user_id, date=None):
             "workouts": daily_data.get("workouts", []),
             # Add other fields as needed...
         },
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc)
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC)
     }
 
     # 4) Upsert into `summaries` collection

@@ -37,11 +37,16 @@ def create_app():
 
     app.mongo = mongo
 
+    # Create indexes
+    with app.app_context():
+        mongo.db.chats.create_index("user_id")
+
     # Import and register blueprints
     from app.auth.routes import auth_bp
     from app.strava.routes import strava_bp
     from app.activities.routes import activities_bp
     from app.garmin.routes import garmin_bp
+    from app.chats.routes import chats_bp
     # from app.food_logging.routes import food_logging_bp
     # from app.goals.routes import goals_bp
     # from app.summaries.routes import summaries_bp
@@ -51,6 +56,7 @@ def create_app():
     app.register_blueprint(activities_bp, url_prefix="/activities")
     app.register_blueprint(strava_bp, url_prefix="/strava")
     app.register_blueprint(garmin_bp, url_prefix="/garmin")
+    app.register_blueprint(chats_bp, url_prefix="/chats")
     
     # app.register_blueprint(food_logging_bp)
     # app.register_blueprint(goals_bp)

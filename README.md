@@ -6,11 +6,20 @@ The current roadmap is as follows:
 
 1. Clean up the repo and make it more organized <-- Check
 2. Get a simple local website up and running with user logins <-- Check
-  a. Clean up website
-  b. Troubleshoot errors with pages
-  c. Make sure all pages load requests from backend
-3. Develop good visualizations of the users data
+
+  a. Clean up website <-- sorta check but need to do more
+
+  b. Troubleshoot errors with pages <-- check
+
+  c. Make sure all pages load requests from backend <-- fine for now, more through testing needed
+  
+  d. Make chatbot page and infrastructure <-- Check
+
+3. Develop good visualizations of the users data <--- Number one priority
+
   a. Put data on website dashboard
+  
+  b. clean up datastructure sortage and processing 
 4. Start to summarize gathered data and build v0 of the ai trainer
 5. Implment trends and cleaner summarized information
 6. Take into account users goals

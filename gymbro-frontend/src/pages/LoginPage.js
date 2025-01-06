@@ -53,7 +53,7 @@ function LoginPage() {
     setAlertSeverity('success');
     setOpen(true);
 
-    navigate('/dashboard');
+    navigate('/chats');
   };
 
   const handleClose = (event, reason) => {

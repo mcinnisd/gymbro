@@ -4,7 +4,7 @@ import os
 import requests
 from flask import current_app
 from bson import ObjectId
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 def refresh_strava_access_token(user_id):
     """
@@ -105,7 +105,7 @@ def sync_strava_activities(user_id):
                 "calories": act.get("calories"),
                 "user_id": user_id,
                 "raw_data": act,
-                "synced_at": datetime.now(timezone.utc),
+                "synced_at": datetime.now(UTC),
             }
             batch_to_insert.append(doc)
 
