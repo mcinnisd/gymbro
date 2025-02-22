@@ -67,8 +67,9 @@ function ChatsPage() {
     setOpenDialog(false);
     setNewChatTitle('');
   };
-
+  
   const handleCreateChat = async () => {
+    console.log('ChatsPage: Creating chat with title:', newChatTitle);
     try {
       const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/chats`, {
         method: 'POST',
@@ -79,8 +80,11 @@ function ChatsPage() {
         body: JSON.stringify({ title: newChatTitle }),
       });
 
+      console.log('ChatsPage: Create chat response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('ChatsPage: Chat created:', data);
         const newChat = {
           id: data.chat_id,
           title: newChatTitle,
@@ -92,13 +96,12 @@ function ChatsPage() {
         setSelectedChatTitle(newChat.title);
         handleCloseDialog();
       } else {
-        // Handle error
         const errorData = await response.json();
-        console.error("Error creating chat:", errorData);
+        console.error("ChatsPage: Error creating chat:", errorData);
         // Optionally, display an error message to the user
       }
     } catch (error) {
-      console.error("Error creating chat:", error);
+      console.error("ChatsPage: Error creating chat:", error);
       // Optionally, display an error message to the user
     }
   };

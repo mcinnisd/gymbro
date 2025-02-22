@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 
 const PrivateRoute = ({ children }) => {
   const { authToken } = useContext(AuthContext);
+  console.log('PrivateRoute: authToken:', authToken);
 
   return authToken ? children : <Navigate to="/" />;
 };
