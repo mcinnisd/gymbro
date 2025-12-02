@@ -6,6 +6,14 @@ from datetime import datetime, timedelta, timezone, UTC
 from flask import current_app
 from bson import ObjectId
 
+def format_conversation(messages):
+    """
+    Formats a list of message objects (each a dict with 'role' and 'content')
+    into a single newline-separated string.
+    """
+    return "\n".join(f"{msg.get('role', 'UNKNOWN').upper()}: {msg.get('content', '')}" for msg in messages)
+
+
 def mongo_to_dict(doc):
     """Helper to convert MongoDB document to JSON-serializable dict."""
     return {
