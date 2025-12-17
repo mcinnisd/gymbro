@@ -37,8 +37,14 @@ function Navbar() {
             <Button color="inherit" component={Link} to="/dashboard">
               Dashboard
             </Button>
-            <Button color="inherit" component={Link} to="/messaging">
-              Chatbot
+            <Button color="inherit" component={Link} to="/coach">
+              Coach
+            </Button>
+            <Button color="inherit" component={Link} to="/chats">
+              Chats
+            </Button>
+            <Button color="inherit" component={Link} to="/profile">
+              Profile
             </Button>
             <Button color="inherit" onClick={handleLogout}>
               Logout

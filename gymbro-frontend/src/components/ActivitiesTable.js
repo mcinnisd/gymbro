@@ -9,7 +9,7 @@ function ActivitiesTable() {
 
   useEffect(() => {
     const fetchActivities = async () => {
-      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/activities/list`, {
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/activities/`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -45,10 +45,10 @@ function ActivitiesTable() {
         </TableHead>
         <TableBody>
           {activities.map((activity) => (
-            <TableRow key={activity.id}>
-              <TableCell>{new Date(activity.date).toLocaleDateString()}</TableCell>
-              <TableCell>{activity.type}</TableCell>
-              <TableCell>{activity.duration}</TableCell>
+            <TableRow key={activity.activity_id}>
+              <TableCell>{new Date(activity.start_time_local).toLocaleDateString()}</TableCell>
+              <TableCell>{activity.activity_type}</TableCell>
+              <TableCell>{(activity.duration / 60).toFixed(1)} min</TableCell>
               <TableCell>{activity.calories}</TableCell>
             </TableRow>
           ))}

@@ -1,9 +1,10 @@
 # app/chats/routes.py
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, Response, stream_with_context
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, timezone
 from app.supabase_client import supabase
 import logging
+import json
 
 chats_bp = Blueprint('chats', __name__)
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ def get_chat(chat_id):
         current_app.logger.error(f"Error fetching chat ID {chat_id}: {e}")
         return jsonify({"error": "Failed to fetch chat."}), 500
 
-@chats_bp.route("/<int:chat_id>/messages", methods=["POST"], strict_slashes=False)
+@chats_bp.route("/<chat_id>/messages", methods=["POST"], strict_slashes=False)
 @jwt_required()
 def send_message(chat_id):
     try:
@@ -85,6 +86,7 @@ def send_message(chat_id):
         logger.warning(f"Empty message received for chat ID {chat_id} by user ID {user_id}")
         return jsonify({"error": "Message content is required."}), 400
 
+    # Save user message immediately
     user_msg_doc = {
         "sender": "user",
         "content": user_message,
@@ -104,34 +106,111 @@ def send_message(chat_id):
         return jsonify({"error": "Failed to append message."}), 500
 
     # Prepare messages for the chatbot API
-    all_messages = updated_messages
+    # Limit to last 10 messages to save context
+    recent_messages = updated_messages[-10:] if len(updated_messages) > 10 else updated_messages
     openai_messages = [
         {"role": "user" if msg["sender"] == "user" else "assistant", "content": msg["content"]}
-        for msg in all_messages
+        for msg in recent_messages
     ]
 
-    try:
-        from app.utils.openai_utils import generate_chat_response
-        bot_reply = generate_chat_response(messages=openai_messages)
-        logger.info(f"Bot reply generated for chat ID {chat_id}")
-    except Exception as e:
-        logger.error(f"Error generating bot reply for chat ID {chat_id}: {e}")
-        return jsonify({"error": "Failed to get response from chatbot."}), 500
+    def generate():
+        # Yield initial thinking status
+        yield f"data: {json.dumps({'status': 'Thinking...'})}\n\n"
+        
+        context_text = ""
+        chart_data = None
+        
+        try:
+            from app.context.intent_detector import detect_intent, needs_context, IntentType, extract_chart_metric, detect_chart_scope
+            from app.context.context_builder import build_context, format_context_for_prompt
+            from app.context.chart_generator import generate_chart_data
+            
+            # Intent Detection
+            yield f"data: {json.dumps({'status': 'Analyzing request...'})}\n\n"
+            intent = detect_intent(user_message)
+            logger.info(f"Detected intent: {intent.intent_type.value}")
+            
+            # Handle Chart Requests
+            if intent.intent_type == IntentType.CHART_REQUEST:
+                yield f"data: {json.dumps({'status': 'Generating chart...'})}\n\n"
+                metric = extract_chart_metric(user_message)
+                scope = detect_chart_scope(user_message)
+                logger.info(f"Generating chart for metric: {metric}, scope: {scope}")
+                
+                encryption_key = current_app.config.get("ENCRYPTION_KEY")
+                
+                chart_data = generate_chart_data(
+                    user_id=user_id, 
+                    metric=metric,
+                    scope=scope,
+                    encryption_key=encryption_key,
+                    message=user_message
+                )
+                if chart_data:
+                    yield f"data: {json.dumps({'chart': chart_data})}\n\n"
+            
+            # Context Building
+            if needs_context(intent):
+                yield f"data: {json.dumps({'status': 'Gathering context...'})}\n\n"
+                context = build_context(user_id, intent)
+                if context:
+                    context_text = format_context_for_prompt(context)
+                    # Truncate context to avoid overflow (approx 1000 tokens)
+                    if len(context_text) > 4000:
+                        context_text = context_text[:4000] + "\n...(truncated)"
+        except Exception as e:
+            logger.error(f"Context error: {e}")
+            # Continue without context
+        
+        # Generate Response
+        yield f"data: {json.dumps({'status': 'Writing response...'})}\n\n"
+        
+        try:
+            from app.utils.llm_utils import generate_chat_response
+            user_response = supabase.table("users").select("goals").eq("id", user_id).execute()
+            llm_provider = None
+            if user_response.data:
+                llm_provider = user_response.data[0].get("goals", {}).get("llm_model")
 
-    bot_msg_doc = {
-        "sender": "bot",
-        "content": bot_reply,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
-    try:
-        updated_messages.append(bot_msg_doc)
-        supabase.table("chats").update({
-            "messages": updated_messages,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }).eq("id", chat_id).execute()
-        logger.info(f"Bot message appended to chat ID {chat_id}")
-    except Exception as e:
-        logger.error(f"Error appending bot message to chat ID {chat_id}: {e}")
-        return jsonify({"error": "Failed to append bot message."}), 500
+            response_generator = generate_chat_response(
+                messages=openai_messages, 
+                mode="coach", 
+                provider=llm_provider,
+                context=context_text,
+                stream=True
+            )
+            
+            full_response = ""
+            for chunk in response_generator:
+                if chunk:
+                    full_response += chunk
+                    yield f"data: {json.dumps({'token': chunk})}\n\n"
+            
+            # Save bot message to DB
+            bot_msg_doc = {
+                "sender": "bot",
+                "content": full_response,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            if chart_data:
+                bot_msg_doc["chart_data"] = chart_data
+                
+            try:
+                # Re-fetch chat to get latest state (in case of race conditions, though unlikely in this flow)
+                # Ideally we lock or use atomic updates, but appending to list is tricky in Supabase without stored proc
+                # For now, we append to what we had + user msg
+                final_messages = updated_messages + [bot_msg_doc]
+                supabase.table("chats").update({
+                    "messages": final_messages,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", chat_id).execute()
+            except Exception as e:
+                logger.error(f"Error saving bot message: {e}")
+                
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"LLM error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-    return jsonify({"reply": bot_reply}), 200
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')

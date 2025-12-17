@@ -21,12 +21,9 @@ def create_app():
     # mongo.init_app(app)
     # app.mongo = mongo  # No longer needed.
 
-    # Initialize CORS using the config (allow multiple origins if needed)
-    if env == 'production':
-        cors_origins = os.getenv("CORS_ORIGINS", "https://your-production-domain.com")
-    else:
-        cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000, http://localhost:3001")
-    cors.init_app(app, resources={r"/*": {"origins": [origin.strip() for origin in cors_origins.split(",")]}})
+    # Initialize CORS
+    # Allow localhost:3000 specifically to support credentials
+    cors.init_app(app, resources={r"/*": {"origins": ["http://localhost:3000"]}}, supports_credentials=True)
 
     # Initialize JWT and rate limiter
     jwt.init_app(app)
@@ -38,12 +35,17 @@ def create_app():
     from app.activities.routes import activities_bp
     from app.garmin.routes import garmin_bp
     from app.chats.routes import chats_bp
+    from app.analytics.routes import analytics_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(activities_bp, url_prefix="/activities")
     app.register_blueprint(strava_bp, url_prefix="/strava")
     app.register_blueprint(garmin_bp, url_prefix="/garmin")
     app.register_blueprint(chats_bp, url_prefix="/chats")
+    app.register_blueprint(analytics_bp, url_prefix="/analytics")
+    
+    from app.coach.routes import coach_bp
+    app.register_blueprint(coach_bp, url_prefix="/coach")
 
     # Set up logging if not in debug mode
     if not app.debug:

@@ -6,11 +6,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def get_cipher():
+def get_cipher(key=None):
     """
-    Retrieves the Fernet cipher using the ENCRYPTION_KEY from the app's configuration.
+    Retrieves the Fernet cipher using the ENCRYPTION_KEY.
+    If key is provided, uses it. Otherwise, fetches from app configuration.
     """
-    key = current_app.config.get("ENCRYPTION_KEY")
+    if not key:
+        key = current_app.config.get("ENCRYPTION_KEY")
+        
     if not key:
         logger.error("ENCRYPTION_KEY not set in configuration.")
         raise ValueError("ENCRYPTION_KEY not set in configuration.")
@@ -20,36 +23,24 @@ def get_cipher():
         logger.error(f"Invalid ENCRYPTION_KEY: {e}")
         raise
 
-def encrypt_data(plain_text: str) -> str:
+def encrypt_data(plain_text: str, key: str = None) -> str:
     """
     Encrypts plain text using Fernet symmetric encryption.
-    
-    Args:
-        plain_text (str): The data to encrypt.
-    
-    Returns:
-        str: The encrypted data as a string.
     """
     try:
-        cipher = get_cipher()
+        cipher = get_cipher(key)
         encrypted = cipher.encrypt(plain_text.encode())
         return encrypted.decode()
     except Exception as e:
         logger.error(f"Encryption failed: {e}")
         raise
 
-def decrypt_data(encrypted_text: str) -> str:
+def decrypt_data(encrypted_text: str, key: str = None) -> str:
     """
     Decrypts encrypted text using Fernet symmetric encryption.
-    
-    Args:
-        encrypted_text (str): The encrypted data to decrypt.
-    
-    Returns:
-        str: The decrypted plain text.
     """
     try:
-        cipher = get_cipher()
+        cipher = get_cipher(key)
         decrypted = cipher.decrypt(encrypted_text.encode())
         return decrypted.decode()
     except Exception as e:

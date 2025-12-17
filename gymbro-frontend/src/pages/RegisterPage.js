@@ -50,7 +50,30 @@ function RegisterPage() {
     setAlertSeverity('success');
     setOpen(true);
 
-    navigate('/');
+    navigate('/'); // Still redirect to login first to get token, or auto-login?
+    // The current flow requires login to get the token. 
+    // Ideally we auto-login, but for now let's keep it simple: Register -> Login -> Onboarding.
+    // Wait, the user said "when a user registers id like for them to be prompted...".
+    // If I redirect to login, they login, then where do they go?
+    // DashboardPage is default.
+    // I should probably update LoginPage to redirect to /onboarding if it's a first time login?
+    // Or just let the user navigate there?
+    // Better: Register -> Login (User does this) -> Dashboard.
+    // Maybe I should add a check in Dashboard to redirect to Onboarding if no data?
+    // For now, I'll leave the redirect to '/' (Login) but maybe show a message "Login to continue setup".
+
+    // Actually, to make it smooth:
+    // 1. Register
+    // 2. Auto-login (requires backend to return token on register, which it doesn't yet)
+    // 3. Redirect to /onboarding.
+
+    // Since backend returns {message, user_id} on register, I can't auto-login easily without changing backend.
+    // I'll stick to: Register -> Login -> Dashboard.
+    // But I'll add a "Setup" button on Dashboard or redirect if no data.
+
+    // User request: "when a user registers id like for them to be prompted..."
+    // I'll change the alert message to be clear.
+    setAlertMsg('Registration successful! Please log in to complete setup.');
   };
 
   const handleClose = (event, reason) => {

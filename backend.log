@@ -1,0 +1,120 @@
+/Users/davidmcinnis/codes/trainer/gymbro/venv/lib/python3.12/site-packages/flask_limiter/extension.py:333: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5001
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+/Users/davidmcinnis/codes/trainer/gymbro/venv/lib/python3.12/site-packages/flask_limiter/extension.py:333: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+ * Debugger is active!
+ * Debugger PIN: 111-956-894
+127.0.0.1 - - [07/Dec/2025 11:14:13] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "[31m[1mGET /analytics/summary HTTP/1.1[0m" 401 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "[31m[1mGET /activities/stats HTTP/1.1[0m" 401 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "[31m[1mGET /analytics/summary HTTP/1.1[0m" 401 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "[31m[1mGET /activities/stats HTTP/1.1[0m" 401 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "OPTIONS /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "OPTIONS /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "[31m[1mGET /activities/daily_stats HTTP/1.1[0m" 401 -
+127.0.0.1 - - [07/Dec/2025 11:14:13] "[31m[1mGET /activities/daily_stats HTTP/1.1[0m" 401 -
+127.0.0.1 - - [07/Dec/2025 11:14:42] "OPTIONS /auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:43] "POST /auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:43] "OPTIONS /chats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:43] "OPTIONS /chats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:44] "GET /chats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:44] "GET /chats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:44] "OPTIONS /chats/13 HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:44] "OPTIONS /chats/13 HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:44] "GET /chats/13 HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:44] "GET /chats/13 HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:46] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:46] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:46] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:46] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:47] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:47] "OPTIONS /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:47] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:49] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:51] "GET /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:53] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:14:53] "GET /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:15:55] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:15:57] "GET /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:07] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:07] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:07] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:07] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:08] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:08] "OPTIONS /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:08] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:09] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:09] "GET /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:10] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:11] "GET /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:43] "OPTIONS /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:44] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:45] "GET /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:46] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:16:46] "GET /analytics/summary HTTP/1.1" 200 -
+ * Detected change in '/Users/davidmcinnis/codes/trainer/gymbro/app/analytics/routes.py', reloading
+ * Restarting with stat
+/Users/davidmcinnis/codes/trainer/gymbro/venv/lib/python3.12/site-packages/flask_limiter/extension.py:333: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+  warnings.warn(
+ * Debugger is active!
+ * Debugger PIN: 111-956-894
+127.0.0.1 - - [07/Dec/2025 11:20:53] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:53] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:53] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:53] "OPTIONS /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:54] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:54] "OPTIONS /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:54] "GET /activities/stats HTTP/1.1" 200 -
+[2025-12-07 11:20:54,730] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:20:54] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+127.0.0.1 - - [07/Dec/2025 11:20:54] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:55] "GET /activities/stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:55] "GET /activities/stats HTTP/1.1" 200 -
+[2025-12-07 11:20:55,302] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:20:55] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+127.0.0.1 - - [07/Dec/2025 11:20:55] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:55] "GET /activities/stats HTTP/1.1" 200 -
+[2025-12-07 11:20:56,058] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:20:56] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+127.0.0.1 - - [07/Dec/2025 11:20:56] "GET /activities/daily_stats HTTP/1.1" 200 -
+[2025-12-07 11:20:56,856] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:20:56] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+127.0.0.1 - - [07/Dec/2025 11:20:56] "GET /activities/daily_stats HTTP/1.1" 200 -
+[2025-12-07 11:20:57,556] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:20:57] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+127.0.0.1 - - [07/Dec/2025 11:20:57] "GET /activities/daily_stats HTTP/1.1" 200 -
+[2025-12-07 11:20:58,332] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:20:58] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+127.0.0.1 - - [07/Dec/2025 11:20:58] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:20:58] "GET /activities/daily_stats HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:22:14] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+127.0.0.1 - - [07/Dec/2025 11:22:14] "OPTIONS /analytics/summary HTTP/1.1" 200 -
+[2025-12-07 11:22:15,170] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:22:15] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+[2025-12-07 11:22:15,790] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:22:15] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+[2025-12-07 11:22:16,780] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:22:16] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+[2025-12-07 11:22:17,362] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:22:17] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+[2025-12-07 11:22:18,253] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:22:18] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+[2025-12-07 11:22:19,034] ERROR in routes: Error fetching analytics summary: cannot access local variable 'activity' where it is not associated with a value
+127.0.0.1 - - [07/Dec/2025 11:22:19] "[35m[1mGET /analytics/summary HTTP/1.1[0m" 500 -
+/opt/homebrew/Cellar/python@3.12/3.12.12/Frameworks/Python.framework/Versions/3.12/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

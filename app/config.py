@@ -29,9 +29,16 @@ class Config:
     # Other keys
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    
+    # LLM Configuration
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "local") # 'gemini', 'openai', or 'local'
+    LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://localhost:8080/v1")
+    LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "gemma-2-9b-it")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
     
     # CORS: Use a default for local development; override in production
-    CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:3001")
+    CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:3000,http://localhost:3001")
 
 class DevelopmentConfig(Config):
     DEBUG = True
