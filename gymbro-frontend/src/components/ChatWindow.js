@@ -1,11 +1,11 @@
-// src/components/ChatWindow.js
-
 import React, { useEffect, useState, useRef, useContext } from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 import MessageInput from './MessageInput';
 import { AuthContext } from '../context/AuthContext';
 import ReactMarkdown from 'react-markdown';
 import ChartMessage from './ChartMessage';
+import ProposalCard from './ChatWidgets/ProposalCard';
+import GlassPaper from '../components/GlassPaper';
 
 function ChatWindow({ chatId, title }) {
   const { authToken } = useContext(AuthContext);
@@ -49,6 +49,43 @@ function ChatWindow({ chatId, title }) {
     }
   }, [messages, statusMessage]);
 
+  const handleApproveProposal = async (proposal) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/chats/${chatId}/actions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(proposal),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // Add system message or update UI
+        setMessages(prev => [...prev, {
+          sender: 'system',
+          content: `Action completed: ${result.message}`,
+          timestamp: new Date().toISOString()
+        }]);
+      } else {
+        const err = await response.json();
+        alert(`Error: ${err.message}`);
+      }
+    } catch (error) {
+      console.error("Error approving proposal:", error);
+      alert("Failed to execute action.");
+    }
+  };
+
+  const handleDenyProposal = () => {
+    setMessages(prev => [...prev, {
+      sender: 'system',
+      content: "Proposal denied.",
+      timestamp: new Date().toISOString()
+    }]);
+  };
+
   const handleSendMessage = async (messageContent) => {
     // Optimistically add user message
     const userMsg = { sender: 'user', content: messageContent, timestamp: new Date().toISOString() };
@@ -71,6 +108,26 @@ function ChatWindow({ chatId, title }) {
         throw new Error('Network response was not ok');
       }
 
+      const contentType = response.headers.get('content-type');
+
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMsgIndex = newMessages.length - 1;
+          newMessages[lastMsgIndex] = {
+            sender: 'bot',
+            content: data.message || data.content || '',
+            timestamp: new Date().toISOString(),
+            is_interview_complete: data.is_complete
+          };
+          return newMessages;
+        });
+        setStatusMessage("");
+        return;
+      }
+
+      // Handle Stream
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -103,6 +160,20 @@ function ChatWindow({ chatId, title }) {
                 });
               }
 
+              if (data.proposal) {
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  const lastMsgIndex = newMessages.length - 1;
+                  const lastMsg = { ...newMessages[lastMsgIndex] };
+                  lastMsg.proposal = data.proposal;
+                  if (!lastMsg.content) {
+                    lastMsg.content = data.proposal.reasoning || "I have a proposal:";
+                  }
+                  newMessages[lastMsgIndex] = lastMsg;
+                  return newMessages;
+                });
+              }
+
               if (data.chart) {
                 setMessages(prev => {
                   const newMessages = [...prev];
@@ -128,6 +199,7 @@ function ChatWindow({ chatId, title }) {
           }
         }
       }
+
     } catch (error) {
       console.error("ChatWindow: Error sending message:", error);
       setStatusMessage("Error sending message.");
@@ -139,7 +211,7 @@ function ChatWindow({ chatId, title }) {
       <Typography variant="h6" gutterBottom>
         {title}
       </Typography>
-      <Paper variant="outlined" sx={{ flexGrow: 1, padding: 2, overflowY: 'auto', marginBottom: 2 }}>
+      <GlassPaper variant="outlined" sx={{ flexGrow: 1, padding: 2, overflowY: 'auto', marginBottom: 2 }}>
         {loading ? (
           <Typography variant="body1">Loading...</Typography>
         ) : messages.length > 0 ? (
@@ -150,17 +222,25 @@ function ChatWindow({ chatId, title }) {
                 sx={{
                   padding: 2,
                   maxWidth: '70%',
-                  bgcolor: msg.sender === 'user' ? '#e3f2fd' : '#f5f5f5',
+                  bgcolor: msg.sender === 'user' ? 'primary.main' : 'background.paper',
+                  color: msg.sender === 'user' ? 'primary.contrastText' : 'text.primary',
                   borderRadius: 2
                 }}
               >
-                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                  {msg.sender === 'user' ? 'You' : 'Coach'}
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom sx={{ color: msg.sender === 'user' ? 'rgba(255,255,255,0.7)' : 'text.secondary' }}>
+                  {msg.sender === 'user' ? 'You' : msg.sender === 'system' ? 'System' : 'Coach'}
                 </Typography>
                 <Box sx={{ '& p': { margin: 0 } }}>
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </Box>
                 {msg.chart_data && <ChartMessage chartData={msg.chart_data} />}
+                {msg.proposal && (
+                  <ProposalCard
+                    proposal={msg.proposal}
+                    onApprove={handleApproveProposal}
+                    onDeny={handleDenyProposal}
+                  />
+                )}
               </Paper>
             </Box>
           ))
@@ -177,7 +257,7 @@ function ChatWindow({ chatId, title }) {
         )}
 
         <div ref={messagesEndRef} />
-      </Paper>
+      </GlassPaper>
       <MessageInput onSend={handleSendMessage} />
     </Box>
   );

@@ -11,6 +11,8 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import Typography from '@mui/material/Typography';
 import Container from '@mui/material/Container';
 import Snackbar from '@mui/material/Snackbar';
+import CircularProgress from '@mui/material/CircularProgress';
+import GlassPaper from '../components/GlassPaper';
 import MuiAlert from '@mui/material/Alert';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
@@ -23,6 +25,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const { setAuthToken } = useContext(AuthContext);
 
+  const [loading, setLoading] = useState(false);
   // Snackbar state
   const [open, setOpen] = useState(false);
   const [alertMsg, setAlertMsg] = useState('');
@@ -30,30 +33,39 @@ function LoginPage() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
 
-    const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
 
-    if (!response.ok) {
-      setAlertMsg('Login failed');
+      if (!response.ok) {
+        setAlertMsg('Login failed: ' + response.statusText);
+        setAlertSeverity('error');
+        setOpen(true);
+        return;
+      }
+
+      const data = await response.json();
+      setAuthToken(data.token);
+
+      setAlertMsg('Login successful');
+      setAlertSeverity('success');
+      setOpen(true);
+
+      navigate('/dashboard');
+    } catch (error) {
+      setAlertMsg('Error connecting to server');
       setAlertSeverity('error');
       setOpen(true);
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    const data = await response.json();
-    setAuthToken(data.token);
-
-    setAlertMsg('Login successful');
-    setAlertSeverity('success');
-    setOpen(true);
-
-    navigate('/chats');
   };
 
   const handleClose = (event, reason) => {
@@ -65,12 +77,13 @@ function LoginPage() {
 
   return (
     <Container component="main" maxWidth="xs">
-      <Box
+      <GlassPaper
         sx={{
           marginTop: 8,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          p: 4,
         }}
       >
         <Avatar sx={{ m: 1, bgcolor: 'secondary.main' }}>
@@ -107,8 +120,9 @@ function LoginPage() {
             fullWidth
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
+            disabled={loading}
           >
-            Log In
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Log In'}
           </Button>
           <Grid container justifyContent="flex-end">
             <Grid item>
@@ -118,13 +132,13 @@ function LoginPage() {
             </Grid>
           </Grid>
         </Box>
-      </Box>
+      </GlassPaper>
       <Snackbar open={open} autoHideDuration={6000} onClose={handleClose}>
         <Alert onClose={handleClose} severity={alertSeverity} sx={{ width: '100%' }}>
           {alertMsg}
         </Alert>
       </Snackbar>
-    </Container>
+    </Container >
   );
 }
 

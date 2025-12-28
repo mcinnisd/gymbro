@@ -30,12 +30,20 @@ class Config:
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    XAI_API_KEY = os.getenv("XAI_API_KEY")
     
     # LLM Configuration
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "local") # 'gemini', 'openai', or 'local'
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "xai") # 'gemini', 'openai', 'local', or 'xai'
     LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://localhost:8080/v1")
     LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "gemma-2-9b-it")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+    XAI_MODEL = os.getenv("XAI_MODEL", "grok-4-1-fast-non-reasoning")
+    XAI_REASONING_MODEL = os.getenv("XAI_REASONING_MODEL", "grok-4-1-fast-reasoning")
+    
+    # Embedding Configuration
+    EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini") # 'gemini' or 'openai'
+    GEMINI_EMBEDDING_MODEL = "models/text-embedding-004"
+    OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
     
     # CORS: Use a default for local development; override in production
     CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:3000,http://localhost:3001")

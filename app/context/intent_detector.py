@@ -1,14 +1,17 @@
 """
-Intent Detector for Contextual Chat Intelligence
-
 Analyzes user messages to identify when they're referencing personal fitness data.
-Uses keyword/pattern matching for fast detection with fallback to LLM for ambiguous cases.
+Uses LLM-based detection for complex queries with a fast keyword fallback.
 """
 
 import re
+import json
+import logging
 from enum import Enum
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict, Any
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 class IntentType(Enum):
@@ -30,7 +33,18 @@ class DetectedIntent:
     matched_keywords: List[str]
     activity_type_hint: Optional[str] = None  # running, hiking, etc.
     time_reference: Optional[str] = None  # today, yesterday, this week
-    specific_date: Optional[str] = None  # YYYY-MM-DD if a specific date was mentioned
+    specific_date: Optional[str] = None  # YYYY-MM-DD
+    start_date: Optional[str] = None  # YYYY-MM-DD
+    end_date: Optional[str] = None  # YYYY-MM-DD
+    metrics: List[str] = None        # pace, hrv, distance, etc.
+    is_comparison: bool = False
+    comparison_period: Optional[str] = None # last_year, previous_month
+    is_chart_request: bool = False
+    original_message: str = ""  # The full user message
+
+    def __post_init__(self):
+        if self.metrics is None:
+            self.metrics = []
 
 
 # Keyword patterns for each intent type
@@ -43,7 +57,8 @@ INTENT_PATTERNS = {
             "last run", "last hike", "last workout",
             "this morning", "this afternoon", "earlier today",
             "just finished", "just did", "just completed",
-            "how did i do", "how did i look", "how was my"
+            "how did i do", "how did i look", "how was my",
+            "past week", "last 7 days", "this past week"
         ],
         "patterns": [
             r"my (?:run|hike|walk|workout|ride|swim|activity)",
@@ -77,7 +92,8 @@ INTENT_PATTERNS = {
             "progress", "progressing", "improvement", "improving",
             "getting better", "getting faster", "getting stronger",
             "fitness level", "my fitness", "in shape",
-            "on track", "goal", "goals", "training plan"
+            "on track", "goal", "goals", "training plan",
+            "past week summary", "weekly review"
         ],
         "patterns": [
             r"(?:how|am) i (?:doing|progressing|improving)",
@@ -145,7 +161,7 @@ ACTIVITY_KEYWORDS = {
 TIME_PATTERNS = {
     "today": [r"\btoday\b", r"this morning", r"this afternoon", r"this evening", r"earlier today"],
     "yesterday": [r"\byesterday\b", r"last night"],
-    "this_week": [r"this week", r"past few days", r"lately", r"recently"],
+    "this_week": [r"this week", r"past few days", r"lately", r"recently", r"past week", r"last 7 days"],
     "last_week": [r"last week"],
     "this_month": [r"this month"],
     "recent": [r"\blast\b", r"\brecent\b", r"\blatest\b", r"just (?:did|finished|completed)"]
@@ -345,8 +361,108 @@ def detect_intent(message: str) -> DetectedIntent:
         matched_keywords=matched_keywords_by_intent[intent_type],
         activity_type_hint=activity_type,
         time_reference=time_ref or "recent",  # Default to recent
-        specific_date=specific_date
+        specific_date=specific_date,
+        original_message=message
     )
+
+
+def hybrid_detect_intent(message: str) -> DetectedIntent:
+    """
+    Optimized intent detection:
+    1. Fast Regex/Keyword matching first.
+    2. If confidence is high (>0.7), return immediately.
+    3. Otherwise, use LLM for nuanced parsing.
+    """
+    # 1. Fast match
+    fast_intent = detect_intent(message)
+    
+    # If it's a very clear keyword match or no intent at all
+    if fast_intent.confidence > 0.7 or fast_intent.intent_type == IntentType.NONE:
+        # Check for simple greetings/thanks which should be NONE but might have noise
+        if len(message.split()) < 3 and fast_intent.intent_type == IntentType.NONE:
+            return fast_intent
+            
+        # If it's a specific metric or activity mention that is very clear, we're done
+        if fast_intent.confidence > 0.8:
+            return fast_intent
+
+    # 2. LLM Fallback for complex queries
+    logger.info(f"Fast intent confidence low ({fast_intent.confidence}), falling back to LLM for: {message[:50]}...")
+    return llm_detect_intent(message)
+
+
+def llm_detect_intent(message: str) -> DetectedIntent:
+    """
+    Use a fast LLM to detect intent and extract structured parameters.
+    """
+    from app.utils.llm_utils import generate_chat_response
+    
+    today = datetime.now()
+    today_str = today.strftime("%Y-%m-%d")
+    dow = today.strftime("%A")
+    
+    prompt = f"""
+    You are an intent detector for a fitness coaching app. 
+    Analyze the user message and extract the following into a JSON object.
+    
+    User Message: "{message}"
+    Today's Date: {today_str} ({dow})
+    
+    Required Fields:
+    1. "intent": One of ["none", "recent_activity", "fatigue_recovery", "performance_review", "specific_metric", "comparison", "chart_request"]
+    2. "confidence": 0.0 to 1.0
+    3. "activity_type": One of ["running", "hiking", "cycling", "swimming", "walking", "strength", null]
+    4. "time_reference": One of ["today", "yesterday", "this_week", "last_week", "this_month", "recent", "date_range", null]
+    5. "start_date": "YYYY-MM-DD" or null
+    6. "end_date": "YYYY-MM-DD" or null (same as start_date if single day)
+    7. "metrics": List of strings like ["pace", "hrv", "rhr", "distance", "cadence", "elevation"] or []
+    8. "is_comparison": boolean
+    9. "comparison_period": "last_year", "previous_period", or null
+    10. "is_chart_request": boolean
+    
+    Guidelines:
+    - "none": General chat, greeting, or irrelevant to fitness data.
+    - "recent_activity": Asking about a specific workout or recent training.
+    - "fatigue_recovery": Asking about tiredness, sleep, or recovery.
+    - If they mention "since [date]", set start_date to that date and end_date to today.
+    - If they mention "past two weeks", set start_date to 14 days ago.
+    
+    Return ONLY valid JSON.
+    """
+    
+    try:
+        response = generate_chat_response(
+            messages=[{"role": "user", "content": prompt}],
+            mode="normal",
+            provider="xai", # Use xai/grok-fast for speed
+            stream=False
+        )
+        
+        # Parse JSON from response
+        clean_response = re.sub(r'```json\s*', '', response)
+        clean_response = re.sub(r'\s*```', '', clean_response)
+        data = json.loads(clean_response)
+        
+        intent_type = IntentType(data.get("intent", "none"))
+        
+        return DetectedIntent(
+            intent_type=intent_type,
+            confidence=float(data.get("confidence", 0.0)),
+            matched_keywords=[],
+            activity_type_hint=data.get("activity_type"),
+            time_reference=data.get("time_reference"),
+            start_date=data.get("start_date"),
+            end_date=data.get("end_date"),
+            metrics=data.get("metrics", []),
+            is_comparison=bool(data.get("is_comparison", False)),
+            comparison_period=data.get("comparison_period"),
+            is_chart_request=bool(data.get("is_chart_request", False) or data.get("intent") == "chart_request"),
+            original_message=message
+        )
+        
+    except Exception as e:
+        logger.warning(f"LLM intent detection failed: {e}. Falling back to keyword search.")
+        return detect_intent(message)
 
 
 def needs_context(intent: DetectedIntent) -> bool:
@@ -391,6 +507,7 @@ def detect_chart_scope(message: str) -> str:
         "that run", "that activity", "that workout",
         "yesterday's run", "yesterday's workout",
         "run from", "activity from", "workout from",
+        "from a run", "from my run", "during my run", "during the run",
         "my run", "my workout" # Ambiguous, but usually implies specific if singular
     ]
     

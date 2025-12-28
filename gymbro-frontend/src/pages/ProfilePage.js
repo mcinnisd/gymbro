@@ -3,6 +3,7 @@ import { Container, Typography, Paper, Grid, TextField, Button, MenuItem, Box, A
 import { AuthContext } from '../context/AuthContext';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import GlassPaper from '../components/GlassPaper';
 
 function ProfilePage() {
 	const { authToken } = useContext(AuthContext);
@@ -94,7 +95,7 @@ function ProfilePage() {
 			{message && <Alert severity={message.includes('success') ? 'success' : 'error'} sx={{ mb: 2 }}>{message}</Alert>}
 
 			{/* AI Settings */}
-			<Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+			<GlassPaper sx={{ p: 3, mb: 3 }}>
 				<Typography variant="h6" gutterBottom>AI Coach Settings</Typography>
 				<Grid container spacing={2}>
 					<Grid item xs={12} sm={6}>
@@ -108,15 +109,16 @@ function ProfilePage() {
 							helperText="Choose which AI brain powers your coach."
 						>
 							<MenuItem value="local">Local (Free, Private)</MenuItem>
+							<MenuItem value="xai">Grok (xAI - Fast)</MenuItem>
 							<MenuItem value="openai">OpenAI (GPT-4o)</MenuItem>
 							<MenuItem value="gemini">Gemini (Flash)</MenuItem>
 						</TextField>
 					</Grid>
 				</Grid>
-			</Paper>
+			</GlassPaper>
 
 			{/* Integrations Status */}
-			<Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+			<GlassPaper sx={{ p: 3, mb: 3 }}>
 				<Typography variant="h6" gutterBottom>Integrations</Typography>
 				<Box display="flex" gap={2}>
 					<Chip
@@ -137,10 +139,10 @@ function ProfilePage() {
 						Go to Onboarding to connect your accounts.
 					</Typography>
 				)}
-			</Paper>
+			</GlassPaper>
 
 			{/* Personal Details */}
-			<Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+			<GlassPaper sx={{ p: 3, mb: 3, pb: 2 }}>
 				<Typography variant="h6" gutterBottom>Personal Details</Typography>
 				<Grid container spacing={2}>
 					<Grid item xs={12} sm={6}>
@@ -213,7 +215,7 @@ function ProfilePage() {
 						/>
 					</Grid>
 				</Grid>
-			</Paper>
+			</GlassPaper>
 
 			<Box display="flex" justifyContent="flex-end">
 				<Button

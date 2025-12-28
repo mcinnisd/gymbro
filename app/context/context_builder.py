@@ -34,6 +34,11 @@ def build_context(user_id: str, intent: DetectedIntent) -> Optional[Dict[str, An
     # Get baselines (used by multiple intent types)
     baselines = get_user_baselines(user_id)
     
+    # Get user profile (always include for personalization)
+    profile = get_user_profile(user_id)
+    if profile:
+        context["profile"] = profile
+    
     if intent.intent_type == IntentType.RECENT_ACTIVITY:
         activity_data = get_recent_activity_context(
             user_id, 
@@ -97,6 +102,49 @@ def build_context(user_id: str, intent: DetectedIntent) -> Optional[Dict[str, An
     except Exception as e:
         pass
     
+    # Add Intelligence Context (Semantic Search)
+    try:
+        from app.context.intelligence_service import IntelligenceService
+        query = getattr(intent, "original_message", "")
+        
+        # Search for relevant facts, preferences, and goals
+        intelligence = IntelligenceService.search_intelligence(user_id, query, limit=5)
+        if intelligence:
+            context["intelligence"] = intelligence
+    except Exception as e:
+        logger.warning(f"Intelligence search failed: {e}")
+    
+    # Add Calendar Context (New)
+    try:
+        calendar_context = get_calendar_context(user_id, getattr(intent, "original_message", ""))
+        if calendar_context:
+            context["calendar"] = calendar_context
+    except Exception as e:
+        pass
+
+    # Add Specific Range Summary if LLM detected one
+    if intent.start_date:
+        try:
+            range_summary = get_range_summary(
+                user_id, 
+                intent.start_date, 
+                intent.end_date or datetime.now().strftime("%Y-%m-%d"),
+                intent.metrics or []
+            )
+            if range_summary:
+                context["range_summary"] = range_summary
+        except Exception as e:
+            logger.error(f"Error building range summary: {e}")
+
+    # Add Weekly Summary for time-based queries (legacy/fallback fallback)
+    elif intent.time_reference in ["this_week", "last_week"]:
+        try:
+            week_summary = get_week_summary(user_id)
+            if week_summary:
+                context["week_summary"] = week_summary
+        except Exception as e:
+            pass
+
     return context
 
 
@@ -665,6 +713,152 @@ def get_comparison_context(user_id: str) -> Dict[str, Any]:
         return {"error": str(e), "has_last_year_data": False}
 
 
+def get_range_summary(user_id: str, start_date: str, end_date: str, metrics: List[str] = None) -> Dict[str, Any]:
+    """
+    Fetch and aggregate data for a specific date range and set of metrics.
+    """
+    try:
+        # Fetch activities in range
+        res = supabase.table("garmin_activities")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("start_time_local", start_date)\
+            .lte("start_time_local", f"{end_date} 23:59:59")\
+            .order("start_time_local", desc=True)\
+            .execute()
+        
+        activities = res.data or []
+        
+        # Aggregate activity stats
+        running = [a for a in activities if "running" in (a.get("activity_type") or "").lower()]
+        total_dist = sum(a.get("distance") or 0 for a in running)
+        total_dur = sum(a.get("duration") or 0 for a in running)
+        
+        summary = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "activity_count": len(activities),
+            "run_count": len(running),
+            "total_distance_km": round(total_dist / 1000, 2),
+            "total_duration_min": round(total_dur / 60, 1),
+            "activities": [
+                {
+                    "date": a.get("start_time_local", "")[:10],
+                    "type": a.get("activity_type"),
+                    "dist": round((a.get("distance") or 0) / 1000, 2)
+                } for a in activities[:10]
+            ]
+        }
+        
+        # If health metrics requested, fetch them
+        health_metrics = ["hrv", "rhr", "sleep", "recovery", "stress"]
+        if any(m in (metrics or []) for m in health_metrics) or not metrics:
+            # Fetch daily data
+            daily_res = supabase.table("garmin_daily")\
+                .select("date, resting_hr")\
+                .eq("user_id", user_id)\
+                .gte("date", start_date)\
+                .lte("date", end_date)\
+                .execute()
+            
+            # Fetch sleep data
+            sleep_res = supabase.table("garmin_sleep")\
+                .select("date, sleep_data")\
+                .eq("user_id", user_id)\
+                .gte("date", start_date)\
+                .lte("date", end_date)\
+                .execute()
+            
+            # Simple averages
+            rhr_vals = []
+            for d in daily_res.data or []:
+                rhr = d.get("resting_hr")
+                if isinstance(rhr, (int, float)): rhr_vals.append(rhr)
+                elif isinstance(rhr, dict):
+                    # Guessing at structure based on previous fixes
+                    v = rhr.get("restingHeartRate")
+                    if v: rhr_vals.append(v)
+            
+            hrv_vals = []
+            sleep_vals = []
+            for s in sleep_res.data or []:
+                sd = s.get("sleep_data") or {}
+                if sd.get("avgOvernightHrv"): hrv_vals.append(sd["avgOvernightHrv"])
+                if sd.get("sleepTimeSeconds"): sleep_vals.append(sd["sleepTimeSeconds"] / 3600)
+                
+            if rhr_vals: summary["avg_rhr"] = round(sum(rhr_vals) / len(rhr_vals), 0)
+            if hrv_vals: summary["avg_hrv"] = round(sum(hrv_vals) / len(hrv_vals), 1)
+            if sleep_vals: summary["avg_sleep_hours"] = round(sum(sleep_vals) / len(sleep_vals), 1)
+            
+        return summary
+    except Exception as e:
+        logger.error(f"Error in get_range_summary: {e}")
+        return {"error": str(e)}
+
+
+def get_week_summary(user_id: str) -> Dict[str, Any]:
+    """
+    Get an aggregated summary of the past 7 days of activity.
+    """
+    try:
+        seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        res = supabase.table("garmin_activities")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("start_time_local", seven_days_ago)\
+            .order("start_time_local", desc=True)\
+            .execute()
+        
+        activities = res.data or []
+        
+        if not activities:
+            return {"found": False}
+        
+        running = [a for a in activities if "running" in (a.get("activity_type") or "").lower()]
+        other = [a for a in activities if "running" not in (a.get("activity_type") or "").lower()]
+        
+        total_dist = sum(a.get("distance") or 0 for a in running)
+        total_dur = sum(a.get("duration") or 0 for a in activities)
+        
+        return {
+            "found": True,
+            "period": "Past 7 Days",
+            "total_activities": len(activities),
+            "run_count": len(running),
+            "total_distance_km": round(total_dist / 1000, 2),
+            "total_duration_min": round(total_dur / 60, 1),
+            "activities": [
+                {
+                    "date": a.get("start_time_local", "")[:10],
+                    "type": a.get("activity_type"),
+                    "distance_km": round((a.get("distance") or 0) / 1000, 2),
+                    "duration_min": round((a.get("duration") or 0) / 60, 1)
+                } for a in activities[:10]
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting week summary: {e}")
+        return {"found": False, "error": str(e)}
+
+
+
+def get_user_profile(user_id: str) -> Dict[str, Any]:
+    """
+    Fetch structured user profile data (goals, stats, injuries).
+    """
+    try:
+        res = supabase.table("users")\
+            .select("age, weight, height, sport_history, running_experience, past_injuries, goals, weekly_availability")\
+            .eq("id", user_id)\
+            .single()\
+            .execute()
+        
+        return res.data or {}
+    except Exception as e:
+        return {}
+
+
 def format_context_for_prompt(context: Dict[str, Any]) -> str:
     """
     Format context data as a readable string for LLM injection.
@@ -674,6 +868,25 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
     
     lines = ["[USER FITNESS CONTEXT]"]
     
+    # User Profile (New)
+    if "profile" in context:
+        p = context["profile"]
+        lines.append("\n👤 User Profile:")
+        if p.get("age"): lines.append(f"  - Age: {p['age']}")
+        if p.get("weight"): lines.append(f"  - Weight: {p['weight']} kg")
+        if p.get("height"): lines.append(f"  - Height: {p['height']} cm")
+        if p.get("sport_history"): lines.append(f"  - History: {p['sport_history']}")
+        if p.get("running_experience"): lines.append(f"  - Experience: {p['running_experience']}")
+        if p.get("past_injuries"): lines.append(f"  - Injuries: {p['past_injuries']}")
+        if p.get("goals"): 
+            goals = p['goals']
+            if isinstance(goals, dict):
+                goal_list = [f"{k}: {v}" for k, v in goals.items()]
+                lines.append(f"  - Goals: {', '.join(goal_list)}")
+            else:
+                lines.append(f"  - Goals: {goals}")
+        if p.get("weekly_availability"): lines.append(f"  - Availability: {p['weekly_availability']}")
+
     # Activity context
     if "activity" in context and context["activity"].get("found"):
         act = context["activity"]
@@ -735,20 +948,55 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
             e = comp["efficiency"]
             lines.append(f"  - Efficiency: {e['diff_pct']:+.1f}% ({e['description']})")
     
+    # Range Summary (New LLM-based)
+    if "range_summary" in context:
+        rs = context["range_summary"]
+        if not rs.get("error"):
+            lines.append(f"\n📅 Data Summary ({rs.get('start_date')} to {rs.get('end_date')}):")
+            lines.append(f"  - Activities: {rs.get('activity_count')} total, {rs.get('run_count')} runs")
+            lines.append(f"  - Totals: {rs.get('total_distance_km')} km, {rs.get('total_duration_min')} mins")
+            if "avg_hrv" in rs: lines.append(f"  - Avg HRV: {rs['avg_hrv']} ms")
+            if "avg_rhr" in rs: lines.append(f"  - Avg RHR: {rs['avg_rhr']} bpm")
+            if "avg_sleep_hours" in rs: lines.append(f"  - Avg Sleep: {rs['avg_sleep_hours']} hours")
+            
+            if rs.get("activities"):
+                lines.append("  Recent in period:")
+                for a in rs["activities"][:5]:
+                    lines.append(f"    - {a['date']}: {a['type']}, {a['dist']}km")
+
+    # Weekly Summary (Legacy)
+    if "week_summary" in context:
+        ws = context["week_summary"]
+        if ws.get("found"):
+            lines.append(f"\n📅 Weekly Summary ({ws.get('period')}):")
+            lines.append(f"  - Total: {ws.get('total_activities')} activities, {ws.get('total_duration_min')} mins")
+            lines.append(f"  - Running: {ws.get('run_count')} runs, {ws.get('total_distance_km')} km total")
+            if ws.get("activities"):
+                lines.append("  Details:")
+                for a in ws["activities"]:
+                    lines.append(f"    - {a['date']}: {a['type']}, {a['distance_km']}km ({a['duration_min']}m)")
+
     # Baselines summary
     if "baselines" in context:
         baselines = context["baselines"]
         if baselines.get("has_data"):
             lines.append(f"\n📊 User's Typical Stats ({baselines.get('period_days', 30)} days, {baselines.get('activity_count', '?')} runs):")
-            if baselines.get("avg_distance_m"):
-                lines.append(f"  - Avg Distance: {round(baselines['avg_distance_m']/1000, 1)} km")
-            if baselines.get("avg_pace_sec_km"):
-                lines.append(f"  - Avg Pace: {round(baselines['avg_pace_sec_km']/60, 2)} min/km")
-            if baselines.get("avg_hr"):
-                lines.append(f"  - Avg HR: {baselines['avg_hr']} bpm")
-            if baselines.get("runs_per_week"):
-                lines.append(f"  - Runs/week: {baselines['runs_per_week']}")
-    
+            if baselines.get("avg_distance_m"): lines.append(f"  - Avg Distance: {baselines['avg_distance_m']/1000:.2f} km")
+            if baselines.get("avg_pace_sec_km"): lines.append(f"  - Avg Pace: {baselines['avg_pace_sec_km']/60:.2f} min/km")
+            if baselines.get("avg_hr"): lines.append(f"  - Avg HR: {baselines['avg_hr']} bpm")
+            if baselines.get("avg_efficiency"): lines.append(f"  - Avg Efficiency: {baselines['avg_efficiency']}")
+            
+    # Calendar Context (New)
+    if "calendar" in context:
+        cal = context["calendar"]
+        lines.append(f"\n📅 Calendar Context ({cal.get('range_desc', 'upcoming')}):")
+        if cal.get("events"):
+            for e in cal["events"]:
+                status = f" [{e['status']}]" if e.get('status') != 'planned' else ""
+                lines.append(f"  - {e['date']} ({e['day']}): {e['title']} ({e['event_type']}){status}")
+        else:
+            lines.append("  - No events scheduled.")
+
     # Health context (Phase 2 enhanced)
     if "health" in context:
         health = context["health"]
@@ -854,5 +1102,209 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
                 lines.append(f"     → Suggestion: {insight['action']}")
     
     lines.append("\n[END CONTEXT]")
+
+    # Intelligence (New Unified)
+    if "intelligence" in context:
+        intel = context["intelligence"]
+        if intel:
+            lines.append("\n🧠 User Intelligence (Retrieved context):")
+            for item in intel:
+                lines.append(f"  - [{item.get('category', 'fact')}] {item['content']}")
+
+    # Add Recent Activities List (Summary)
+    if "recent_activities" in context and context["recent_activities"]:
+        lines.insert(1, "\n🏃 Recent Activities:")
+        for i, act in enumerate(context["recent_activities"][:3]): # Top 3
+            date = act.get("date", "Unknown")
+            dist = act.get("distance_km", 0)
+            pace = act.get("pace_min_km", 0)
+            lines.insert(2+i, f"  - {date}: {dist}km @ {pace}min/km ({act.get('type', 'run')})")
+            
+    return "\n".join(lines)
+
+
+def get_calendar_context(user_id: str, message: str) -> Optional[Dict[str, Any]]:
+    """
+    Extracts time references from message and fetches relevant calendar events.
+    """
+    try:
+        today = datetime.now()
+        start_date = today
+        end_date = today + timedelta(days=7) # Default to next 7 days
+        range_desc = "Next 7 Days"
+        
+        msg_lower = message.lower()
+        
+        # Simple keyword detection
+        if "tomorrow" in msg_lower:
+            start_date = today + timedelta(days=1)
+            end_date = start_date
+            range_desc = "Tomorrow"
+        elif "today" in msg_lower:
+            start_date = today
+            end_date = today
+            range_desc = "Today"
+        elif "next week" in msg_lower:
+            start_date = today
+            end_date = today + timedelta(days=14)
+            range_desc = "Next 2 Weeks"
+        elif "this week" in msg_lower:
+            # End of current week (Sunday)
+            days_to_sunday = 6 - today.weekday()
+            end_date = today + timedelta(days=days_to_sunday)
+            range_desc = "This Week"
+            
+        # Format dates
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+        
+        # Fetch events
+        res = supabase.table("training_events")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("date", start_str)\
+            .lte("date", end_str)\
+            .order("date")\
+            .execute()
+            
+        events = res.data or []
+        
+        # Add day name
+        formatted_events = []
+        for e in events:
+            dt = datetime.strptime(e["date"], "%Y-%m-%d")
+            e["day"] = dt.strftime("%A")
+            formatted_events.append(e)
+            
+        return {
+            "start_date": start_str,
+            "end_date": end_str,
+            "range_desc": range_desc,
+            "events": formatted_events
+        }
+    except Exception as e:
+        return None
+    
     
     return "\n".join(lines)
+
+
+# ============================================================================
+# USER CONTEXT STORAGE (pgvector-based)
+# ============================================================================
+
+def store_user_context(user_id: str, context_type: str, content: str, metadata: dict = None) -> bool:
+    """
+    Store a piece of user context with embedding for semantic search in the unified intelligence table.
+    """
+    try:
+        from app.utils.llm_utils import get_embedding
+        
+        # Generate embedding
+        embedding = get_embedding(content)
+        
+        record = {
+            "user_id": int(user_id),
+            "category": context_type, # Map context_type to category
+            "content": content,
+            "metadata": metadata or {},
+        }
+        
+        if embedding:
+            record["embedding"] = embedding
+        
+        result = supabase.table("user_intelligence").insert(record).execute()
+        return bool(result.data)
+        
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error storing user context: {e}")
+        return False
+
+
+def get_relevant_context(user_id: str, query: str, limit: int = 5, context_types: List[str] = None) -> List[Dict]:
+    """
+    Retrieve relevant context using semantic search (pgvector).
+    
+    Args:
+        user_id: The user's ID
+        query: The search query (will be embedded)
+        limit: Max number of results
+        context_types: Optional list of context types to filter
+        
+    Returns:
+        List of relevant context records with similarity scores
+    """
+    try:
+        from app.utils.llm_utils import get_embedding
+        
+        # Generate query embedding
+        query_embedding = get_embedding(query)
+        if not query_embedding:
+            # Fallback to keyword search if embedding fails
+            return _keyword_context_search(user_id, query, limit, context_types)
+        
+        # Use Supabase RPC for vector similarity search
+        # Note: This requires a stored function in Supabase
+        params = {
+            "query_embedding": query_embedding,
+            "match_user_id": int(user_id),
+            "match_count": limit
+        }
+        
+        if context_types:
+            params["filter_types"] = context_types
+        
+        result = supabase.rpc("match_user_context", params).execute()
+        
+        if result.data:
+            return result.data
+        
+        # Fallback if RPC not available
+        return _keyword_context_search(user_id, query, limit, context_types)
+        
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Vector search failed, using keyword fallback: {e}")
+        return _keyword_context_search(user_id, query, limit, context_types)
+
+
+def _keyword_context_search(user_id: str, query: str, limit: int, context_types: List[str] = None) -> List[Dict]:
+    """Fallback keyword-based context search."""
+    try:
+        q = supabase.table("user_context").select("*").eq("user_id", int(user_id))
+        
+        if context_types:
+            q = q.in_("context_type", context_types)
+        
+        # Simple contains search
+        q = q.ilike("content", f"%{query.split()[0] if query else ''}%")
+        q = q.limit(limit)
+        
+        result = q.execute()
+        return result.data if result.data else []
+        
+    except Exception:
+        return []
+
+
+def get_all_user_context(user_id: str, context_type: str = None) -> List[Dict]:
+    """
+    Get all stored context for a user from the unified intelligence table.
+    """
+    try:
+        q = supabase.table("user_intelligence").select("*").eq("user_id", int(user_id))
+        
+        if context_type:
+            q = q.eq("category", context_type)
+        
+        q = q.order("created_at", desc=True)
+        
+        result = q.execute()
+        return result.data if result.data else []
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__) # Assuming logger is not globally defined, define it here.
+        logger.error(f"Error fetching user context: {e}")
+        return []

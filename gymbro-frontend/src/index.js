@@ -4,22 +4,13 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { AuthProvider, AuthContext } from './context/AuthContext';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import getTheme from './theme';
 
 const Root = () => {
   const { darkMode } = useContext(AuthContext);
-  const theme = createTheme({
-    palette: {
-      mode: darkMode ? 'dark' : 'light',
-      primary: {
-        main: '#1976d2',
-      },
-      secondary: {
-        main: '#dc004e',
-      },
-    },
-  });
+  const theme = getTheme(darkMode ? 'dark' : 'light');
 
   return (
     <ThemeProvider theme={theme}>

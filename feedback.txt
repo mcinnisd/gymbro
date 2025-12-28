@@ -1,0 +1,37 @@
+when user logs in for the first time they should be prompted to connect their garmin account and sync their data (setup integrations and profile)
+this should be done seamlessly and shouldnt take long and should have good ui design, being simple, intuitive, and easy to use, while looking nice and modern
+then they should be prompted to take a survey to get their goals and preferences
+
+when user logs in with germin account they should be prompted to sync their data and sync should happen in the background
+when user logs in with strava account they should be prompted to sync their data and sync should happen in the background
+
+user should then fill out a survey to get their goals and preferences
+after survey is completed user should be directed to the interview questions 
+
+Interview questions should be asked in order and should be asked one at a time, there shouldnt be a rush to ask the next question and conversation should flow naturally
+Once the user has answered all of the relevant context from the first question they should then be asked the next question in the interview questions Overview
+once all questions have been asked and answered the context and information should be saved to the user_context table
+
+
+# error seen while connecting garmin account
+2025-12-26T12:26:58.341544 - Error fetching activities for user 14: The read operation timed out
+
+When trying to fill out the form prior to interview questions errors are seen wuth fetching dailt data and read operations timed out
+
+Error fetching daily data for 2024-12-26, user 14: The read operation timed out
+Error fetching daily data for 2024-12-27, user 14: The read operation timed out
+Error fetching daily data for 2024-12-28, user 14: The read operation timed out
+
+unable to click the next button on the form in set up users and integrations, could be issue stemming from garmin account connecting issues
+
+
+REQUEST: Clean up the repo and make it more organized
+REQUEST: Simplify the code and make it more readable
+REQUEST: Make the website more user friendly and intuitive
+REQUEST: Make the website more visually appealing and modern
+REQUEST: Make the website more responsive and mobile friendly
+REQUEST: Make the website more secure
+REQUEST: Set up verify code as jenkins for the repo, automatic testing
+FIRST REQUEST: Formulate all of this into a roadmap and break it down into smaller tasks
+
+MAKE THE START INTERVIEW SEND YOU DIRECTLY TO CHAT WITH QUESTIONS

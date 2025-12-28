@@ -55,7 +55,8 @@ def get_activities():
     current_user = request.current_user
     try:
         # Fetch from garmin_activities
-        response = supabase.table("garmin_activities").select("*").eq("user_id", current_user["id"]).order("start_time_local", desc=True).execute()
+        columns = "id, activity_id, activity_name, start_time_local, distance, duration, calories, activity_type, average_hr, elevation_gain, synced_at"
+        response = supabase.table("garmin_activities").select(columns).eq("user_id", current_user["id"]).order("start_time_local", desc=True).execute()
         activities = response.data if response.data else []
         return jsonify({"activities": activities}), 200
     except Exception as e:
@@ -144,8 +145,8 @@ def get_activities_summary():
     current_user = request.current_user
     try:
         # Fetch all activities for summary calculation
-        # In a real app, you might want to limit this to a date range or use a database aggregation function if available
-        response = supabase.table("garmin_activities").select("*").eq("user_id", current_user["id"]).order("start_time_local", desc=True).execute()
+        columns = "id, start_time_local, calories, activity_type"
+        response = supabase.table("garmin_activities").select(columns).eq("user_id", current_user["id"]).order("start_time_local", desc=True).execute()
         activities = response.data if response.data else []
         
         total_workouts = len(activities)

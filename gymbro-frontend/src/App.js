@@ -11,17 +11,18 @@ import OnboardingPage from './pages/OnboardingPage';
 import PrivateRoute from './components/PrivateRoute';
 import Navbar from './components/Navbar';
 import ActivityDetailsPage from './pages/ActivityDetailsPage';
-import SleepDetailsPage from './pages/SleepDetailsPage'; // Added import
+import SleepDetailsPage from './pages/SleepDetailsPage';
+import CalendarPage from './pages/CalendarPage'; // Added import
 import ProfilePage from './pages/ProfilePage';
 import { AuthProvider } from './context/AuthContext';
 import { SettingsProvider } from './context/SettingsContext';
+import Layout from './components/Layout'; // Import Layout
 
 function App() {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <Router>
-          <Navbar />
+    <SettingsProvider>
+      <Router>
+        <Layout>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -29,14 +30,17 @@ function App() {
             <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
             <Route path="/coach" element={<PrivateRoute><CoachPage /></PrivateRoute>} />
             <Route path="/chats" element={<PrivateRoute><ChatsPage /></PrivateRoute>} />
+            <Route path="/chats/:chatId" element={<PrivateRoute><ChatsPage /></PrivateRoute>} />
             <Route path="/activities/:activityId" element={<PrivateRoute><ActivityDetailsPage /></PrivateRoute>} />
-            <Route path="/sleep/:date" element={<PrivateRoute><SleepDetailsPage /></PrivateRoute>} /> {/* Added route */}
+            <Route path="/sleep/:date" element={<PrivateRoute><SleepDetailsPage /></PrivateRoute>} />
+            <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
             <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
-        </Router>
-      </SettingsProvider>
-    </AuthProvider>
+        </Layout>
+      </Router>
+    </SettingsProvider>
   );
 }
 

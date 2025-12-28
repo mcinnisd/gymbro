@@ -1,64 +1,140 @@
 // src/components/Navbar.js
 import React, { useContext } from 'react';
-import AppBar from '@mui/material/AppBar';
-import Toolbar from '@mui/material/Toolbar';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import { Link, useNavigate } from 'react-router-dom';
+import { AppBar, Toolbar, Typography, Button, Box, IconButton, useTheme, useMediaQuery } from '@mui/material';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import IconButton from '@mui/material/IconButton';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 
 function Navbar() {
   const { authToken, setAuthToken, darkMode, setDarkMode } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const handleLogout = () => {
     setAuthToken(null);
     navigate('/');
   };
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
+  const navItems = [
+    { label: 'Dashboard', path: '/dashboard' },
+    { label: 'Coach', path: '/coach' },
+    { label: 'Chats', path: '/chats' },
+    { label: 'Calendar', path: '/calendar' },
+    { label: 'Profile', path: '/profile' },
+  ];
+
+  const getButtonSx = (path) => ({
+    textTransform: 'none',
+    fontWeight: location.pathname.startsWith(path) && path !== '/' ? 700 : 500,
+    color: location.pathname.startsWith(path) && path !== '/' ? 'primary.main' : 'text.secondary',
+    mx: 1,
+    '&:hover': {
+      color: 'primary.light',
+      bgcolor: 'rgba(108, 99, 255, 0.08)'
+    },
+    borderBottom: location.pathname.startsWith(path) && path !== '/' ? '2px solid' : '2px solid transparent',
+    borderColor: location.pathname.startsWith(path) && path !== '/' ? 'primary.main' : 'transparent',
+    borderRadius: '4px 4px 0 0',
+    pb: 0.5
+  });
 
   return (
-    <AppBar position="static">
+    <AppBar
+      position="sticky"
+      elevation={0}
+      sx={{
+        bgcolor: 'background.default',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        backdropFilter: 'blur(10px)',
+        background: 'linear-gradient(to right, rgba(10, 14, 23, 0.95), rgba(17, 22, 37, 0.95))'
+      }}
+    >
       <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+        <Typography
+          variant="h6"
+          component={Link}
+          to="/"
+          sx={{
+            flexGrow: 1,
+            textDecoration: 'none',
+            color: 'text.primary',
+            fontWeight: 800,
+            letterSpacing: -0.5,
+            background: 'linear-gradient(45deg, #6C63FF, #00E5FF)',
+            backgroundClip: 'text',
+            textFillColor: 'transparent',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}
+        >
           GymBro
         </Typography>
-        <IconButton sx={{ ml: 1 }} color="inherit" onClick={toggleDarkMode}>
-          {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
-        </IconButton>
-        {authToken ? (
-          <>
-            <Button color="inherit" component={Link} to="/dashboard">
-              Dashboard
-            </Button>
-            <Button color="inherit" component={Link} to="/coach">
-              Coach
-            </Button>
-            <Button color="inherit" component={Link} to="/chats">
-              Chats
-            </Button>
-            <Button color="inherit" component={Link} to="/profile">
-              Profile
-            </Button>
-            <Button color="inherit" onClick={handleLogout}>
-              Logout
-            </Button>
-          </>
+
+        {isMobile ? (
+          // Simplified Mobile View ideally would act as a drawer, but for now just basic actions
+          <Box display="flex">
+            <IconButton onClick={() => setDarkMode(!darkMode)} color="inherit">
+              {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+            </IconButton>
+          </Box>
         ) : (
-          <>
-            <Button color="inherit" component={Link} to="/">
-              Login
-            </Button>
-            <Button color="inherit" component={Link} to="/register">
-              Register
-            </Button>
-          </>
+          <Box display="flex" alignItems="center">
+            {authToken ? (
+              <>
+                {navItems.map((item) => (
+                  <Button
+                    key={item.label}
+                    component={Link}
+                    to={item.path}
+                    disableRipple
+                    sx={getButtonSx(item.path)}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+
+                <Box sx={{ width: 1, height: 24, bgcolor: 'divider', mx: 2 }} />
+
+                <Button
+                  color="inherit"
+                  onClick={handleLogout}
+                  sx={{
+                    textTransform: 'none',
+                    color: 'text.secondary',
+                    '&:hover': { color: 'error.main' }
+                  }}
+                >
+                  Logout
+                </Button>
+                <IconButton onClick={() => setDarkMode(!darkMode)} color="inherit" sx={{ ml: 1 }}>
+                  {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+                </IconButton>
+              </>
+            ) : (
+              <>
+                <Button component={Link} to="/" sx={getButtonSx('/')}>Login</Button>
+                <Button
+                  component={Link}
+                  to="/register"
+                  variant="contained"
+                  color="primary"
+                  sx={{ ml: 2, borderRadius: '20px', px: 3 }}
+                >
+                  Register
+                </Button>
+                <IconButton onClick={() => setDarkMode(!darkMode)} color="inherit" sx={{ ml: 1 }}>
+                  {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
+                </IconButton>
+              </>
+            )}
+          </Box>
         )}
       </Toolbar>
     </AppBar>

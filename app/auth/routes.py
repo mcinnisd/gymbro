@@ -58,29 +58,13 @@ def login():
 
     access_token = create_access_token(identity=str(user["id"]), expires_delta=timedelta(minutes=Config.TOKEN_EXPIRATION_MINUTES))
     
-    # Trigger background sync and baselines refresh
-    try:
-        from threading import Thread
-        from app.garmin.sync import sync_all_garmin_data_for_user
-        
-        # Pass the encryption key explicitly to avoid app context issues in thread
-        encryption_key = current_app.config.get("ENCRYPTION_KEY")
-        
-        def sync_and_refresh(user_id, days, enc_key):
-            """Sync Garmin data and refresh baselines cache."""
-            sync_all_garmin_data_for_user(user_id, days, enc_key)
-            # Refresh baselines after sync completes
-            try:
-                from app.context.baseline_service import refresh_user_baselines
-                refresh_user_baselines(user_id)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Baselines refresh failed: {e}")
-        
-        thread = Thread(target=sync_and_refresh, args=(user["id"], 7, encryption_key))
-        thread.start()
-    except Exception as e:
-        current_app.logger.error(f"Failed to trigger background sync for user {user['id']}: {e}")
+    # Background sync removed from login to prevent database gridlock
+    # try:
+    #     from threading import Thread
+    #     from app.garmin.sync import sync_all_garmin_data_for_user
+    #     ...
+    # except Exception as e:
+    #     current_app.logger.error(f"Failed to trigger background sync for user {user['id']}: {e}")
 
     return jsonify({"token": access_token}), 200
 

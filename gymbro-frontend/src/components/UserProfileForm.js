@@ -29,7 +29,7 @@ const UserProfileForm = () => {
 			if (!token) return;
 
 			try {
-				const response = await fetch('http://127.0.0.1:5000/auth/profile', {
+				const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/auth/profile`, {
 					headers: {
 						'Authorization': `Bearer ${token}`
 					}
@@ -70,7 +70,7 @@ const UserProfileForm = () => {
 		const token = localStorage.getItem('token');
 
 		try {
-			const response = await fetch('http://127.0.0.1:5000/auth/profile', {
+			const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/auth/profile`, {
 				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json',

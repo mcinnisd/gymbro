@@ -46,6 +46,9 @@ def create_app():
     
     from app.coach.routes import coach_bp
     app.register_blueprint(coach_bp, url_prefix="/coach")
+    
+    from app.calendar.routes import calendar_bp
+    app.register_blueprint(calendar_bp, url_prefix="/calendar")
 
     # Set up logging if not in debug mode
     if not app.debug:

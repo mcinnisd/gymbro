@@ -4,11 +4,12 @@ import React, { useEffect, useState, useContext } from 'react';
 import { Container, Grid, Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, DialogActions } from '@mui/material';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 
 function ChatsPage() {
   const { authToken } = useContext(AuthContext);
+  const { chatId } = useParams();
   const [chats, setChats] = useState([]);
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [selectedChatTitle, setSelectedChatTitle] = useState('');
@@ -37,7 +38,16 @@ function ChatsPage() {
           const data = await response.json();
           console.log('ChatsPage: Fetched chats:', data.chats);
           setChats(data.chats);
-          if (data.chats.length > 0) {
+          if (chatId) {
+            const selected = data.chats.find(c => String(c.id) === String(chatId));
+            if (selected) {
+              setSelectedChatId(selected.id);
+              setSelectedChatTitle(selected.title);
+            } else if (data.chats.length > 0) {
+              setSelectedChatId(data.chats[0].id);
+              setSelectedChatTitle(data.chats[0].title);
+            }
+          } else if (data.chats.length > 0) {
             setSelectedChatId(data.chats[0].id);
             setSelectedChatTitle(data.chats[0].title);
           }
@@ -52,11 +62,12 @@ function ChatsPage() {
     };
 
     fetchChats();
-  }, [authToken, navigate]);
+  }, [authToken, navigate, chatId]);
 
   const handleChatSelect = (chatId, title) => {
     setSelectedChatId(chatId);
     setSelectedChatTitle(title);
+    navigate(`/chats/${chatId}`);
   };
 
   const handleOpenDialog = () => {
@@ -67,13 +78,13 @@ function ChatsPage() {
     setOpenDialog(false);
     setNewChatTitle('');
   };
-  
+
   const handleCreateChat = async () => {
     console.log('ChatsPage: Creating chat with title:', newChatTitle);
     try {
       const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/chats`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
@@ -106,6 +117,38 @@ function ChatsPage() {
     }
   };
 
+  const handleDeleteChat = async (chatId) => {
+    console.log("handleDeleteChat called for:", chatId);
+    if (!window.confirm("Are you sure you want to delete this chat?")) {
+      console.log("Delete cancelled by user.");
+      return;
+    }
+
+    try {
+      console.log("Sending DELETE request...");
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/chats/${chatId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      });
+      console.log("DELETE response status:", response.status);
+
+      if (response.ok) {
+        setChats(chats.filter(c => c.id !== chatId));
+        if (selectedChatId === chatId) {
+          setSelectedChatId(null);
+          setSelectedChatTitle('');
+        }
+      } else {
+        const err = await response.json();
+        console.error("Failed to delete chat:", err);
+        alert("Failed to delete chat: " + (err.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      alert("Error deleting chat.");
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Grid container spacing={2}>
@@ -117,7 +160,7 @@ function ChatsPage() {
               New Chat
             </Button>
           </Box>
-          <ChatList chats={chats} selectedChatId={selectedChatId} onSelect={handleChatSelect} />
+          <ChatList chats={chats} selectedChatId={selectedChatId} onSelect={handleChatSelect} onDelete={handleDeleteChat} />
         </Grid>
 
         {/* Chat Window */}

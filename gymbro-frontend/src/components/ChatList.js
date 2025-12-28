@@ -1,9 +1,8 @@
-// src/components/ChatList.js
-
 import React from 'react';
-import { List, ListItemButton, ListItemText } from '@mui/material';
+import { List, ListItemButton, ListItemText, IconButton } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 
-function ChatList({ chats, selectedChatId, onSelect }) {
+function ChatList({ chats, selectedChatId, onSelect, onDelete }) {
   return (
     <List component="nav">
       {chats.map((chat) => (
@@ -13,6 +12,18 @@ function ChatList({ chats, selectedChatId, onSelect }) {
           onClick={() => onSelect(chat.id, chat.title)}
         >
           <ListItemText primary={chat.title} />
+          <IconButton
+            edge="end"
+            aria-label="delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(chat.id);
+            }}
+            size="small"
+            sx={{ ml: 1, color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
         </ListItemButton>
       ))}
     </List>

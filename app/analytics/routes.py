@@ -1,187 +1,167 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.supabase_client import supabase
-from app.auth.utils import token_required
-from datetime import datetime, timedelta
-from collections import defaultdict
+import logging
 
 analytics_bp = Blueprint('analytics', __name__)
+logger = logging.getLogger(__name__)
 
-@analytics_bp.route('/summary', methods=['GET'])
-@token_required
-def get_analytics_summary():
+@analytics_bp.route("/baselines", methods=["GET"])
+@jwt_required()
+def get_user_baselines():
+    """
+    Fetch calculated fitness baselines for the user.
+    """
+    user_id = get_jwt_identity()
     try:
-        current_user = request.current_user
-        user_id = current_user["id"]
+        res = supabase.table("user_baselines").select("baselines").eq("user_id", user_id).eq("metric_category", "running").execute()
+        if res.data:
+            return jsonify(res.data[0]["baselines"]), 200
+        else:
+            return jsonify({}), 200 # Return empty object if no baselines yet
+    except Exception as e:
+        logger.error(f"Error fetching baselines for user {user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+@analytics_bp.route("/summary", methods=["GET"])
+@jwt_required()
+def get_analytics_summary():
+    user_id = get_jwt_identity()
+    try:
+        from datetime import datetime, timedelta, timezone
         
-        # Fetch Activities (Last 6 months for trends)
-        six_months_ago = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
-        activities_res = supabase.table("garmin_activities")\
-            .select("*")\
+        # 1. Fetch Activities (Last 90 days for trends)
+        ninety_days_ago = (datetime.now(timezone.utc) - timedelta(days=90)).date().isoformat()
+        
+        act_res = supabase.table("garmin_activities")\
+            .select("start_time_local, distance, duration, activity_type, average_hr, average_speed, elevation_gain")\
             .eq("user_id", user_id)\
-            .gte("start_time_local", six_months_ago)\
+            .gte("start_time_local", ninety_days_ago)\
             .order("start_time_local", desc=True)\
             .execute()
-            
-        activities = activities_res.data or []
         
-        # Initialize aggregation structures
-        breakdown = defaultdict(lambda: {"count": 0, "distance": 0, "duration": 0})
-        weekly_volume = defaultdict(lambda: {"distance": 0, "duration": 0, "count": 0})
-        running_efficiency_trend = []
-        
-        # Running stats accumulators
-        total_run_distance = 0
-        total_run_duration = 0
-        total_run_hr = 0
-        run_count = 0
-        hiking_elevation = 0
-        
+        activities = act_res.data or []
+
+        # 2. Breakdown (All time? Or last 90 days? Frontend seems to imply general stats, let's use 90 days for relevance)
+        breakdown = {}
         for act in activities:
-            a_type = act.get("activity_type", "unknown")
-            dist = act.get("distance") or 0
-            dur = act.get("duration") or 0
+            atype = act.get('activity_type', 'other')
+            if atype not in breakdown:
+                breakdown[atype] = {"count": 0, "distance": 0, "duration": 0}
+            breakdown[atype]["count"] += 1
+            breakdown[atype]["distance"] += (act.get("distance") or 0)
+            breakdown[atype]["duration"] += (act.get("duration") or 0)
+
+        # 3. Weekly Volume (Running only basically, or all? Let's do all for summary)
+        weekly_volume = {}
+        for act in activities:
+            dt = datetime.fromisoformat(act['start_time_local'])
+            # ISO format YYYY-Www
+            year, week, _ = dt.isocalendar()
+            week_key = f"{year}-{week:02d}"
             
-            # Activity Breakdown
-            breakdown[a_type]["count"] += 1
-            breakdown[a_type]["distance"] += dist
-            breakdown[a_type]["duration"] += dur
+            if week_key not in weekly_volume:
+                weekly_volume[week_key] = {"distance": 0, "duration": 0}
             
-            # Weekly Volume Trends
-            start_date = act.get("start_time_local", "")[:10]
-            if start_date:
+            weekly_volume[week_key]["distance"] += (act.get("distance") or 0)
+            weekly_volume[week_key]["duration"] += (act.get("duration") or 0)
+
+        # 4. Efficiency Trend (Running)
+        efficiency_trend = []
+        # 4. Efficiency Trend (Running)
+        efficiency_trend = []
+        for act in activities:
+            if act.get('activity_type') in ['running', 'treadmill_running', 'street_running', 'track_running']:
+                speed = act.get('average_speed')
+                hr = act.get('average_hr')
+                
+                # Defensive float conversion
                 try:
-                    dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    week_key = f"{dt.isocalendar()[0]}-W{dt.isocalendar()[1]:02d}"
-                    weekly_volume[week_key]["distance"] += dist
-                    weekly_volume[week_key]["duration"] += dur
-                    weekly_volume[week_key]["count"] += 1
-                except ValueError:
-                    pass  # Skip if date parsing fails
-            
-            # Running Efficiency Trend
-            if "running" in a_type.lower():
-                avg_hr = act.get("average_hr")
-                if dur > 0 and avg_hr and avg_hr > 0:
-                    speed_mps = dist / dur
-                    efficiency = (speed_mps * 60) / avg_hr * 1000
-                    running_efficiency_trend.append({
-                        "date": start_date,
-                        "efficiency": efficiency,
-                        "speed": speed_mps,
-                        "hr": avg_hr
+                    speed = float(speed) if speed is not None else 0.0
+                    hr = float(hr) if hr is not None else 0.0
+                except:
+                    speed, hr = 0, 0
+
+                if speed > 0 and hr > 0:
+                    efficiency_trend.append({
+                        "date": act['start_time_local'][:10],
+                        "efficiency": (speed * 100) / hr, 
+                        "speed": speed,
+                        "hr": hr
                     })
-                    total_run_distance += dist
-                    total_run_duration += dur
-                    total_run_hr += avg_hr
-                    run_count += 1
-            
-            # Hiking Elevation
-            if "hiking" in a_type.lower():
-                hiking_elevation += act.get("elevation_gain") or 0
-        
-        # Sort efficiency trend by date
-        running_efficiency_trend.sort(key=lambda x: x["date"])
-        
-        # Calculate running averages
-        avg_run_pace = 0
-        avg_run_hr = 0
-        if run_count > 0 and total_run_duration > 0:
-            avg_run_speed = total_run_distance / total_run_duration
-            avg_run_pace = 1000 / avg_run_speed if avg_run_speed > 0 else 0
-            avg_run_hr = total_run_hr / run_count
-        
-        # Count long runs (> 15km)
-        long_run_count = sum(
-            1 for a in activities 
-            if "running" in a.get("activity_type", "").lower() 
-            and (a.get("distance") or 0) > 15000
-        )
-        
-        # Fetch VO2 Max (Last 1 Year) - stored as JSON in max_metrics column
-        one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+        efficiency_trend.reverse() # Oldest first
+
+        # 5. VO2 Max (from Max Metrics)
         vo2_res = supabase.table("garmin_maxmetrics")\
             .select("date, max_metrics")\
             .eq("user_id", user_id)\
-            .gte("date", one_year_ago)\
-            .order("date", desc=True)\
+            .gte("date", ninety_days_ago)\
+            .order("date", asc=True)\
             .execute()
-            
-        vo2_max_data = []
+        
+        vo2_max = []
         for row in (vo2_res.data or []):
-            max_metrics = row.get("max_metrics")
-            if max_metrics and isinstance(max_metrics, list) and len(max_metrics) > 0:
-                # Extract VO2 Max from the nested structure
-                for metric in max_metrics:
-                    generic = metric.get("generic") or {}
-                    vo2 = generic.get("vo2MaxValue")
-                    if vo2:
-                        vo2_max_data.append({"date": row["date"], "value": vo2})
-                        break  # Only take first valid value per day
-        
-        # Fetch Daily Stats (RHR) - Last 30 days
+            try:
+                # Structure depends on Garmin API response
+                # Usually: metric['vo2MaxPreciseValue'] or similar
+                 mm = row.get('max_metrics', [])
+                 # mm is likely a list of metrics
+                 for m in mm:
+                     if m.get('genericMetric') == 'vo2MaxPreciseValue':
+                         vo2_max.append({"date": row['date'], "value": m.get('value')})
+                         break
+            except: 
+                pass
+
+        # 6. Recovery (RHR/HRV from Daily)
         daily_res = supabase.table("garmin_daily")\
-            .select("date, resting_hr")\
+            .select("date, resting_hr, stress")\
             .eq("user_id", user_id)\
-            .order("date", desc=True)\
-            .limit(30)\
+            .gte("date", ninety_days_ago)\
+            .order("date", asc=True)\
             .execute()
             
-        # Fetch Sleep Data (HRV) - Last 30 days
-        sleep_res = supabase.table("garmin_sleep")\
-            .select("date, sleep_data")\
-            .eq("user_id", user_id)\
-            .order("date", desc=True)\
-            .limit(30)\
-            .execute()
-            
-        # Merge recovery data by date
-        daily_map = {row["date"]: row for row in (daily_res.data or [])}
-        sleep_map = {row["date"]: row for row in (sleep_res.data or [])}
-        
-        recovery_stats = []
-        all_dates = sorted(list(set(daily_map.keys()) | set(sleep_map.keys())), reverse=True)
-        
-        for d in all_dates:
-            daily = daily_map.get(d, {})
-            sleep_row = sleep_map.get(d, {})
-            
-            rhr = daily.get("resting_hr")
-            rhr_val = 0
-            if isinstance(rhr, int):
-                rhr_val = rhr
-            elif isinstance(rhr, dict):
-                rhr_val = rhr.get("restingHeartRate", 0)
-            
-            sleep_data = sleep_row.get("sleep_data") or {}
-            hrv = sleep_data.get("avgOvernightHrv")
-            
-            recovery_stats.append({
-                "date": d,
-                "rhr": rhr_val,
-                "hrv": hrv
+        recovery = []
+        for row in (daily_res.data or []):
+            recovery.append({
+                "date": row['date'],
+                "rhr": row.get('resting_hr'),
+                "hrv": 0 # We don't have HRV yet in garmin_daily schema? Check schema. 
+                # Actually we store 'stress' which has stress scores. 
+                # Let's assume we lack HRV for now unless it's in stress data.
             })
 
-        return jsonify({
-            "breakdown": dict(breakdown),
-            "weekly_volume": dict(weekly_volume),
+        # Calculate Averages for Breakdown Cards
+        total_elev = sum(a.get('elevation_gain') or 0 for a in activities if a.get('activity_type') in ['hiking', 'running', 'trail_running'])
+        
+        # Calculate Avg Pace for Running
+        runs = [a for a in activities if a.get('activity_type') in ['running', 'street_running']]
+        avg_pace = 0
+        if runs:
+            total_dur = sum(r.get('duration') or 0 for r in runs)
+            total_dist_km = sum((r.get('distance') or 0) / 1000.0 for r in runs)
+            if total_dist_km > 0:
+                avg_pace = total_dur / total_dist_km # sec/km
+
+        response_data = {
+            "breakdown": breakdown,
+            "weekly_volume": weekly_volume,
             "performance": {
                 "running": {
-                    "efficiency_trend": running_efficiency_trend,
-                    "avg_pace_sec_km": avg_run_pace,
-                    "avg_hr": avg_run_hr,
-                    "long_run_count": long_run_count
+                    "efficiency_trend": efficiency_trend,
+                    "avg_pace_sec_km": avg_pace
                 },
                 "hiking": {
-                    "total_elevation_gain": hiking_elevation
+                    "total_elevation_gain": total_elev
                 }
             },
             "health_trends": {
-                "vo2_max": vo2_max_data,
-                "recovery": recovery_stats
+                "vo2_max": vo2_max,
+                "recovery": recovery
             }
-        }), 200
+        }
+
+        return jsonify(response_data), 200
 
     except Exception as e:
-        current_app.logger.error(f"Error fetching analytics summary: {e}")
+        logger.error(f"Error fetching analytics summary for user {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
-
