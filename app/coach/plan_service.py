@@ -14,7 +14,7 @@ from app.tools.calendar_tools import create_event
 
 logger = logging.getLogger(__name__)
 
-def generate_baseline_plan(user_id: str):
+def generate_baseline_plan(user_id: str, context: str = None):
     """
     Generates a 4-week baseline training plan for the user.
     """
@@ -61,6 +61,10 @@ def generate_baseline_plan(user_id: str):
             activity_summary=activity_summary,
             interview_qa=interview_qa
         )
+        
+        # Inject explicit context (from tool) if provided
+        if context:
+            prompt += f"\n\nADDITIONAL INSTRUCTIONS/CONTEXT:\n{context}\nPlease prioritize these instructions over the general profile."
 
         system_prompt = COACH_SYSTEM_PROMPT_TEMPLATE.format(
             age=user.get("age", "?"),
@@ -184,6 +188,7 @@ def populate_calendar_from_plan(user_id: str):
             "Friday": 4, "Saturday": 5, "Sunday": 6
         }
 
+        event_list = []
         for week in plan.get("weeks", []):
             week_num = week.get("week_number", 1)
             for day_data in week.get("days", []):
@@ -204,16 +209,25 @@ def populate_calendar_from_plan(user_id: str):
                 elif "strength" in activity.lower() or "gym" in activity.lower(): event_type = "strength"
                 elif "race" in activity.lower(): event_type = "race"
                 
-                res = create_event(
-                    user_id=user_id,
-                    date=event_date.isoformat(),
-                    title=activity,
-                    event_type=event_type,
-                    description=details
-                )
-                events_created += 1
+                event_list.append({
+                    "user_id": int(user_id),
+                    "date": event_date.isoformat()[:10], # Ensure strict date format
+                    "title": activity,
+                    "description": details,
+                    "event_type": event_type,
+                    "status": "planned",
+                    "created_by": "coach_plan",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
 
-        return {"success": True, "events_created": events_created}
+        if event_list:
+             # Bulk insert
+             chunk_size = 50 # Supabase might have payload limits
+             for i in range(0, len(event_list), chunk_size):
+                 chunk = event_list[i:i + chunk_size]
+                 supabase.table("training_events").insert(chunk).execute()
+                 
+        return {"success": True, "events_created": len(event_list)}
 
     except Exception as e:
         logger.error(f"Error populating calendar: {e}")

@@ -199,3 +199,35 @@ def debug_context():
         return jsonify({"summary": summary}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@garmin_bp.route("/daily/<date>", methods=["GET"])
+@jwt_required()
+def get_daily_details(date):
+    """
+    Returns detailed daily health stats for a specific date.
+    """
+    user_id = get_jwt_identity()
+    try:
+        response = supabase.table("garmin_daily").select("*").eq("user_id", user_id).eq("date", date).execute()
+        if not response.data:
+            return jsonify({"error": "Daily data not found"}), 404
+        return jsonify(response.data[0]), 200
+    except Exception as e:
+        logger.error(f"Error fetching daily details for {date}: {e}")
+        return jsonify({"error": "Failed to fetch daily details"}), 500
+
+@garmin_bp.route("/sleep/<date>", methods=["GET"])
+@jwt_required()
+def get_sleep_details(date):
+    """
+    Returns detailed sleep data for a specific date.
+    """
+    user_id = get_jwt_identity()
+    try:
+        response = supabase.table("garmin_sleep").select("*").eq("user_id", user_id).eq("date", date).execute()
+        if not response.data:
+            return jsonify({"error": "Sleep data not found"}), 404
+        return jsonify(response.data[0]), 200
+    except Exception as e:
+        logger.error(f"Error fetching sleep details for {date}: {e}")
+        return jsonify({"error": "Failed to fetch sleep details"}), 500

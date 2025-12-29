@@ -18,6 +18,28 @@ from app.utils.encryption import encrypt_data, decrypt_data
 
 logger = logging.getLogger(__name__)
 
+def robust_api_call(func, *args, retries=3, **kwargs):
+    """
+    Helper to execute Garmin API calls with strict retries for SSL/Connection errors.
+    """
+    last_exception = None
+    import time
+    
+    for attempt in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except (requests.exceptions.SSLError, requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as e:
+            last_exception = e
+            logger.warning(f"Network error in Garmin API call (Attempt {attempt+1}/{retries}): {e}")
+            time.sleep(1 * (attempt + 1)) # Backoff
+        except Exception as e:
+            # For other errors (e.g. Auth), fail fast or check type
+            raise e
+            
+    if last_exception:
+        raise last_exception
+
+
 def init_garmin_api_for_user(user_id: str, encryption_key: str = None):
     """
     Initializes Garmin API session for a specific user by decrypting stored credentials.
@@ -164,7 +186,16 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
             while True:
                 # Fetch batch
                 log_to_file(f"Fetching batch start={start_idx} limit={limit}...")
-                batch = garmin_api.get_activities(start_idx, limit)
+                # Fetch batch with retry
+                log_to_file(f"Fetching batch start={start_idx} limit={limit}...")
+                try:
+                    batch = robust_api_call(garmin_api.get_activities, start_idx, limit)
+                except Exception as e:
+                    log_to_file(f"Failed to fetch batch at {start_idx}: {e}")
+                    # If batch fails, we can assume we might have issues. 
+                    # Try to continue? Or break? 
+                    # If robust call failed after retries, we likely can't proceed with this chain.
+                    break
                 
                 if not batch:
                     break
@@ -314,12 +345,15 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
             try:
                 log_to_file(f"Fetching daily: {day_str}")
                 # Fetch minimal set first to fail fast? No, just fetch.
-                steps = garmin_api.get_steps_data(day_str)
-                sleep = garmin_api.get_sleep_data(day_str)
-                hr = garmin_api.get_heart_rates(day_str)
+                log_to_file(f"Fetching daily: {day_str}")
+                # Fetch minimal set first to fail fast? No, just fetch.
+                # Wrap in robust calls
+                steps = robust_api_call(garmin_api.get_steps_data, day_str)
+                sleep = robust_api_call(garmin_api.get_sleep_data, day_str)
+                hr = robust_api_call(garmin_api.get_heart_rates, day_str)
                 # Helper data extraction
-                rhr_raw = garmin_api.get_rhr_day(day_str)
-                stress_raw = garmin_api.get_stress_data(day_str)
+                rhr_raw = robust_api_call(garmin_api.get_rhr_day, day_str)
+                stress_raw = robust_api_call(garmin_api.get_stress_data, day_str)
 
                 # Normalize RHR (Extract scalar from heavy JSON)
                 rhr_val = None

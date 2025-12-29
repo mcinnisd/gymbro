@@ -18,7 +18,8 @@ function ActivitiesTable() {
       });
 
       if (!response.ok) {
-        alert('Failed to fetch activities');
+        console.error("Fetch activities failed:", response.status);
+        // alert('Failed to fetch activities'); // Remove alert to be less annoying
         return;
       }
 

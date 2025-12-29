@@ -123,3 +123,17 @@ class IntelligenceService:
                         
         except Exception as e:
             logger.error(f"Intelligence extraction error: {e}")
+
+    @staticmethod
+    def get_all_intelligence(user_id: str, category: str = None) -> List[Dict[str, Any]]:
+        """Retrieve all intelligence records for a user."""
+        try:
+            q = supabase.table("user_intelligence").select("*").eq("user_id", int(user_id))
+            if category:
+                q = q.eq("category", category)
+            q = q.order("created_at", desc=True)
+            res = q.execute()
+            return res.data or []
+        except Exception as e:
+            logger.error(f"Error fetching all intelligence: {e}")
+            return []

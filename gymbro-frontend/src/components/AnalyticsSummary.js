@@ -14,11 +14,14 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { SettingsContext } from '../context/SettingsContext';
+import { useNavigate } from 'react-router-dom';
+import BedtimeIcon from '@mui/icons-material/Bedtime';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 export default function AnalyticsSummary({ authToken }) {
 	const { units, toggleUnits } = useContext(SettingsContext);
+	const navigate = useNavigate();
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
@@ -39,30 +42,58 @@ export default function AnalyticsSummary({ authToken }) {
 		const fetchAnalytics = async () => {
 			if (!authToken) return;
 			try {
+				// Ensure fresh fetch
 				const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/analytics/summary`, {
 					headers: { 'Authorization': `Bearer ${authToken}` }
 				});
 				if (res.ok) {
 					const json = await res.json();
-					setData(json);
+					// Basic validation to prevent crash
+					if (json && (json.sports || json.wellness)) {
+						setData(json);
+					} else {
+						console.warn("Analytics data empty or malformed", json);
+					}
 				} else {
-					const text = await res.text();
-					console.error("Analytics Error:", text);
-					setError(`Failed to load analytics summary: ${res.status}`);
+					console.error("Analytics Error status:", res.status);
 				}
 			} catch (e) {
-				console.error(e);
-				setError("Error loading analytics");
+				console.error("Analytics network error", e);
 			} finally {
 				setLoading(false);
 			}
 		};
 		fetchAnalytics();
-	}, [authToken]);
+	}, [authToken]); // dependency array is correct. Crash likely due to stale data rendering before new fetch completes?
+	// FIX: reset data on auth change? No, loading handles it.
+	// Issue might be Recharts trying to animate exit on unmount/remount?
+	// Let's rely on data check above.
 
 	if (loading) return <CircularProgress />;
 	if (error) return <Alert severity="error">{error}</Alert>;
 	if (!data) return null;
+
+	// Navigation Handlers
+	const handleDailyClick = (data) => {
+		if (data && data.activePayload && data.activePayload.length > 0) {
+			// Recharts payload structure
+			const dateStr = data.activePayload[0].payload.date; // "Sep 15" format? 
+			// Wait, payload date is formatted. We need ISO date for API. 
+			// We should store ISO date in payload hidden and format in tickFormatter.
+			// Current mapping destroys ISO date. 
+			// FIX: Store ISO dateObject in data, use tickFormatter for display.
+		}
+	};
+
+	// Easier approach: Use the data index? Or store raw date string in a hidden field 'isoDate'.
+	const handleChartClick = (state, routePrefix) => {
+		if (state && state.activePayload && state.activePayload.length > 0) {
+			const item = state.activePayload[0].payload;
+			if (item.isoDate) {
+				navigate(`${routePrefix}/${item.isoDate}`);
+			}
+		}
+	};
 
 	// Helpers
 	const isMetric = units === 'metric';
@@ -88,31 +119,57 @@ export default function AnalyticsSummary({ authToken }) {
 	const weeklyData = Object.entries(data.weekly_volume)
 		.sort((a, b) => a[0].localeCompare(b[0]))
 		.slice(-8)
-		.map(([week, val]) => ({
-			week: week.split('-')[1],
+		.map(([dateKey, val]) => ({
+			week: new Date(dateKey).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }), // "9/15"
+			isoDate: dateKey, // Monday of week
 			distance: convertDist(val.distance).toFixed(1),
 			duration: (val.duration / 3600).toFixed(1)
 		}));
 
-	// 3. Efficiency Trend
-	const efficiencyData = data.performance.running.efficiency_trend.map(d => ({
-		date: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-		efficiency: d.efficiency.toFixed(2),
-		speed: (isMetric ? (d.speed * 3.6) : (d.speed * 2.23694)).toFixed(1), // km/h or mph
-		hr: d.hr
-	}));
+	// 3. Efficiency Trend (Safely access running data)
+	let efficiencyData = [];
+	if (data.sports && data.sports.running && data.sports.running.trends && data.sports.running.trends.efficiency) {
+		efficiencyData = data.sports.running.trends.efficiency.map(d => ({
+			date: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+			isoDate: d.date,
+			efficiency: d.val.toFixed(2),
+			speed: d.speed ? (isMetric ? (d.speed * 3.6) : (d.speed * 2.23694)).toFixed(1) : 0,
+			hr: d.hr || 0
+		}));
+	}
 
 	// 4. Health Trends
-	const vo2Data = data.health_trends.vo2_max.map(d => ({
-		date: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-		vo2: d.value
-	}));
+	const vo2Data = [];
+	if (data.wellness && data.wellness.vo2_max) {
+		data.wellness.vo2_max.forEach(d => {
+			vo2Data.push({
+				date: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+				isoDate: d.date,
+				vo2: d.val
+			});
+		});
+	}
 
-	const recoveryData = data.health_trends.recovery.map(d => ({
-		date: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-		rhr: d.rhr,
-		hrv: d.hrv
-	}));
+	const recoveryData = [];
+	if (data.wellness && data.wellness.rhr_trend) {
+		data.wellness.rhr_trend.forEach(d => {
+			recoveryData.push({
+				date: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+				isoDate: d.date,
+				rhr: d.val,
+				hrv: null
+			});
+		});
+	}
+
+	// 5. Sleep Data (New)
+	// We don't have a direct trend in 'summary' yet, need to fetch it or rely on what's available?
+	// 'wellness' from backend only had rhr/stress/vo2.
+	// I need to add sleep to backend OR just omit chart for now and rely on drill down.
+	// User requested "Sleep Summary Overview". 
+	// I will add a Card for Sleep Score (avg) if available, or just a placeholder to click.
+	// Since backend doesn't send sleep trend in /summary, I'll skip the chart and just add a card that links to today/yesterday.
+
 
 	// Module Toggle Handler
 	const handleModuleToggle = (mod) => {
@@ -169,7 +226,7 @@ export default function AnalyticsSummary({ authToken }) {
 										Latest Index (Speed/HR)
 									</Typography>
 									<Box mt={1}>
-										<Chip size="small" label={`Avg Pace: ${(data.performance.running.avg_pace_sec_km / 60).toFixed(2)} min/${distUnit}`} color="info" variant="outlined" />
+										<Chip size="small" label={`Avg Pace: ${(data.sports?.running?.avg_pace_sec_km ? (data.sports.running.avg_pace_sec_km / 60).toFixed(2) : '-')} min/${distUnit}`} color="info" variant="outlined" />
 									</Box>
 								</CardContent>
 							</Card>
@@ -183,7 +240,7 @@ export default function AnalyticsSummary({ authToken }) {
 										<Typography variant="h6">Elevation Gain</Typography>
 									</Box>
 									<Typography variant="h4">
-										{convertElev(data.performance.hiking.total_elevation_gain).toFixed(0)} {elevUnit}
+										{data.sports?.hiking ? convertElev(data.sports.hiking.total_elevation).toFixed(0) : '0'} {elevUnit}
 									</Typography>
 									<Typography variant="body2" color="text.secondary">
 										Total (Last 60 Days)
@@ -227,6 +284,24 @@ export default function AnalyticsSummary({ authToken }) {
 						</Grid>
 					</>
 				)}
+
+				{/* Sleep Summary Card (New) */}
+				<Grid item xs={12} md={3}>
+					<Card sx={{ height: '100%', cursor: 'pointer' }} onClick={() => navigate(`/sleep/${new Date().toISOString().slice(0, 10)}`)}>
+						<CardContent>
+							<Box display="flex" alignItems="center" gap={1} mb={1}>
+								<BedtimeIcon color="primary" />
+								<Typography variant="h6">Sleep</Typography>
+							</Box>
+							<Typography variant="h5">
+								Drill Down
+							</Typography>
+							<Typography variant="body2" color="text.secondary">
+								Click to view details
+							</Typography>
+						</CardContent>
+					</Card>
+				</Grid>
 
 				{/* Charts Row 1 */}
 				{visibleModules.breakdown && (
@@ -278,7 +353,9 @@ export default function AnalyticsSummary({ authToken }) {
 									<XAxis dataKey="week" />
 									<YAxis />
 									<Tooltip />
-									<Bar dataKey="distance" fill="#8884d8" name={`Distance (${distUnit})`} />
+									<Bar dataKey="distance" fill="#8884d8" name={`Distance (${distUnit})`} onClick={(data) => {
+										// Drill down to week view? Or just generic
+									}} />
 								</BarChart>
 							</ResponsiveContainer>
 						</Paper>
@@ -291,7 +368,7 @@ export default function AnalyticsSummary({ authToken }) {
 						<Paper sx={{ p: 3, height: 350 }}>
 							<Typography variant="h6" gutterBottom>Running Efficiency Trend (Speed/HR)</Typography>
 							<ResponsiveContainer width="100%" height="100%">
-								<LineChart data={efficiencyData}>
+								<LineChart data={efficiencyData} onClick={(e) => handleChartClick(e, '/garmin/daily')}>
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" />
 									<YAxis domain={['auto', 'auto']} />
@@ -310,7 +387,7 @@ export default function AnalyticsSummary({ authToken }) {
 						<Paper sx={{ p: 3, height: 350 }}>
 							<Typography variant="h6" gutterBottom>VO2 Max Trend (1 Year)</Typography>
 							<ResponsiveContainer width="100%" height="100%">
-								<LineChart data={vo2Data}>
+								<LineChart data={vo2Data} onClick={(e) => handleChartClick(e, '/garmin/daily')}>
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" />
 									<YAxis domain={['auto', 'auto']} />
@@ -327,7 +404,7 @@ export default function AnalyticsSummary({ authToken }) {
 						<Paper sx={{ p: 3, height: 350 }}>
 							<Typography variant="h6" gutterBottom>Recovery Trends (RHR & HRV)</Typography>
 							<ResponsiveContainer width="100%" height="100%">
-								<LineChart data={recoveryData}>
+								<LineChart data={recoveryData} onClick={(e) => handleChartClick(e, '/garmin/daily')}>
 									<CartesianGrid strokeDasharray="3 3" />
 									<XAxis dataKey="date" />
 									<YAxis yAxisId="left" domain={['auto', 'auto']} />

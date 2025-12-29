@@ -44,7 +44,7 @@ def generate_chart_data(user_id: str, metric: str, period_days: int = 30, scope:
 
 
 def _generate_activity_chart(user_id: str, metric: str, encryption_key: str, message: str) -> Optional[Dict[str, Any]]:
-    """Generate chart for a specific activity by fetching details from Garmin."""
+    """Generate chart for a specific activity by fetching details from Garmin. Supports multiple metrics."""
     try:
         # 1. Find the target activity ID
         from app.context.intent_detector import extract_specific_date
@@ -54,7 +54,6 @@ def _generate_activity_chart(user_id: str, metric: str, encryption_key: str, mes
         
         if target_date:
             # Look for activity on that date
-            # Assuming target_date is YYYY-MM-DD
             next_day = (datetime.strptime(target_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
             query = query.gte("start_time_local", target_date).lt("start_time_local", next_day)
         
@@ -79,7 +78,6 @@ def _generate_activity_chart(user_id: str, metric: str, encryption_key: str, mes
             if api:
                 try:
                     details = api.get_activity_details(activity_id)
-                    # Save back to DB for future use
                     supabase.table("garmin_activities").update({"details": details}).eq("activity_id", activity_id).execute()
                 except Exception as e:
                     print(f"Failed to fetch details from API: {e}")
@@ -93,80 +91,108 @@ def _generate_activity_chart(user_id: str, metric: str, encryption_key: str, mes
         
         if not metrics_data or not descriptors:
             return None
+
+        # Parse requested metrics
+        requested_metrics = [m.strip() for m in metric.split(",")]
             
         # Map metric keys
         metric_key_map = {
-            "heart_rate": "directHeartRate",
-            "pace": "directSpeed",
-            "cadence": "directCadence",
-            "elevation": "directElevation"
+            "heart_rate": "directHeartRate", "hr": "directHeartRate",
+            "pace": "directSpeed", "speed": "directSpeed",
+            "cadence": "directCadence", "steps": "directCadence",
+            "elevation": "directElevation", "climbing": "directElevation",
+            "power": "directPower" 
         }
+
+        datasets = []
+        labels = [] # Will be shared
         
-        target_key = metric_key_map.get(metric)
-        if not target_key:
-            if metric in ["speed", "running_pace"]: target_key = "directSpeed"
-            elif metric in ["hr", "pulse"]: target_key = "directHeartRate"
-            elif metric in ["steps", "spm"]: target_key = "directCadence"
-            elif metric in ["climbing", "ascent"]: target_key = "directElevation"
-            else: return None
-            
-        # Find index of target key
-        target_index = -1
-        for i, desc in enumerate(descriptors):
-            if desc.get("key") == target_key:
-                target_index = i
-                break
-                
-        if target_index == -1:
-            return None
-            
-        # Extract data
-        labels = []
-        data_points = []
+        # Colors for datasets
+        colors = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"]
         
-        for point in metrics_data:
-            val = point["metrics"][target_index]
-            if val is not None:
-                labels.append("") 
-                
-                if target_key == "directSpeed":
-                    # m/s to min/km
-                    if val > 0:
-                        pace = (1000 / val) / 60
-                        if pace < 30:
-                            data_points.append(round(pace, 2))
+        y_axes = {}
+        
+        for idx, m in enumerate(requested_metrics):
+            target_key = metric_key_map.get(m)
+            if not target_key: continue
+            
+            # Find index of target key
+            target_index = -1
+            for i, desc in enumerate(descriptors):
+                if desc.get("key") == target_key:
+                    target_index = i
+                    break
+            
+            if target_index == -1: continue
+            
+            # Extract data
+            data_points = []
+            current_labels = []
+            
+            for point_idx, point in enumerate(metrics_data):
+                val = point["metrics"][target_index]
+                if val is not None:
+                    # Common labels (index or time if available)
+                    current_labels.append(str(point_idx)) 
+
+                    if target_key == "directSpeed":
+                        # m/s to min/km
+                        if val > 0:
+                            pace = (1000 / val) / 60
+                            data_points.append(round(pace, 2) if pace < 30 else None)
                         else:
                             data_points.append(None)
                     else:
-                        data_points.append(None)
-                else:
-                    data_points.append(val)
-        
-        # Decimate if too many points
-        if len(data_points) > 500:
-            step = len(data_points) // 200
-            data_points = data_points[::step]
+                        data_points.append(val)
+            
+            if not labels:
+                labels = current_labels # Use first valid metric's labels
+            elif len(current_labels) > len(labels):
+                labels = current_labels # Expand if longer
+
+            color = colors[idx % len(colors)]
+            y_axis_id = "y" if idx == 0 else f"y{idx}"
+            
+            datasets.append({
+                "label": m.replace("_", " ").title(),
+                "data": data_points,
+                "borderColor": color,
+                "backgroundColor": color.replace(")", ", 0.1)").replace("rgb", "rgba") if "rgb" in color else color, # simplistic alpha
+                "pointRadius": 0,
+                "tension": 0.2,
+                "fill": False,
+                "yAxisID": y_axis_id
+            })
+            
+            # Config axis
+            y_axes[y_axis_id] = {
+                "display": True,
+                "position": "left" if idx == 0 else "right",
+                "reverse": (m in ["pace", "speed"])
+            }
+
+        if not datasets:
+            return None
+
+        # Decimate
+        limit = 500
+        if len(labels) > limit:
+            step = len(labels) // 200
+            for ds in datasets:
+                ds["data"] = ds["data"][::step]
             labels = labels[::step]
             
         return {
             "type": "line",
-            "title": f"{metric.title()} - {activity_name}",
+            "title": f"{', '.join([m.title() for m in requested_metrics])} - {activity_name}",
             "data": {
                 "labels": labels,
-                "datasets": [{
-                    "label": metric.title(),
-                    "data": data_points,
-                    "borderColor": "#3b82f6",
-                    "backgroundColor": "rgba(59, 130, 246, 0.1)",
-                    "pointRadius": 0,
-                    "tension": 0.2,
-                    "fill": True
-                }]
+                "datasets": datasets
             },
             "options": {
                 "scales": {
                     "x": {"display": False},
-                    "y": {"reverse": (metric == "pace")}
+                    **y_axes
                 }
             }
         }

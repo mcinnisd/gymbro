@@ -241,6 +241,273 @@ class AnalyticsService:
        pass
 
     @staticmethod
+    def calculate_baselines(user_id: str):
+        """
+        Main entry point to calculate and store all baselines for a user.
+        Currently focuses on RUNNING for the 'user_baselines' table. 
+        Future: Genericize this or create 'user_baselines_cycling' etc.
+        """
+        # ... (Existing logic for running baselines, kept for backward compatibility/specific table)
+        # For the dashboard API, we will use separate aggregation methods below.
+        pass
+
+    @staticmethod
+    def get_aggregated_metrics(user_id: str, days=90):
+        """
+        Aggregates metrics for all available sports over the last N days.
+        Returns a dictionary keyed by sport.
+        """
+        from datetime import datetime, timedelta, timezone
+        
+        start_date = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+        
+        # 1. Fetch Activities
+        # We need raw_data too for detailed parsing of swim/bike specifics if standard cols aren't enough.
+        # But standard cols + activity_type covers a lot.
+        res = supabase.table("garmin_activities")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .gte("start_time_local", start_date)\
+            .order("start_time_local", desc=True)\
+            .execute()
+            
+        activities = res.data or []
+        
+        # 2. Group by Sport
+        grouped = {
+            "running": [], "cycling": [], "swimming": [], "strength": [], "hiking": [], "walking": [], "other": []
+        }
+        
+        for act in activities:
+            atype = act.get('activity_type', 'other').lower()
+            if 'running' in atype: grouped['running'].append(act)
+            elif 'cycling' in atype or 'biking' in atype: grouped['cycling'].append(act)
+            elif 'swimming' in atype: grouped['swimming'].append(act)
+            elif 'strength' in atype or 'weight' in atype: grouped['strength'].append(act)
+            elif 'hiking' in atype: grouped['hiking'].append(act)
+            elif 'walking' in atype: grouped['walking'].append(act)
+            else: grouped['other'].append(act)
+
+        # 2b. Calculate Global Stats (Breakdown & Weekly Volume)
+        breakdown = {}
+        weekly_volume = {}
+        
+        for act in activities:
+            # Breakdown
+            atype = act.get('activity_type', 'other').lower()
+            if atype not in breakdown:
+                breakdown[atype] = {"count": 0, "distance": 0, "duration": 0}
+            breakdown[atype]["count"] += 1
+            breakdown[atype]["distance"] += (act.get("distance") or 0)
+            breakdown[atype]["duration"] += (act.get("duration") or 0)
+            
+            # Weekly Volume
+            try:
+                dt = datetime.fromisoformat(act['start_time_local'])
+                year, week, _ = dt.isocalendar()
+                week_key = f"{year}-{week:02d}"
+                
+                if week_key not in weekly_volume:
+                    weekly_volume[week_key] = {"distance": 0, "duration": 0}
+                
+                weekly_volume[week_key]["distance"] += (act.get("distance") or 0)
+                weekly_volume[week_key]["duration"] += (act.get("duration") or 0)
+            except: pass
+
+        # Convert Weekly Volume keys from YYYY-WW to Start Date (ISO) for better UI
+        # Sort by key first to handle date math
+        sorted_weeks = sorted(weekly_volume.keys())
+        formatted_volume = {}
+        for k in sorted_weeks:
+            try:
+                # k is "2023-45"
+                y, w = map(int, k.split('-'))
+                # Get Monday of that week
+                from datetime import date
+                # text replacement for date.fromisocalendar
+                monday = date.fromisocalendar(y, w, 1).isoformat()
+                formatted_volume[monday] = weekly_volume[k]
+            except:
+                formatted_volume[k] = weekly_volume[k] # Fallback
+
+        # 3. Calculate Metrics per Sport
+        response = {
+            "breakdown": breakdown,
+            "weekly_volume": formatted_volume, 
+            "sports": {}
+        }
+        
+        if grouped['running']:
+            response['sports']['running'] = AnalyticsService._analyze_running(grouped['running'], user_id)
+            
+        if grouped['cycling']:
+            response['sports']['cycling'] = AnalyticsService._analyze_cycling(grouped['cycling'])
+            
+        if grouped['swimming']:
+            response['sports']['swimming'] = AnalyticsService._analyze_swimming(grouped['swimming'])
+            
+        if grouped['strength']:
+            response['sports']['strength'] = AnalyticsService._analyze_strength(grouped['strength'])
+            
+        if grouped['hiking']:
+            response['sports']['hiking'] = AnalyticsService._analyze_simple_distance(grouped['hiking'], "Hiking")
+
+        # 4. Wellness (Standard for everyone)
+        response['wellness'] = AnalyticsService._analyze_wellness(user_id, start_date)
+        
+        return response
+
+    @staticmethod
+    def _extract_val(val):
+        """Helper to safely extract scalar from potential object/list garbage."""
+        if isinstance(val, (int, float)):
+            return val
+        if isinstance(val, dict):
+            # Try common keys
+            return val.get('value') or val.get('min') or 0
+        return 0
+
+    @staticmethod
+    def _analyze_running(activities, user_id):
+        # Existing logic recycled + new trends
+        summary = AnalyticsService._basic_summary(activities)
+        
+        # Efficiency Trend
+        efficiency = []
+        for act in activities:
+            speed = act.get('average_speed')
+            hr = act.get('average_hr')
+            if speed and hr and float(hr) > 0:
+                efficiency.append({
+                    "date": act['start_time_local'][:10],
+                    "val": (float(speed) * 100) / float(hr),
+                    "speed": float(speed),
+                    "hr": float(hr)
+                })
+        efficiency.reverse()
+        
+        # Fetch PRs from Baselines (if they exist)
+        pbs = {}
+        try:
+             res = supabase.table("user_baselines").select("baselines").eq("user_id", user_id).eq("metric_category", "running").execute()
+             if res.data:
+                 pbs = res.data[0].get("baselines", {}).get("pbs", {})
+        except: pass
+        
+        return {
+            **summary,
+            "trends": {"efficiency": efficiency},
+            "pbs": pbs
+        }
+
+    @staticmethod
+    def _analyze_cycling(activities):
+        summary = AnalyticsService._basic_summary(activities)
+        
+        # Check for Power Data in raw_data/details? 
+        # For now, simplistic speed analysis.
+        # Future: Parse raw_data['connectIQMeasurements'] or similar for power.
+        
+        return {
+            **summary,
+            "trends": {}
+            # Placeholder for Power Curve
+        }
+
+    @staticmethod
+    def _analyze_swimming(activities):
+        # Basic: Dist, Duration, Pace
+        total_dist = sum(a.get('distance') or 0 for a in activities)
+        total_time = sum(a.get('duration') or 0 for a in activities)
+        count = len(activities)
+        
+        # SWOLF average (if available in raw_data)
+        # Garmin raw often has 'averageSwolf' key.
+        swolf_vals = []
+        for a in activities:
+            raw = a.get('raw_data') or {}
+            val = raw.get('averageSwolf')
+            if val: swolf_vals.append(val)
+            
+        avg_swolf = sum(swolf_vals)/len(swolf_vals) if swolf_vals else None
+        
+        return {
+            "total_distance_m": total_dist,
+            "total_duration_s": total_time,
+            "count": count,
+            "avg_swolf": avg_swolf,
+            "recent_sessions": [
+                {"date": a['start_time_local'][:10], "dist": a.get('distance'), "pace_100m": (a.get('duration')/a.get('distance')*100) if a.get('distance') else 0}
+                for a in activities[:5]
+            ]
+        }
+
+    @staticmethod
+    def _analyze_strength(activities):
+        count = len(activities)
+        total_dur = sum(a.get('duration') or 0 for a in activities)
+        avg_hr = sum(a.get('average_hr') or 0 for a in activities) / count if count else 0
+        
+        return {
+            "count": count,
+            "total_duration_s": total_dur,
+            "avg_hr": avg_hr,
+            "freq_per_week": count / 12.0 # approx for 90 days (12 weeks)
+        }
+        
+    @staticmethod
+    def _analyze_simple_distance(activities, label):
+        return AnalyticsService._basic_summary(activities)
+
+    @staticmethod
+    def _analyze_wellness(user_id, start_date):
+        # Fetch daily data
+        daily_res = supabase.table("garmin_daily")\
+            .select("date, resting_hr, stress, steps")\
+            .eq("user_id", user_id)\
+            .gte("date", start_date)\
+            .order("date")\
+            .execute()
+            
+        data = daily_res.data or []
+        
+        
+        rhr_trend = []
+        for d in data:
+            val = d.get('resting_hr')
+            # Sanitize: ensure valid number
+            safe_val = AnalyticsService._extract_val(val)
+            if safe_val > 0:
+                rhr_trend.append({"date": d['date'], "val": safe_val})
+
+        stress_trend = []
+        for d in data:
+            val = d.get('stress')
+            safe_val = AnalyticsService._extract_val(val)
+            if safe_val > 0:
+                stress_trend.append({"date": d['date'], "val": safe_val})
+        
+        return {
+            "rhr_trend": rhr_trend, 
+            "stress_trend": stress_trend
+        }
+
+    @staticmethod
+    def _basic_summary(activities):
+        count = len(activities)
+        dist = sum(a.get('distance') or 0 for a in activities)
+        dur = sum(a.get('duration') or 0 for a in activities)
+        elev = sum(a.get('elevation_gain') or 0 for a in activities)
+        
+        return {
+            "count": count,
+            "total_distance": dist,
+            "total_duration": dur,
+            "total_elevation": elev,
+            "avg_distance": dist / count if count else 0
+        }
+
+    @staticmethod
     def _format_duration(seconds):
         """Format seconds into HH:MM:SS or MM:SS"""
         m, s = divmod(seconds, 60)

@@ -105,6 +105,14 @@ def get_activity_stats():
         current_app.logger.error(f"Error fetching activity stats: {e}")
         return jsonify({"error": "Failed to fetch stats."}), 500
 
+@activities_bp.route("/details/<activity_id>", methods=["GET"])
+@token_required
+def get_activity_details(activity_id):
+    """
+    Alias for get_activity to match drill-down plan.
+    """
+    return get_activity(activity_id)
+
 @activities_bp.route("/<activity_id>", methods=["GET"])
 @token_required
 def get_activity(activity_id):
@@ -289,16 +297,3 @@ def sync_activity_details_route(activity_id):
     except Exception as e:
         current_app.logger.error(f"Error syncing activity details: {e}")
         return jsonify({"error": str(e)}), 500
-
-@activities_bp.route("/sleep/<date>", methods=["GET"])
-@token_required
-def get_sleep_details(date):
-    current_user = request.current_user
-    try:
-        response = supabase.table("garmin_sleep").select("*").eq("user_id", current_user["id"]).eq("date", date).execute()
-        if not response.data:
-            return jsonify({"error": "Sleep data not found"}), 404
-        return jsonify(response.data[0]), 200
-    except Exception as e:
-        current_app.logger.error(f"Error fetching sleep details for {date}: {e}")
-        return jsonify({"error": "Failed to fetch sleep details"}), 500

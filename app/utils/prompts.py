@@ -39,6 +39,7 @@ User Profile:
 {user_profile}
 
 Recent Activity Summary:
+Recent Activity Summary (Note: Differentiate between RUNNING and other activities. All distances are in KILOMETERS):
 {activity_summary}
 
 Interview Q&A:

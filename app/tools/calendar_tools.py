@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from app.supabase_client import supabase
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,7 @@ def create_event(user_id, date, title, event_type, description=""):
         description (str): Optional description of the event.
         
     Returns:
-        str: JSON string with the result or error.
+        dict: Result with status and data.
     """
     try:
         event_doc = {
@@ -33,12 +32,12 @@ def create_event(user_id, date, title, event_type, description=""):
         
         response = supabase.table("training_events").insert(event_doc).execute()
         if response.data:
-            return json.dumps({"status": "success", "message": f"Event '{title}' created for {date}.", "event": response.data[0]})
+            return {"status": "success", "message": f"Event '{title}' created for {date}.", "event": response.data[0]}
         else:
-            return json.dumps({"status": "error", "message": "Failed to create event."})
+            return {"status": "error", "message": "Failed to create event."}
     except Exception as e:
         logger.error(f"Error in create_event: {e}")
-        return json.dumps({"status": "error", "message": str(e)})
+        return {"status": "error", "message": str(e)}
 
 def get_events(user_id, start_date=None, end_date=None):
     """
@@ -50,7 +49,7 @@ def get_events(user_id, start_date=None, end_date=None):
         end_date (str): Optional end date (YYYY-MM-DD).
         
     Returns:
-        str: JSON string with the list of events.
+        dict: List of events and summary.
     """
     try:
         query = supabase.table("training_events").select("*").eq("user_id", user_id)
@@ -66,10 +65,10 @@ def get_events(user_id, start_date=None, end_date=None):
         events = response.data if response.data else []
         # Summarize events for LLM context to save tokens
         summary = [f"{e['date']}: {e['title']} ({e['event_type']})" for e in events]
-        return json.dumps({"status": "success", "events": summary, "count": len(events)})
+        return {"status": "success", "events": summary, "data": events, "count": len(events)}
     except Exception as e:
         logger.error(f"Error in get_events: {e}")
-        return json.dumps({"status": "error", "message": str(e)})
+        return {"status": "error", "message": str(e)}
 
 def update_event(user_id, event_id, updates):
     """
@@ -81,28 +80,28 @@ def update_event(user_id, event_id, updates):
         updates (dict): Dictionary of fields to update (date, title, description, event_type, status).
         
     Returns:
-        str: JSON string with the result.
+        dict: Result with status.
     """
     try:
         # Verify ownership
         check = supabase.table("training_events").select("id").eq("id", event_id).eq("user_id", user_id).execute()
         if not check.data:
-            return json.dumps({"status": "error", "message": "Event not found."})
+            return {"status": "error", "message": "Event not found."}
             
         allowed = ["date", "title", "description", "event_type", "status"]
         clean_updates = {k: v for k, v in updates.items() if k in allowed}
         
         if not clean_updates:
-            return json.dumps({"status": "error", "message": "No valid updates provided."})
+            return {"status": "error", "message": "No valid updates provided."}
             
         response = supabase.table("training_events").update(clean_updates).eq("id", event_id).execute()
         if response.data:
-            return json.dumps({"status": "success", "message": "Event updated.", "event": response.data[0]})
+            return {"status": "success", "message": "Event updated.", "event": response.data[0]}
         else:
-            return json.dumps({"status": "error", "message": "Failed to update event."})
+            return {"status": "error", "message": "Failed to update event."}
     except Exception as e:
         logger.error(f"Error in update_event: {e}")
-        return json.dumps({"status": "error", "message": str(e)})
+        return {"status": "error", "message": str(e)}
 
 def delete_event(user_id, event_id):
     """
@@ -113,16 +112,16 @@ def delete_event(user_id, event_id):
         event_id (int): The ID of the event to delete.
         
     Returns:
-        str: JSON string with the result.
+        dict: Result with status.
     """
     try:
         # Verify ownership
         check = supabase.table("training_events").select("id").eq("id", event_id).eq("user_id", user_id).execute()
         if not check.data:
-            return json.dumps({"status": "error", "message": "Event not found."})
+            return {"status": "error", "message": "Event not found."}
             
         supabase.table("training_events").delete().eq("id", event_id).execute()
-        return json.dumps({"status": "success", "message": "Event deleted."})
+        return {"status": "success", "message": "Event deleted."}
     except Exception as e:
         logger.error(f"Error in delete_event: {e}")
-        return json.dumps({"status": "error", "message": str(e)})
+        return {"status": "error", "message": str(e)}

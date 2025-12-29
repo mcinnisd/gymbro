@@ -92,9 +92,19 @@ def generate_plan():
                 activity_summary = f"Found {len(activities)} recent Garmin activities:\n"
                 for act in activities:
                     date_str = act.get("start_time_local", "")[:10]
-                    type_str = act.get("activity_type", "Unknown")
-                    dist = f"{act.get('distance', 0) / 1000:.2f}km" if act.get("distance") else "N/A"
-                    activity_summary += f"- {date_str}: {type_str}, {dist}\n"
+                    # Make type explicit
+                    type_raw = act.get("activity_type", "Unknown").lower()
+                    type_str = type_raw.upper()
+                    
+                    dist_km = (act.get("distance") or 0) / 1000
+                    dur_min = (act.get("duration") or 0) / 60
+                    dist_fmt = f"{dist_km:.2f}km"
+                    
+                    # Highlight Runs
+                    if "running" in type_raw:
+                        activity_summary += f"- [RUN] {date_str}: {type_str}, {dist_fmt} in {dur_min:.1f} min\n"
+                    else:
+                        activity_summary += f"- [CROSS-TRAIN] {date_str}: {type_str}, {dist_fmt} in {dur_min:.1f} min\n"
         except Exception as e:
             logger.warning(f"Failed to fetch activity data: {e}")
 

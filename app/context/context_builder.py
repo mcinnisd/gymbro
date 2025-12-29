@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 from app.supabase_client import supabase
 from .intent_detector import DetectedIntent, IntentType
 from .baseline_service import get_user_baselines
+from app.context.intelligence_service import IntelligenceService
 
 
 def build_context(user_id: str, intent: DetectedIntent) -> Optional[Dict[str, Any]]:
@@ -881,8 +882,9 @@ def format_context_for_prompt(context: Dict[str, Any]) -> str:
         if p.get("goals"): 
             goals = p['goals']
             if isinstance(goals, dict):
-                goal_list = [f"{k}: {v}" for k, v in goals.items()]
-                lines.append(f"  - Goals: {', '.join(goal_list)}")
+                lines.append("  - Goals:")
+                for k, v in goals.items():
+                    lines.append(f"    * {k.replace('_', ' ').title()}: {v}")
             else:
                 lines.append(f"  - Goals: {goals}")
         if p.get("weekly_availability"): lines.append(f"  - Availability: {p['weekly_availability']}")
@@ -1190,32 +1192,21 @@ def get_calendar_context(user_id: str, message: str) -> Optional[Dict[str, Any]]
 
 
 # ============================================================================
-# USER CONTEXT STORAGE (pgvector-based)
+# USER CONTEXT STORAGE (Unified via IntelligenceService)
 # ============================================================================
 
 def store_user_context(user_id: str, context_type: str, content: str, metadata: dict = None) -> bool:
     """
-    Store a piece of user context with embedding for semantic search in the unified intelligence table.
+    Store a piece of user context using the unified IntelligenceService.
     """
     try:
-        from app.utils.llm_utils import get_embedding
-        
-        # Generate embedding
-        embedding = get_embedding(content)
-        
-        record = {
-            "user_id": int(user_id),
-            "category": context_type, # Map context_type to category
-            "content": content,
-            "metadata": metadata or {},
-        }
-        
-        if embedding:
-            record["embedding"] = embedding
-        
-        result = supabase.table("user_intelligence").insert(record).execute()
-        return bool(result.data)
-        
+        result = IntelligenceService.add_intelligence(
+            user_id=user_id,
+            content=content,
+            category=context_type,
+            metadata=metadata
+        )
+        return bool(result)
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Error storing user context: {e}")
@@ -1224,67 +1215,19 @@ def store_user_context(user_id: str, context_type: str, content: str, metadata: 
 
 def get_relevant_context(user_id: str, query: str, limit: int = 5, context_types: List[str] = None) -> List[Dict]:
     """
-    Retrieve relevant context using semantic search (pgvector).
-    
-    Args:
-        user_id: The user's ID
-        query: The search query (will be embedded)
-        limit: Max number of results
-        context_types: Optional list of context types to filter
-        
-    Returns:
-        List of relevant context records with similarity scores
+    Retrieve relevant context using the unified IntelligenceService.
     """
     try:
-        from app.utils.llm_utils import get_embedding
-        
-        # Generate query embedding
-        query_embedding = get_embedding(query)
-        if not query_embedding:
-            # Fallback to keyword search if embedding fails
-            return _keyword_context_search(user_id, query, limit, context_types)
-        
-        # Use Supabase RPC for vector similarity search
-        # Note: This requires a stored function in Supabase
-        params = {
-            "query_embedding": query_embedding,
-            "match_user_id": int(user_id),
-            "match_count": limit
-        }
-        
-        if context_types:
-            params["filter_types"] = context_types
-        
-        result = supabase.rpc("match_user_context", params).execute()
-        
-        if result.data:
-            return result.data
-        
-        # Fallback if RPC not available
-        return _keyword_context_search(user_id, query, limit, context_types)
-        
+        # Map legacy context_types to categories
+        return IntelligenceService.search_intelligence(
+            user_id=user_id,
+            query=query,
+            limit=limit,
+            categories=context_types
+        )
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Vector search failed, using keyword fallback: {e}")
-        return _keyword_context_search(user_id, query, limit, context_types)
-
-
-def _keyword_context_search(user_id: str, query: str, limit: int, context_types: List[str] = None) -> List[Dict]:
-    """Fallback keyword-based context search."""
-    try:
-        q = supabase.table("user_context").select("*").eq("user_id", int(user_id))
-        
-        if context_types:
-            q = q.in_("context_type", context_types)
-        
-        # Simple contains search
-        q = q.ilike("content", f"%{query.split()[0] if query else ''}%")
-        q = q.limit(limit)
-        
-        result = q.execute()
-        return result.data if result.data else []
-        
-    except Exception:
+        logging.getLogger(__name__).warning(f"Context search failed: {e}")
         return []
 
 
@@ -1293,18 +1236,9 @@ def get_all_user_context(user_id: str, context_type: str = None) -> List[Dict]:
     Get all stored context for a user from the unified intelligence table.
     """
     try:
-        q = supabase.table("user_intelligence").select("*").eq("user_id", int(user_id))
-        
-        if context_type:
-            q = q.eq("category", context_type)
-        
-        q = q.order("created_at", desc=True)
-        
-        result = q.execute()
-        return result.data if result.data else []
-        
+        return IntelligenceService.get_all_intelligence(user_id, context_type)
     except Exception as e:
         import logging
-        logger = logging.getLogger(__name__) # Assuming logger is not globally defined, define it here.
-        logger.error(f"Error fetching user context: {e}")
+        logging.getLogger(__name__).error(f"Error fetching user context: {e}")
         return []
+
