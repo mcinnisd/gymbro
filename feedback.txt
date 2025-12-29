@@ -35,3 +35,36 @@ REQUEST: Set up verify code as jenkins for the repo, automatic testing
 FIRST REQUEST: Formulate all of this into a roadmap and break it down into smaller tasks
 
 MAKE THE START INTERVIEW SEND YOU DIRECTLY TO CHAT WITH QUESTIONS
+
+okay nice that seems to be working better, when i make a new account and connect my garmin account i see this message twice Garmin connected! Syncing in background... and when i wait for a little bit that it says it synced successfully but then also this error message EOF occurred in violation of protocol (_ssl.c:2427) when i got to the dashboard page i see that my activities have loaded, some of them, but the personal bests have not loaded and there is nothing visible on the summary page. also there are only 20 activities, and there is not all of my most recent data, like steps and heart rate are 2 weeks behind, also there is no sleep data, when i click sync now after about 1-2 minutes and seems to get all activities and updated sleep data and such. can we make sure it does that on first creation? lets also try and fix the summary page, also can we show more relevant good information? maybe when we click on an activity we can see past data, also it seems like a bike ride is being confused as a run by the coach but at least its pulling some data? 
+
+"Great work completing that step—your sub-4 hour marathon goal for Feb 22 is ambitious and exciting, especially with that solid 24.17km run on Christmas Day!
+
+To tailor your plan perfectly, let's verify a few basics: What's your age, height, and current weight (in metric)? Any running experience years or past races I should know? And importantly, any injuries or niggles to work around?
+
+Looking forward to locking this in! 🚀"
+
+like this is great but it thinks my bikeride was a run, we need to differentiate those
+
+"Step 3: Data Review
+I've pulled your synced Garmin data (last sync: Dec 27). It shows solid current fitness:
+
+All-time 5K PR: 22:03 (Apr 13, 2025)
+All-time 10K PR: 50:23 (Feb 12, 2025)
+Avg weekly distance (last 4w): 35.36km
+9-week streak! Recent highlights: 24.17km @ 2:53/km (Dec 25), 10.56km (Dec 24), 10.50km (Dec 22).
+Does this accurately reflect your current fitness? Any key activities missing? Confirm, and we'll proceed! 🚀"
+
+on top of prs we should get longest run data and best efforts in half marathon and marathon if exist
+
+it also seems like the coach is not differentiating between bike and run
+
+chat feature FUTURE: have buttons during interview to confirm some questions instead of chatting
+
+kinda gets confused between miles and kilometers
+
+add to calendar?
+
+easier flow for onboarding, once plan is generated move to another chat with default coach personality
+
+make sure being built for iphone eventually, good basis for that?
