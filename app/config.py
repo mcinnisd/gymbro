@@ -11,6 +11,7 @@ class Config:
     # General settings
     SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key")
     DEBUG = False
+    MOCK_DB = os.getenv("MOCK_DB", "false").lower() == "true"
 
     # Supabase configuration
     SUPABASE_URL = os.getenv("SUPABASE_URL")

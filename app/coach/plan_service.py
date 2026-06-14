@@ -11,6 +11,7 @@ from app.utils.prompts import (
     COACH_ORGANIZE_PHASES_PROMPT
 )
 from app.tools.calendar_tools import create_event
+from app.utils.helpers import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def generate_baseline_plan(user_id: str, context: str = None):
         )
 
         # Parse JSON
-        plan_json = _extract_json(response_text)
+        plan_json = extract_json_from_text(response_text) or {"raw_text": response_text}
         
         # Store in DB
         supabase.table("users").update({
@@ -144,7 +145,7 @@ def organize_phased_plan(user_id: str):
             model_name=model_name
         )
 
-        phases_json = _extract_json(response_text)
+        phases_json = extract_json_from_text(response_text) or {"raw_text": response_text}
         
         supabase.table("users").update({
             "training_plan_phased": phases_json,
@@ -233,13 +234,4 @@ def populate_calendar_from_plan(user_id: str):
         logger.error(f"Error populating calendar: {e}")
         return {"error": str(e)}
 
-def _extract_json(text: str) -> dict:
-    """Helper to extract JSON from LLM response."""
-    try:
-        start = text.find('{')
-        end = text.rfind('}') + 1
-        if start != -1 and end != -1:
-            return json.loads(text[start:end])
-    except:
-        pass
-    return {"raw_text": text}
+

@@ -3,6 +3,7 @@ from datetime import datetime
 import logging
 from app.supabase_client import supabase
 from app.utils.llm_utils import get_embedding, generate_chat_response
+from app.utils.helpers import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +87,6 @@ class IntelligenceService:
         Extract key information from a chat and store it in user_intelligence.
         """
         try:
-            import json
-            import re
             
             prompt = f"""
             Analyze the following conversation between a User and an AI Coach.
@@ -112,9 +111,8 @@ class IntelligenceService:
             )
             
             # Extract JSON
-            json_match = re.search(r"\[.*\]", response, re.DOTALL)
-            if json_match:
-                items = json.loads(json_match.group(0))
+            items = extract_json_from_text(response)
+            if items and isinstance(items, list):
                 for item in items:
                     content = item.get("content")
                     category = item.get("category", "fact")

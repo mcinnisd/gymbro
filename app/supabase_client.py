@@ -1,11 +1,11 @@
-import os
+from app.config import Config
 from supabase import create_client, Client
 
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_KEY")
-mock_db: str = os.environ.get("MOCK_DB")
+url: str = Config.SUPABASE_URL
+key: str = Config.SUPABASE_KEY
+mock_db: bool = Config.MOCK_DB
 
-if mock_db == "true":
+if mock_db:
     from app.mock_supabase import MockSupabaseClient
     supabase = MockSupabaseClient()
 elif url and key:

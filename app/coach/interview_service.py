@@ -29,7 +29,6 @@ STEP_MISSIONS = {
     10: "Final Polish: Any last requests before we launch?"
 }
 
-# ... [Keep lines 34-378 unchanged] ...
 
 def _generate_dynamic_response(user_id: str, step: int, context: str) -> str:
     """Generates a natural coach response for a specific step/instruction."""

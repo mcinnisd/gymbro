@@ -1186,9 +1186,6 @@ def get_calendar_context(user_id: str, message: str) -> Optional[Dict[str, Any]]
         }
     except Exception as e:
         return None
-    
-    
-    return "\n".join(lines)
 
 
 # ============================================================================

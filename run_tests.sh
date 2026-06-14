@@ -10,4 +10,4 @@ fi
 
 # Run tests
 echo "Running tests..."
-python -m pytest tests/ -v
+PYTHONPATH=. ./venv/bin/python -m pytest tests/ -v

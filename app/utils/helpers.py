@@ -2,9 +2,8 @@
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone, UTC
-from flask import current_app
-from bson import ObjectId
+import re
+from typing import Any, Optional
 
 def format_conversation(messages):
     """
@@ -13,25 +12,6 @@ def format_conversation(messages):
     """
     return "\n".join(f"{msg.get('role', 'UNKNOWN').upper()}: {msg.get('content', '')}" for msg in messages)
 
-
-def mongo_to_dict(doc):
-    """Helper to convert MongoDB document to JSON-serializable dict."""
-    return {
-        "id": str(doc["_id"]),
-        "activity_id": doc.get("activity_id"),
-        "name": doc.get("name"),
-        "type": doc.get("type"),
-        "distance": doc.get("distance"),
-        "moving_time": doc.get("moving_time"),
-        "elapsed_time": doc.get("elapsed_time"),
-        "total_elevation_gain": doc.get("total_elevation_gain"),
-        "start_date_local": doc.get("start_date_local"),
-        "average_speed": doc.get("average_speed"),
-        "max_speed": doc.get("max_speed"),
-        "calories": doc.get("calories"),
-        "user_id": doc.get("user_id"),
-        "raw_data": doc.get("raw_data"),
-    }
 
 def encode_image(image_bytes):
     """
@@ -90,70 +70,34 @@ def parse_openai_response(response_text):
         print(f"Error parsing OpenAI response: {e}")
         return None
 
-def create_daily_summary(user_id, date=None):
+def extract_json_from_text(text: str) -> Optional[Any]:
     """
-    Generates a daily summary for the given user_id and date (YYYY-MM-DD).
-    If date is None, defaults to today's date in UTC.
+    Finds and parses a JSON block (either object {...} or list [...]) from the given text.
+    Returns the parsed Python data structure (dict or list), or None if parsing fails.
     """
-    if not date:
-        date = datetime.now(UTC).strftime("%Y-%m-%d")
-
-    # Convert string to datetime object for queries
-    try:
-        day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    except ValueError:
-        print("Incorrect date format. Should be YYYY-MM-DD.")
+    if not text or not isinstance(text, str):
         return None
-
-    day_end = day_start + timedelta(days=1)
-
-    db = current_app.mongo.db  # Access the MongoDB instance from Flask-PyMongo
-
-    # 1) Fetch Garmin daily data
-    daily_doc = db.garmin_daily.find_one({
-        "user_id": user_id,
-        "date": date  # Assuming 'date' is stored as a string in 'YYYY-MM-DD' format
-    })
-
-    # 2) Fetch Sleep Data
-    sleep_doc = db.garmin_sleep.find_one({
-        "user_id": user_id,
-        "date": date  # Ensure the field name matches your data structure
-    })
-
-    # Handle missing docs gracefully
-    daily_data = daily_doc if daily_doc else {}
-    sleep_data = sleep_doc if sleep_doc else {}
-
-    # 3) Build the summary
-    summary = {
-        "user_id": user_id,
-        "summary_type": "daily",
-        "date": day_start,  # store as a datetime for clarity
-        "sleep_summary": {
-            "total_sleep": sleep_data.get("total_sleep", 0),
-            "deep_sleep": sleep_data.get("deep_sleep", 0),
-            "rem_sleep": sleep_data.get("rem_sleep", 0),
-            "light_sleep": sleep_data.get("light_sleep", 0),
-        },
-        "activity_summary": {
-            "steps": daily_data.get("steps", 0),
-            "active_calories": daily_data.get("active_calories", 0),
-            "workouts": daily_data.get("workouts", []),
-            # Add other fields as needed...
-        },
-        "created_at": datetime.now(UTC),
-        "updated_at": datetime.now(UTC)
-    }
-
-    # 4) Upsert into `summaries` collection
-    db.summaries.update_one(
-        {
-            "user_id": user_id,
-            "summary_type": "daily",
-            "date": day_start
-        },
-        {"$set": summary},
-        upsert=True
-    )
-    return summary
+        
+    # Try finding an array first [ ... ]
+    array_match = re.search(r'\[.*\]', text, re.DOTALL)
+    if array_match:
+        try:
+            return json.loads(array_match.group(0))
+        except json.JSONDecodeError:
+            pass
+            
+    # Try finding an object next { ... }
+    object_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if object_match:
+        try:
+            return json.loads(object_match.group(0))
+        except json.JSONDecodeError:
+            pass
+            
+    # Fallback to direct json.loads of the whole text if no delimiters found
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        pass
+        
+    return None

@@ -70,7 +70,6 @@ def test_chat_interaction(auth_header):
     
     assert reply_found, "No response stream received"
 
-@pytest.mark.skip(reason="Server crashes on this endpoint currently")
 def test_coach_flow(auth_header):
     # Start Coach Interview
     resp = requests.post(f"{BASE_URL}/coach/start_interview", headers=auth_header)
