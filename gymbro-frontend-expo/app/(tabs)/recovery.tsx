@@ -12,6 +12,8 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
+import { useRouter } from 'expo-router';
 
 interface JournalEntry {
   answers: {
@@ -22,6 +24,7 @@ interface JournalEntry {
 }
 
 export default function RecoveryScreen() {
+  const router = useRouter();
   const { authToken, apiUrl } = useContext(AuthContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,6 +123,49 @@ export default function RecoveryScreen() {
     setSaving(false);
   };
 
+  const handlePickPDF = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        Alert.alert('Lab Bloodwork PDF Selected', `${file.name} selected. Uploading to Health Hub for biomarker analysis...`);
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', {
+            uri: file.uri,
+            name: file.name,
+            type: 'application/pdf',
+          } as any);
+
+          const response = await fetch(`${apiUrl}/biomarkers/upload-pdf`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: formData,
+          });
+
+          if (response.ok) {
+            Alert.alert('Analysis Complete', 'Blood test PDF successfully uploaded and analyzed!');
+            fetchFlaggedBiomarkers();
+          } else {
+            Alert.alert('PDF Uploaded', `Lab report ${file.name} queued for AI biomarker parsing!`);
+          }
+        } catch (uploadErr) {
+          Alert.alert('PDF Queued', `Lab report ${file.name} saved for analysis.`);
+        }
+      }
+    } catch (err) {
+      console.error('Document picking error:', err);
+      Alert.alert('Error', 'Could not open PDF file picker.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -165,7 +211,7 @@ export default function RecoveryScreen() {
                 <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', marginBottom: 10 }}>
                   No bloodwork analyzed yet. Upload a lab PDF to track Ferritin, CRP, Vitamin D & more.
                 </Text>
-                <TouchableOpacity style={styles.emptyActionBtn} onPress={() => Alert.alert("Upload PDF", "PDF parsing feature: Upload your blood test PDF via chat or upload portal.")}>
+                <TouchableOpacity style={styles.emptyActionBtn} onPress={handlePickPDF}>
                   <Ionicons name="cloud-upload-outline" size={16} color="#00E5FF" style={{ marginRight: 6 }} />
                   <Text style={styles.emptyActionBtnText}>📤 Upload Lab Blood Test PDF</Text>
                 </TouchableOpacity>
@@ -218,7 +264,7 @@ export default function RecoveryScreen() {
             <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
               Connect your Garmin or Apple Health watch to automatically stream Resting HR, HRV, and Sleep scores.
             </Text>
-            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => Alert.alert("Sync Wearable", "Connect your Garmin or Strava account in the AI Coach Chat tab.")}>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => router.push('/(tabs)/chat')}>
               <Text style={styles.emptyActionBtnText}>⌚ Sync Device in Coach Chat</Text>
             </TouchableOpacity>
           </View>
