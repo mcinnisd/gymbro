@@ -32,17 +32,35 @@ export default function RecoveryScreen() {
   const [journalText, setJournalText] = useState<string>('');
   const [journalSaved, setJournalSaved] = useState<boolean>(false);
 
-  // Mock Recovery Stats (Normally fetched from Garmin sync)
-  const [sleepScore, setSleepScore] = useState<number>(82);
-  const [sleepHours, setSleepHours] = useState<string>('7h 45m');
-  const [rhrHistory, setRhrHistory] = useState([62, 60, 59, 57, 58, 56, 55]);
-  const [stepsCount, setStepsCount] = useState<number>(8420);
+  // Authentic Health Hub & Wearable States
+  const [sleepScore, setSleepScore] = useState<number | null>(null);
+  const [sleepHours, setSleepHours] = useState<string | null>(null);
+  const [rhrHistory, setRhrHistory] = useState<number[]>([]);
+  const [stepsCount, setStepsCount] = useState<number | null>(null);
+  const [flaggedBiomarkers, setFlaggedBiomarkers] = useState<any[]>([]);
+  const [wearableConnected, setWearableConnected] = useState<boolean>(false);
 
   useEffect(() => {
     if (authToken) {
       fetchTodayJournal();
+      fetchFlaggedBiomarkers();
     }
   }, [authToken]);
+
+  const fetchFlaggedBiomarkers = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/biomarkers/flagged`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFlaggedBiomarkers(data.flagged_biomarkers || []);
+      }
+    } catch (err) {
+      console.error('Error fetching biomarkers:', err);
+    }
+  };
 
   const fetchTodayJournal = async () => {
     setLoading(true);
@@ -118,76 +136,93 @@ export default function RecoveryScreen() {
                 <Text style={styles.biomarkersTitle}>Health Hub & Lab Biomarkers</Text>
               </View>
               <TouchableOpacity style={styles.syncBadge}>
-                <Text style={styles.syncBadgeText}>Superpower Synced</Text>
+                <Text style={styles.syncBadgeText}>
+                  {flaggedBiomarkers.length > 0 ? 'Superpower Synced' : 'No Lab Data'}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.biomarkerItemsRow}>
-              {/* Biomarker Item 1 */}
-              <View style={styles.biomarkerPill}>
-                <View style={styles.biomarkerDotWarning} />
-                <Text style={styles.biomarkerName}>Ferritin:</Text>
-                <Text style={styles.biomarkerValue}>14.0 ng/mL</Text>
-                <View style={[styles.statusTag, { backgroundColor: 'rgba(239, 68, 68, 0.2)' }]}>
-                  <Text style={[styles.statusTagText, { color: '#EF4444' }]}>LOW</Text>
-                </View>
+            {flaggedBiomarkers.length > 0 ? (
+              <View style={styles.biomarkerItemsRow}>
+                {flaggedBiomarkers.map((b, idx) => {
+                  const isLow = b.status === 'flagged_low';
+                  return (
+                    <View key={idx} style={styles.biomarkerPill}>
+                      <View style={isLow ? styles.biomarkerDotWarning : styles.biomarkerDotOptimal} />
+                      <Text style={styles.biomarkerName}>{b.marker_name}:</Text>
+                      <Text style={styles.biomarkerValue}>{b.value} {b.unit}</Text>
+                      <View style={[styles.statusTag, { backgroundColor: isLow ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)' }]}>
+                        <Text style={[styles.statusTagText, { color: isLow ? '#EF4444' : '#F59E0B' }]}>
+                          {isLow ? 'LOW' : 'HIGH'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-
-              {/* Biomarker Item 2 */}
-              <View style={styles.biomarkerPill}>
-                <View style={styles.biomarkerDotWarning} />
-                <Text style={styles.biomarkerName}>CRP:</Text>
-                <Text style={styles.biomarkerValue}>4.5 mg/L</Text>
-                <View style={[styles.statusTag, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
-                  <Text style={[styles.statusTagText, { color: '#F59E0B' }]}>HIGH</Text>
-                </View>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+                <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center', marginBottom: 10 }}>
+                  No bloodwork analyzed yet. Upload a lab PDF to track Ferritin, CRP, Vitamin D & more.
+                </Text>
+                <TouchableOpacity style={styles.emptyActionBtn} onPress={() => Alert.alert("Upload PDF", "PDF parsing feature: Upload your blood test PDF via chat or upload portal.")}>
+                  <Ionicons name="cloud-upload-outline" size={16} color="#00E5FF" style={{ marginRight: 6 }} />
+                  <Text style={styles.emptyActionBtnText}>📤 Upload Lab Blood Test PDF</Text>
+                </TouchableOpacity>
               </View>
-
-              {/* Biomarker Item 3 */}
-              <View style={styles.biomarkerPill}>
-                <View style={styles.biomarkerDotOptimal} />
-                <Text style={styles.biomarkerName}>Vitamin D:</Text>
-                <Text style={styles.biomarkerValue}>45 ng/mL</Text>
-                <View style={[styles.statusTag, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-                  <Text style={[styles.statusTagText, { color: '#10B981' }]}>OPTIMAL</Text>
-                </View>
-              </View>
-            </View>
+            )}
           </LinearGradient>
         </View>
 
         {/* Recovery Summary Cards */}
-        <View style={styles.row}>
-          {/* Sleep Score Card */}
-          <View style={styles.statCard}>
-            <LinearGradient
-              colors={['rgba(0, 229, 255, 0.1)', 'rgba(0,0,0,0)']}
-              style={styles.cardGradient}
-            >
-              <View style={styles.cardHeader}>
-                <Ionicons name="moon" size={16} color="#00E5FF" />
-                <Text style={styles.cardLabel}>Sleep Score</Text>
-              </View>
-              <Text style={styles.cardVal}>{sleepScore}/100</Text>
-              <Text style={styles.cardSubText}>{sleepHours} total sleep</Text>
-            </LinearGradient>
-          </View>
+        {wearableConnected && sleepScore !== null ? (
+          <View style={styles.row}>
+            {/* Sleep Score Card */}
+            <View style={styles.statCard}>
+              <LinearGradient
+                colors={['rgba(0, 229, 255, 0.1)', 'rgba(0,0,0,0)']}
+                style={styles.cardGradient}
+              >
+                <View style={styles.cardHeader}>
+                  <Ionicons name="moon" size={16} color="#00E5FF" />
+                  <Text style={styles.cardLabel}>Sleep Score</Text>
+                </View>
+                <Text style={styles.cardVal}>{sleepScore}/100</Text>
+                <Text style={styles.cardSubText}>{sleepHours || '--'} total sleep</Text>
+              </LinearGradient>
+            </View>
 
-          {/* RHR Card */}
-          <View style={styles.statCard}>
-            <LinearGradient
-              colors={['rgba(108, 99, 255, 0.1)', 'rgba(0,0,0,0)']}
-              style={styles.cardGradient}
-            >
-              <View style={styles.cardHeader}>
-                <Ionicons name="heart" size={16} color="#6C63FF" />
-                <Text style={styles.cardLabel}>RHR Trend</Text>
-              </View>
-              <Text style={styles.cardVal}>{rhrHistory[rhrHistory.length - 1]} bpm</Text>
-              <Text style={styles.cardSubText}>Down from {rhrHistory[0]} bpm</Text>
-            </LinearGradient>
+            {/* RHR Card */}
+            <View style={styles.statCard}>
+              <LinearGradient
+                colors={['rgba(108, 99, 255, 0.1)', 'rgba(0,0,0,0)']}
+                style={styles.cardGradient}
+              >
+                <View style={styles.cardHeader}>
+                  <Ionicons name="heart" size={16} color="#6C63FF" />
+                  <Text style={styles.cardLabel}>RHR Trend</Text>
+                </View>
+                <Text style={styles.cardVal}>
+                  {rhrHistory.length > 0 ? `${rhrHistory[rhrHistory.length - 1]} bpm` : '-- bpm'}
+                </Text>
+                <Text style={styles.cardSubText}>
+                  {rhrHistory.length > 1 ? `Down from ${rhrHistory[0]} bpm` : 'Sync wearable'}
+                </Text>
+              </LinearGradient>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.emptyWearableCard}>
+            <Ionicons name="watch-outline" size={24} color="#00E5FF" style={{ marginBottom: 6 }} />
+            <Text style={{ color: '#F8FAFC', fontWeight: 'bold', fontSize: 14 }}>No Wearable Connected</Text>
+            <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
+              Connect your Garmin or Apple Health watch to automatically stream Resting HR, HRV, and Sleep scores.
+            </Text>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => Alert.alert("Sync Wearable", "Connect your Garmin or Strava account in the AI Coach Chat tab.")}>
+              <Text style={styles.emptyActionBtnText}>⌚ Sync Device in Coach Chat</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Steps Card */}
         <View style={styles.largeCard}>
@@ -200,10 +235,10 @@ export default function RecoveryScreen() {
                 <Ionicons name="walk" size={20} color="#10B981" />
                 <Text style={styles.largeCardTitle}>Daily Movement</Text>
               </View>
-              <Text style={styles.largeCardRightText}>{stepsCount} / 10,000 steps</Text>
+              <Text style={styles.largeCardRightText}>{stepsCount !== null ? `${stepsCount} / 10,000 steps` : 'Sync device for steps'}</Text>
             </View>
             <View style={styles.stepsBarBg}>
-              <View style={[styles.stepsBarFill, { width: `${Math.min(stepsCount / 10000, 1) * 100}%` }]} />
+              <View style={[styles.stepsBarFill, { width: `${Math.min((stepsCount || 0) / 10000, 1) * 100}%` }]} />
             </View>
           </LinearGradient>
         </View>
@@ -627,5 +662,30 @@ const styles = StyleSheet.create({
   statusTagText: {
     fontSize: 9,
     fontWeight: 'bold',
+  },
+  emptyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#00E5FF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  emptyActionBtnText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  emptyWearableCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
   },
 });
