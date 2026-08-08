@@ -14,13 +14,22 @@ class MockSupabaseClient:
             ],
             "chats": [],
             "training_events": [],
-            "garmin_activities": []
+            "garmin_activities": [],
+            "biometrics_daily": [],
+            "activities": [],
+            "lab_panels": [],
+            "biomarkers": [],
+            "meals": [],
+            "athlete_memories": [],
+            "health_graph": []
         }
         self.current_table = None
         self.query_filters = []
 
     def table(self, table_name):
         self.current_table = table_name
+        if table_name not in self.data:
+            self.data[table_name] = []
         self.query_filters = []
         return self
 
