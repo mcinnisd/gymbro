@@ -378,7 +378,17 @@ export default function NutritionScreen() {
         <View style={styles.mealsContainer}>
           <Text style={styles.sectionTitle}>Today's Logs</Text>
           {logs.length === 0 ? (
-            <Text style={styles.emptyMealsText}>No meals logged yet today.</Text>
+            <View style={styles.emptyMealsCard}>
+              <Ionicons name="fast-food-outline" size={28} color="#00E5FF" style={{ marginBottom: 6 }} />
+              <Text style={{ color: '#F8FAFC', fontWeight: 'bold', fontSize: 14 }}>No Meals Logged Today</Text>
+              <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
+                Snap a photo of your plate to instantly estimate calories, macros, and meal quality.
+              </Text>
+              <TouchableOpacity style={styles.emptyScanBtn} onPress={() => handlePickImage(true)}>
+                <Ionicons name="camera" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.emptyScanBtnText}>📸 Scan Meal Photo</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             logs.map((log) => (
               <View key={log.id} style={styles.mealItem}>
@@ -912,11 +922,35 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 20,
+    marginBottom: 10,
   },
   logSubmitText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 15,
+  },
+  emptyMealsCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    padding: 20,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  emptyScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6C63FF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  emptyScanBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
 });
