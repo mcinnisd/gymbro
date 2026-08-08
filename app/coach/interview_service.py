@@ -17,7 +17,7 @@ from app.coach.plan_service import generate_baseline_plan, organize_phased_plan 
 logger = logging.getLogger(__name__)
 
 STEP_MISSIONS = {
-    1: "Goal Definition: Identify the specific Race, Date, and Time Goal.",
+    1: "Goal Definition: Identify the user's primary health & fitness goal (e.g. Build Muscle & Strength, Fat Loss & Recomposition, Endurance & Speed PRs, Longevity & Daily Energy, or Custom Goal). Present options: [🏋️ Build Muscle & Strength] [🔥 Fat Loss & Recomposition] [🏃 Endurance & Speed PRs] [🌿 Longevity & Daily Energy] [✍️ Custom Goal]",
     2: "Profile Audit: LIST the user's Age, Weight, Height, and History summary. Ask ONE question: 'Is this accurate?'",
     3: "Data Reality Check: CITE the specific weekly volume (e.g. 50km) and patterns from Garmin. Ask: 'Does this match your real-world training?'",
     4: "Lifestyle Constraints: Ask about their weekly schedule constraints (running days vs gym days).",
@@ -89,10 +89,12 @@ Keep it short (under 100 words).
 """
     logger.info(f"Step {step} Prompt Context Size: {len(visible_context)} chars")
     
+    llm_provider = user_data.get("goals", {}).get("llm_model") or "gemini"
+    
     return generate_chat_response(
         messages=[{"role": "user", "content": prompt}],
         mode="coach",
-        provider="xai"
+        provider=llm_provider
     )
 
 
@@ -134,7 +136,18 @@ def start_interview(user_id: str) -> Dict[str, Any]:
         
         # Use LLM to generate opening
         user_data = _get_user_data(user_id)
-        opening_prompt = _generate_dynamic_response(user_id, 1, "Start the interview by introducing yourself as their AI Coach and asking for their goal.")
+        has_connected_data = bool(user_data.get("garmin_email")) or bool(user_data.get("strava_access_token"))
+        
+        if has_connected_data:
+            opening_instruction = (
+                "Start the interview by introducing yourself as their AI Coach, "
+                "warmly acknowledging their connected Garmin/Strava training stats (e.g. mention their recent running volume or resting heart rate if available in the context), "
+                "and ask for their primary goal (race distance, target date, and time goal)."
+            )
+        else:
+            opening_instruction = "Start the interview by introducing yourself as their AI Coach and asking for their goal."
+
+        opening_prompt = _generate_dynamic_response(user_id, 1, opening_instruction)
         
         chat_doc = {
             "user_id": user_id,
@@ -218,7 +231,11 @@ def get_next_question(user_id: str, chat_id: str = None) -> Dict[str, Any]:
         llm_response = progress_analysis.get("response", "")
         
         if should_advance and current_step < 10:
-            current_step += 1
+            has_connected_data = bool(user.get("garmin_email")) or bool(user.get("strava_access_token"))
+            if current_step == 1 and has_connected_data:
+                current_step = 4
+            else:
+                current_step += 1
             supabase.table("users").update({"interview_step": current_step}).eq("id", user_id).execute()
             
             # Action Steps
@@ -262,7 +279,7 @@ def _get_user_data(user_id: str) -> Dict[str, Any]:
 
 def _get_garmin_summary(user_id: str) -> str:
     """
-    Generate a rich summary of user's Garmin data including calculated PBs, volume,
+    Generate a rich summary of user's Garmin and Strava data including calculated PBs, volume,
     holistic health (sleep/HR), and strict activity filtering.
     """
     try:
@@ -275,7 +292,6 @@ def _get_garmin_summary(user_id: str) -> str:
         # 2. Daily Stats (RHR, Stress) - Last 14 days
         two_weeks_ago = (datetime.now(timezone.utc) - timedelta(days=14)).date().isoformat()
         
-        # NOTE: garmin_daily table currently lacks sleep data column. Skipping sleep for now.
         daily_res = supabase.table("garmin_daily")\
             .select("resting_hr, stress")\
             .eq("user_id", user_id)\
@@ -285,7 +301,7 @@ def _get_garmin_summary(user_id: str) -> str:
         daily_data = daily_res.data if daily_res.data else []
         
         avg_rhr, avg_stress = 0, 0
-        avg_sleep_hrs = 0.0 # Default to 0 as we have no column
+        avg_sleep_hrs = 0.0
         
         if daily_data:
             rhrs = []
@@ -296,7 +312,6 @@ def _get_garmin_summary(user_id: str) -> str:
                  if isinstance(r_val, (int, float)):
                      rhrs.append(r_val)
                  elif isinstance(r_val, dict):
-                     # Handle edge case where it might be json
                      v = r_val.get('value') or r_val.get('amount')
                      if isinstance(v, (int, float)): rhrs.append(v)
                      
@@ -322,7 +337,6 @@ def _get_garmin_summary(user_id: str) -> str:
         if sleeps:
             durations = []
             for s in sleeps:
-                # Path: sleep_data -> dailySleepDTO -> sleepTimeSeconds
                 try:
                     data = s.get('sleep_data', {})
                     dto = data.get('dailySleepDTO', {})
@@ -334,12 +348,15 @@ def _get_garmin_summary(user_id: str) -> str:
             if durations:
                 avg_sleep_hrs = (sum(durations) / len(durations)) / 3600
 
-        # 3. Fetch Recent Activities (RUNNING ONLY) - Last 28 Days for Weekly Stats
+        # 3. Fetch Recent Activities - Last 28 Days for Weekly Stats
         twenty_eight_days_ago = (datetime.now(timezone.utc) - timedelta(days=28)).date().isoformat()
         
         run_types = ['running', 'treadmill_running', 'trail_running', 'street_running', 'track_running']
+        strava_run_types = ['Run', 'Treadmill', 'TrailRun']
         
-        # Robust Fetch: Get everything, filter in memory to avoid .in_ syntax issues
+        # Garmin Activities
+        recent_runs = []
+        all_recent = []
         try:
             acts_result = supabase.table("garmin_activities")\
                 .select("start_time_local, distance, duration, activity_type, average_hr")\
@@ -348,29 +365,33 @@ def _get_garmin_summary(user_id: str) -> str:
                 .order("start_time_local", desc=True)\
                 .execute()
             all_recent = acts_result.data if acts_result.data else []
-            
-            # Filter in memory
             recent_runs = [a for a in all_recent if a.get('activity_type') in run_types]
         except Exception as e:
-            logger.error(f"Error querying recent runs: {e}")
-            recent_runs = []
+            logger.error(f"Error querying recent Garmin runs: {e}")
+
+        # Strava Activities
+        recent_strava_runs = []
+        all_strava_recent = []
+        try:
+            s_acts_result = supabase.table("strava_activities")\
+                .select("start_date_local, distance, moving_time, elapsed_time, type, average_heartrate")\
+                .eq("user_id", user_id)\
+                .gte("start_date_local", twenty_eight_days_ago)\
+                .order("start_date_local", desc=True)\
+                .execute()
+            all_strava_recent = s_acts_result.data if s_acts_result.data else []
+            recent_strava_runs = [a for a in all_strava_recent if a.get('type') in strava_run_types]
+        except Exception as e:
+            logger.error(f"Error querying recent Strava runs: {e}")
 
         # 4. Fetch Strength/Other - Last 28 days
-        # We can reuse 'all_recent' if we fetched everything!
-        # But 'all_recent' only has specific columns. Strength needs duration/start_time which we have.
-        # Let's reuse 'all_recent' to save a query.
-        
-        strength_acts = []
-        try:
-             strength_acts = [a for a in all_recent if a.get('activity_type') == 'strength_training']
-        except: 
-             strength_acts = []
-             
-        strength_count = len(strength_acts)
+        strength_acts = [a for a in all_recent if a.get('activity_type') == 'strength_training']
+        strava_strength = [a for a in all_strava_recent if a.get('type') in ['WeightTraining', 'Workout']]
+        strength_count = len(strength_acts) + len(strava_strength)
 
         summary_parts = []
         
-        # Format Baselines (Existing code)
+        # Format Baselines
         if baselines:
             pbs = baselines.get("pbs", {})
             vol = baselines.get("volume", {})
@@ -385,29 +406,35 @@ def _get_garmin_summary(user_id: str) -> str:
                 pb_str += f"- Longest Run: {longest.get('distance_km')}km ({longest.get('date')})\n"
             summary_parts.append(f"[FITNESS BASELINES]\n{pb_str}")
 
-        # WEEKLY VOLUME BREAKDOWN (Dynamic)
-        # Group by Week (Mon-Sun)
+        # WEEKLY VOLUME BREAKDOWN (Dynamic - combined Garmin + Strava)
         weeks = {}
         for act in recent_runs:
              try:
                  dt = datetime.fromisoformat(act['start_time_local'])
-                 # Find start of week (Monday)
                  start_of_week = (dt - timedelta(days=dt.weekday())).date()
                  iso_week = start_of_week.isoformat()
-                 
                  if iso_week not in weeks: weeks[iso_week] = 0.0
-                 
                  raw_dist = act.get('distance')
                  if isinstance(raw_dist, (int, float)):
                      weeks[iso_week] += (raw_dist / 1000.0)
-                 elif raw_dist is None:
-                     pass # 0 distance
-                 else:
-                     # Attempt strict float conversion if string
+                 elif raw_dist is not None:
                      weeks[iso_week] += (float(raw_dist) / 1000.0)
-             except Exception as e:
-                 logger.warning(f"Skipping activity distance calc: {e}")
-                 pass
+             except: pass
+
+        for act in recent_strava_runs:
+             try:
+                 date_str = act.get('start_date_local')
+                 if date_str:
+                     dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                     start_of_week = (dt - timedelta(days=dt.weekday())).date()
+                     iso_week = start_of_week.isoformat()
+                     if iso_week not in weeks: weeks[iso_week] = 0.0
+                     raw_dist = act.get('distance')
+                     if isinstance(raw_dist, (int, float)):
+                         weeks[iso_week] += (raw_dist / 1000.0)
+                     elif raw_dist is not None:
+                         weeks[iso_week] += (float(raw_dist) / 1000.0)
+             except: pass
         
         vol_str = "[RECENT WEEKLY VOLUME]\n"
         sorted_weeks = sorted(weeks.keys(), reverse=True)
@@ -422,39 +449,62 @@ def _get_garmin_summary(user_id: str) -> str:
             health_str += f"\n- Avg Sleep: {avg_sleep_hrs:.1f} hrs"
         summary_parts.append(health_str)
         
-        # Format Cross Training (Detailed)
+        # Format Cross Training
         cross_str = f"[CROSS TRAINING (Last 28d)]\n- Strength Training: {strength_count} sessions total."
-        if strength_acts:
-            cross_str += "\n  Recent sessions: " + ", ".join([f"{a['start_time_local'][:10]}" for a in strength_acts[:4]])
+        if strength_acts or strava_strength:
+            recent_sessions = [a['start_time_local'][:10] for a in strength_acts[:2]] + [a['start_date_local'][:10] for a in strava_strength[:2]]
+            cross_str += "\n  Recent sessions: " + ", ".join(recent_sessions[:4])
         summary_parts.append(cross_str)
 
         # Format Recent Log (Top 5 display)
-        if recent_runs:
+        merged_runs = []
+        for r in recent_runs:
+            merged_runs.append({
+                "date": r.get("start_time_local", "")[:10],
+                "timestamp": r.get("start_time_local", ""),
+                "type": r.get("activity_type", "run"),
+                "distance": r.get("distance") or 0,
+                "duration": r.get("duration") or 0,
+                "source": "Garmin"
+            })
+        for r in recent_strava_runs:
+            merged_runs.append({
+                "date": r.get("start_date_local", "")[:10],
+                "timestamp": r.get("start_date_local", ""),
+                "type": r.get("type", "Run"),
+                "distance": r.get("distance") or 0,
+                "duration": r.get("moving_time") or r.get("elapsed_time") or 0,
+                "source": "Strava"
+            })
+        merged_runs.sort(key=lambda x: x["timestamp"], reverse=True)
+
+        if merged_runs:
             recent_log = []
-            
-            # Pattern Recognition
             morning_count, evening_count = 0, 0
             
-            for i, act in enumerate(recent_runs):
-                # Time of Day Analysis (Analyze ALL, display only top 5)
+            for i, act in enumerate(merged_runs):
+                # Time of Day Analysis
                 try:
-                    dt = datetime.fromisoformat(act.get('start_time_local'))
-                    hour = dt.hour
-                    if 5 <= hour < 12: morning_count += 1
-                    elif 16 <= hour < 22: evening_count += 1
+                    ts = act.get("timestamp", "")
+                    if ts:
+                        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                        hour = dt.hour
+                        if 5 <= hour < 12: morning_count += 1
+                        elif 16 <= hour < 22: evening_count += 1
                 except: pass
 
-                if i < 5: # Limit display log
+                if i < 5:
                     dist_meters = act.get('distance', 0)
                     duration_secs = act.get('duration', 0)
-                    date_str = act.get('start_time_local', '')[:10]
-                    type_key = act.get('activity_type', 'run')
+                    date_str = act["date"]
+                    type_key = act["type"]
+                    src = act["source"]
                     if dist_meters > 0:
                        pace_min_km = (duration_secs / 60) / (dist_meters / 1000)
                        pace_str = f"{int(pace_min_km)}:{int((pace_min_km % 1) * 60):02d}/km"
-                       recent_log.append(f"- {date_str} ({type_key}): {dist_meters/1000:.2f}km @ {pace_str}")
+                       recent_log.append(f"- {date_str} ({type_key} via {src}): {dist_meters/1000:.2f}km @ {pace_str}")
             
-            summary_parts.append(f"\n[RECENT RUNNING LOG (Latest 5)]\n" + chr(10).join(recent_log))
+            summary_parts.append(f"\n[RECENT RUNNING LOG (Latest 5)]\n" + "\n".join(recent_log))
             
             # Add Pattern Insight
             pattern_str = "[DETECTED PATTERNS]\n"
@@ -462,6 +512,8 @@ def _get_garmin_summary(user_id: str) -> str:
                 pattern_str += "- User prefers MORNING runs."
             elif evening_count > morning_count:
                 pattern_str += "- User prefers EVENING runs."
+            else:
+                pattern_str += "- User runs at varied times."
             
             if strength_count > 0:
                 pattern_str += f"\n- Strength Training is part of routine ({strength_count} sessions/mo)."
@@ -503,11 +555,16 @@ Return your analysis in JSON format:
 }}
 """
     try:
+        user_res = supabase.table("users").select("goals").eq("id", user_id).execute()
+        llm_provider = "gemini"
+        if user_res.data:
+            llm_provider = user_res.data[0].get("goals", {}).get("llm_model") or "gemini"
+
         # Use a fast model for analysis
         response_text = generate_chat_response(
             messages=[{"role": "user", "content": prompt}],
             mode="developer",
-            provider="xai" # Default to fast provider
+            provider=llm_provider
         )
         
         start = response_text.find('{')
