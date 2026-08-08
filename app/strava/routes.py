@@ -36,6 +36,8 @@ def connect_strava():
         f"&approval_prompt=force"
         f"&state={user_id}"
     )
+    if request.headers.get("Accept") == "application/json" or request.args.get("json") == "true":
+        return jsonify({"url": url}), 200
     return redirect(url)
 
 @strava_bp.route("/exchange_token")
@@ -68,21 +70,50 @@ def exchange_token():
         return "Missing state parameter!", 400
 
     try:
+        # Get existing goals to avoid overwriting
+        user_res = supabase.table("users").select("goals").eq("id", user_id).execute()
+        current_goals = {}
+        if user_res.data:
+            current_goals = user_res.data[0].get("goals") or {}
+            
+        current_goals["strava_scope"] = scope
+        current_goals["strava_athlete"] = athlete_info
+
         supabase.table("users").update({
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "scope": scope,
-            "athlete_info": athlete_info,
-            "last_updated": datetime.now(timezone.utc).isoformat()
+            "strava_access_token": access_token,
+            "strava_refresh_token": refresh_token,
+            "strava_last_updated": datetime.now(timezone.utc).isoformat(),
+            "goals": current_goals
         }).eq("id", user_id).execute()
     except Exception as e:
         print(f"Error updating user tokens: {e}")
         return "Failed to update user tokens.", 500
 
-    return jsonify({
-        "message": "Authorization successful!",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "scope": scope,
-        "athlete_info": athlete_info
-    }), 200
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Strava Connected</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0A0E17; color: #F8FAFC; text-align: center; padding: 50px 20px; }
+        .card { background: #1E293B; border-radius: 16px; border: 1px solid #334155; padding: 32px; max-width: 400px; margin: 0 auto; }
+        h1 { color: #FC4C02; margin-bottom: 12px; font-size: 22px; font-weight: bold; }
+        p { color: #94A3B8; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
+        .btn { display: inline-block; padding: 12px 24px; background: #FC4C02; color: #FFFFFF; text-decoration: none; font-weight: bold; border-radius: 8px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>✅ Strava Account Connected!</h1>
+        <p>Your Strava runs and activities are now linked with Coach Bro. You can return to the app.</p>
+        <a class="btn" href="gymbro://">Return to GYMBro App</a>
+      </div>
+      <script>
+        setTimeout(function() {
+          try { window.location.href = "gymbro://"; } catch (e) {}
+        }, 1500);
+      </script>
+    </body>
+    </html>
+    """, 200, {'Content-Type': 'text/html'}

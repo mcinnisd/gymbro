@@ -1191,9 +1191,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   introContainer: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    paddingBottom: 140,
   },
   introCard: {
     borderRadius: 20,
