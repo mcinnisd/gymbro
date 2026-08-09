@@ -11,11 +11,15 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data = request.get_json()
-    if not data or not data.get("username") or not data.get("password"):
-        return jsonify({"error": "Username and password are required."}), 400
+    if not data:
+        return jsonify({"error": "No JSON payload provided."}), 400
 
-    username = data["username"]
-    password = data["password"]
+    username = data.get("username") or data.get("email")
+    password = data.get("password")
+    name = data.get("name")
+
+    if not username or not password:
+        return jsonify({"error": "Username/email and password are required."}), 400
 
     exists_resp = supabase.table("users").select("*").eq("username", username).execute()
     if exists_resp.data:
@@ -24,6 +28,8 @@ def register():
     hashed_password = generate_password_hash(password)
     user_doc = {
         "username": username,
+        "email": username,
+        "name": name,
         "password": hashed_password,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "goals": {}  # stored as JSONB
@@ -32,7 +38,14 @@ def register():
     try:
         response = supabase.table("users").insert(user_doc).execute()
         if response.data:
-            return jsonify({"message": "User registered successfully.", "user_id": response.data[0]["id"]}), 201
+            user_id = response.data[0]["id"]
+            access_token = create_access_token(identity=str(user_id), expires_delta=timedelta(minutes=Config.TOKEN_EXPIRATION_MINUTES))
+            return jsonify({
+                "message": "User registered successfully.",
+                "user_id": user_id,
+                "token": access_token,
+                "access_token": access_token
+            }), 201
         else:
             return jsonify({"error": "Registration failed."}), 500
     except Exception as e:
@@ -42,11 +55,10 @@ def register():
 @auth_bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
-    if not data or not data.get("username") or not data.get("password"):
+    username = data.get("username") or data.get("email") if data else None
+    password = data.get("password") if data else None
+    if not username or not password:
         return jsonify({"error": "Username and password are required."}), 400
-
-    username = data["username"]
-    password = data["password"]
 
     resp = supabase.table("users").select("*").eq("username", username).execute()
     if not resp.data:
@@ -66,7 +78,20 @@ def login():
     # except Exception as e:
     #     current_app.logger.error(f"Failed to trigger background sync for user {user['id']}: {e}")
 
-    return jsonify({"token": access_token}), 200
+    return jsonify({
+        "token": access_token,
+        "access_token": access_token,
+        "user": {
+            "id": user["id"],
+            "email": user["username"],
+            "coach_status": user.get("coach_status") or "not_started",
+            "interview_chat_id": user.get("interview_chat_id"),
+            "age": user.get("age"),
+            "weight": user.get("weight"),
+            "height": user.get("height"),
+            "goals": user.get("goals") or {}
+        }
+    }), 200
 
 @auth_bp.route("/profile", methods=["PUT"])
 @jwt_required()
@@ -104,11 +129,15 @@ def update_profile():
         if "goals" in data and isinstance(data["goals"], dict):
             current_goals.update(data["goals"])
         
-        # Handle 'units' and 'llm_model'
+        # Handle 'units', 'llm_model', and device source preferences
         if "units" in data:
             current_goals["units"] = data["units"]
         if "llm_model" in data:
             current_goals["llm_model"] = data["llm_model"]
+        if "preferred_workout_source" in data:
+            current_goals["preferred_workout_source"] = data["preferred_workout_source"]
+        if "preferred_biometrics_source" in data:
+            current_goals["preferred_biometrics_source"] = data["preferred_biometrics_source"]
             
         updates["goals"] = current_goals
 
@@ -131,6 +160,7 @@ def get_profile():
             return jsonify({"error": "User not found."}), 404
         
         user = response.data[0]
+        goals = user.get("goals") or {}
         
         # Extract profile fields
         profile_data = {
@@ -144,14 +174,21 @@ def get_profile():
             "weekly_availability": user.get("weekly_availability"),
             "terrain_preference": user.get("terrain_preference"),
             "equipment": user.get("equipment"),
-            "goals": user.get("goals", {}),
-            "units": user.get("goals", {}).get("units", "metric"), # Default to metric
-            "llm_model": user.get("goals", {}).get("llm_model", "local"), # Default to local
+            "goals": goals,
+            "units": goals.get("units", "metric"), # Default to metric
+            "llm_model": goals.get("llm_model", "gemini-3.1-flash-lite"), # Default to gemini-3.1-flash-lite
+            "preferred_workout_source": goals.get("preferred_workout_source", "auto"),
+            "preferred_biometrics_source": goals.get("preferred_biometrics_source", "auto"),
             "garmin_connected": bool(user.get("garmin_email") and user.get("garmin_password")),
-            "strava_connected": bool(user.get("strava_access_token"))
+            "strava_connected": bool(user.get("strava_access_token")),
+            "coach_status": user.get("coach_status") or "not_started",
+            "interview_chat_id": user.get("interview_chat_id")
         }
         
-        return jsonify({"profile": profile_data}), 200
+        return jsonify({
+            "profile": profile_data,
+            "user": profile_data
+        }), 200
     except Exception as e:
         current_app.logger.error(f"Error fetching profile for user {user_id}: {e}")
         return jsonify({"error": "Failed to fetch profile."}), 500

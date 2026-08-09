@@ -33,20 +33,50 @@ class MockSupabaseClient:
         self.query_filters = []
         return self
 
-    def select(self, columns):
+    def select(self, *columns, **kwargs):
         return self
 
     def insert(self, data):
         if self.current_table:
             if isinstance(data, list):
+                inserted = []
                 for item in data:
-                    if "id" not in item:
-                        item["id"] = len(self.data[self.current_table]) + 1
-                    self.data[self.current_table].append(item)
+                    item_copy = dict(item)
+                    if "id" not in item_copy:
+                        item_copy["id"] = len(self.data[self.current_table]) + 1
+                    self.data[self.current_table].append(item_copy)
+                    inserted.append(item_copy)
+                self.last_result_data = inserted
             else:
-                if "id" not in data:
-                    data["id"] = len(self.data[self.current_table]) + 1
-                self.data[self.current_table].append(data)
+                item_copy = dict(data)
+                if "id" not in item_copy:
+                    item_copy["id"] = len(self.data[self.current_table]) + 1
+                self.data[self.current_table].append(item_copy)
+                self.last_result_data = [item_copy]
+        return self
+
+    def upsert(self, data, on_conflict=None):
+        if self.current_table:
+            items = data if isinstance(data, list) else [data]
+            results = []
+            for item in items:
+                item_copy = dict(item)
+                conflict_key = on_conflict or "id"
+                existing = None
+                if conflict_key in item_copy:
+                    for row in self.data[self.current_table]:
+                        if str(row.get(conflict_key)) == str(item_copy[conflict_key]):
+                            existing = row
+                            break
+                if existing:
+                    existing.update(item_copy)
+                    results.append(existing)
+                else:
+                    if "id" not in item_copy and conflict_key == "id":
+                        item_copy["id"] = len(self.data[self.current_table]) + 1
+                    self.data[self.current_table].append(item_copy)
+                    results.append(item_copy)
+            self.last_result_data = results
         return self
 
     def update(self, data):
@@ -111,6 +141,14 @@ class MockSupabaseClient:
                 return MockResponse(rows)
             return MockResponse([])
 
+        if hasattr(self, 'last_result_data'):
+            res_data = self.last_result_data
+            del self.last_result_data
+            if hasattr(self, 'single_mode'):
+                del self.single_mode
+                return MockResponse(res_data[0] if res_data else None)
+            return MockResponse(res_data)
+
         rows = self.data.get(self.current_table, [])
         
         # Apply filters
@@ -146,3 +184,9 @@ class MockSupabaseClient:
 class MockResponse:
     def __init__(self, data):
         self.data = data
+        if isinstance(data, list):
+            self.count = len(data)
+        elif data is not None:
+            self.count = 1
+        else:
+            self.count = 0

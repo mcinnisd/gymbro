@@ -9,12 +9,20 @@ import logging
 journal_bp = Blueprint('journal', __name__)
 logger = logging.getLogger(__name__)
 
-@journal_bp.route("/", methods=["POST"], strict_slashes=False)
+@journal_bp.route("/", methods=["GET", "POST"], strict_slashes=False)
 @jwt_required()
-def save_journal():
+def handle_journal():
     user_id = get_jwt_identity()
+    if request.method == "GET":
+        try:
+            res = supabase.table("daily_journals").select("*").eq("user_id", user_id).execute()
+            entries = res.data if res.data else []
+            return jsonify({"journals": entries, "count": len(entries)}), 200
+        except Exception as e:
+            logger.error(f"Error fetching journals: {e}")
+            return jsonify({"error": str(e)}), 500
+
     data = request.get_json()
-    
     if not data or "answers" not in data:
         return jsonify({"error": "Missing answers in request body."}), 400
         
