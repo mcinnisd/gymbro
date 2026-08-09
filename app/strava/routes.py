@@ -44,80 +44,21 @@ def connect_strava():
         return jsonify({"url": url}), 200
     return redirect(url)
 
+from app.strava.service import handle_strava_oauth_callback
+
 @strava_bp.route("/exchange_token")
+@strava_bp.route("/callback")
 def exchange_token():
     code = request.args.get("code")
+    state = request.args.get("state")
     error = request.args.get("error")
-    if error:
-        return f"User denied access or error occurred: {error}", 400
-    if not code:
-        return "No code returned from Strava!", 400
 
-    token_url = "https://www.strava.com/oauth/token"
-    payload = {
-        "client_id": Config.STRAVA_CLIENT_ID,
-        "client_secret": Config.STRAVA_CLIENT_SECRET,
-        "code": code,
-        "grant_type": "authorization_code",
-    }
-    response = requests.post(token_url, data=payload)
-    if response.status_code != 200:
-        return f"Error exchanging token: {response.text}", 400
+    redirect_url = handle_strava_oauth_callback(code, state, error)
 
-    token_data = response.json()
-    access_token = token_data["access_token"]
-    refresh_token = token_data["refresh_token"]
-    scope = token_data.get("scope", "")
-    athlete_info = token_data.get("athlete", {})
-    user_id = request.args.get("state")
-    if not user_id:
-        return "Missing state parameter!", 400
+    if request.headers.get("Accept") == "application/json" or request.args.get("json") == "true":
+        return jsonify({
+            "redirect_url": redirect_url,
+            "status": "success" if "status=success" in redirect_url else "error"
+        }), 200
 
-    try:
-        # Get existing goals to avoid overwriting
-        user_res = supabase.table("users").select("goals").eq("id", user_id).execute()
-        current_goals = {}
-        if user_res.data:
-            current_goals = user_res.data[0].get("goals") or {}
-            
-        current_goals["strava_scope"] = scope
-        current_goals["strava_athlete"] = athlete_info
-
-        supabase.table("users").update({
-            "strava_access_token": access_token,
-            "strava_refresh_token": refresh_token,
-            "strava_last_updated": datetime.now(timezone.utc).isoformat(),
-            "goals": current_goals
-        }).eq("id", user_id).execute()
-    except Exception as e:
-        print(f"Error updating user tokens: {e}")
-        return "Failed to update user tokens.", 500
-
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Strava Connected</title>
-      <style>
-        body { font-family: -apple-system, sans-serif; background: #0A0E17; color: #F8FAFC; text-align: center; padding: 50px 20px; }
-        .card { background: #1E293B; border-radius: 16px; border: 1px solid #334155; padding: 32px; max-width: 400px; margin: 0 auto; }
-        h1 { color: #FC4C02; margin-bottom: 12px; font-size: 22px; font-weight: bold; }
-        p { color: #94A3B8; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
-        .btn { display: inline-block; padding: 12px 24px; background: #FC4C02; color: #FFFFFF; text-decoration: none; font-weight: bold; border-radius: 8px; }
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <h1>✅ Strava Account Connected!</h1>
-        <p>Your Strava runs and activities are now linked with Coach Bro. You can return to the app.</p>
-        <a class="btn" href="gymbro://chat">Return to GYMBro App</a>
-      </div>
-      <script>
-        setTimeout(function() {
-          try { window.location.href = "gymbro://chat"; } catch (e) {}
-        }, 1000);
-      </script>
-    </body>
-    </html>
-    """, 200, {'Content-Type': 'text/html'}
+    return redirect(redirect_url, code=302)
