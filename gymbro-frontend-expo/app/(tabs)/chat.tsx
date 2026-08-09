@@ -15,6 +15,7 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MarkdownText } from '../components/MarkdownText';
 
 interface Message {
   sender: 'user' | 'bot' | 'system';
@@ -435,14 +436,9 @@ export default function ChatScreen() {
       content: textToSend,
       timestamp: new Date().toISOString(),
     };
-    const botPlaceholder: Message = {
-      sender: 'bot',
-      content: '',
-      timestamp: new Date().toISOString(),
-    };
 
-    setMessages((prev) => [...prev, userMsg, botPlaceholder]);
-    setStatusMessage('Thinking...');
+    setMessages((prev) => [...prev, userMsg]);
+    setStatusMessage('⚡ Coach Bro is calculating response...');
 
     try {
       const response = await fetch(`${apiUrl}/chats/${activeChatId}/messages`, {
@@ -461,16 +457,15 @@ export default function ChatScreen() {
       // If it's the interview endpoint returning JSON (standard for questions)
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json();
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
+        setMessages((prev) => [
+          ...prev,
+          {
             sender: 'bot',
-            content: data.message || data.content || '',
+            content: data.message || data.content || data.question || '',
             timestamp: new Date().toISOString(),
             is_interview_complete: data.is_complete,
-          };
-          return updated;
-        });
+          },
+        ]);
 
         if (data.is_complete) {
           setCoachStatus('completed_waiting_plan');
@@ -1136,9 +1131,11 @@ export default function ChatScreen() {
                       msg.sender === 'user' ? styles.userBubble : styles.botBubble,
                     ]}
                   >
-                    <Text style={styles.messageText}>
-                      {msg.sender === 'bot' ? cleanMessageContent(msg.content) : msg.content}
-                    </Text>
+                    {msg.sender === 'bot' ? (
+                      <MarkdownText content={cleanMessageContent(msg.content)} />
+                    ) : (
+                      <Text style={styles.messageText}>{msg.content}</Text>
+                    )}
                   </View>
                 </View>
 
