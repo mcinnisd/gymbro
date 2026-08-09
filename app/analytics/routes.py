@@ -26,11 +26,12 @@ def get_user_baselines():
 @jwt_required()
 def get_analytics_summary():
     user_id = get_jwt_identity()
+    days = request.args.get("days", 90, type=int)
     try:
         from app.analytics.analytics_service import AnalyticsService
         
-        # New Unifed Dynamic Response
-        response_data = AnalyticsService.get_aggregated_metrics(user_id=user_id, days=90)
+        # New Unified Dynamic Response with days filter
+        response_data = AnalyticsService.get_aggregated_metrics(user_id=user_id, days=days)
         
         return jsonify(response_data), 200
 

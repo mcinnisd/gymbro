@@ -125,12 +125,43 @@ export default function StatsScreen() {
       };
     });
   }, [weeklyVolObj]);
+  const realWellness = analyticsData?.wellness || {};
+
+  const dynamicSleepBars = React.useMemo(() => {
+    const sleepTrend = realWellness.sleep_trend || [];
+    if (sleepTrend.length === 0) return [];
+    return sleepTrend.slice(-10).map((d: any) => ({
+      label: d.date ? d.date.slice(5) : 'Day',
+      val: Math.min(100, Math.max(15, d.val || 70)),
+      detail: d.hours ? `${d.hours}h (${d.val}/100)` : `${d.val} pts`,
+    }));
+  }, [realWellness]);
+
+  const dynamicHrvBars = React.useMemo(() => {
+    const hrvTrend = realWellness.hrv_trend || [];
+    if (hrvTrend.length === 0) return [];
+    return hrvTrend.slice(-10).map((d: any) => ({
+      label: d.date ? d.date.slice(5) : 'Day',
+      val: Math.min(100, Math.max(20, Math.round(((d.val - 30) / 70) * 100))),
+      detail: `${d.val} ms`,
+    }));
+  }, [realWellness]);
+
+  const dynamicRhrBars = React.useMemo(() => {
+    const rhrTrend = realWellness.rhr_trend || [];
+    if (rhrTrend.length === 0) return [];
+    return rhrTrend.slice(-10).map((d: any) => ({
+      label: d.date ? d.date.slice(5) : 'Day',
+      val: Math.min(100, Math.max(20, Math.round(((85 - d.val) / 40) * 100))),
+      detail: `${d.val} bpm`,
+    }));
+  }, [realWellness]);
 
   useEffect(() => {
     if (authToken) {
       fetchProfile();
     }
-  }, [authToken]);
+  }, [authToken, periodDays]);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -173,8 +204,8 @@ export default function StatsScreen() {
         setLiveActivities(calData.events || []);
       }
 
-      // Fetch Aggregated Analytics Summary
-      const summaryRes = await fetch(`${apiUrl}/analytics/summary`, {
+      // Fetch Aggregated Analytics Summary with Days Range
+      const summaryRes = await fetch(`${apiUrl}/analytics/summary?days=${periodDays}`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${authToken}` },
       });
@@ -511,7 +542,7 @@ export default function StatsScreen() {
           </View>
 
           {dynamicActivityBars.length > 0 ? (
-            <View style={styles.barsArea}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
               {dynamicActivityBars.map((bar: any, i: number) => (
                 <View key={i} style={styles.barColumn}>
                   <Text style={styles.barDetailText}>{bar.detail}</Text>
@@ -521,7 +552,7 @@ export default function StatsScreen() {
                   <Text style={styles.barLabel}>{bar.label}</Text>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           ) : (
             <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
               <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database activities logged yet for this metric. Tap "Connect Garmin" above to sync your watch.</Text>
@@ -543,7 +574,7 @@ export default function StatsScreen() {
         </Text>
         <View style={styles.graphContainer}>
           {dynamicEfficiencyBars.length > 0 ? (
-            <View style={styles.barsArea}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
               {dynamicEfficiencyBars.map((b: any, idx: number) => (
                 <View key={idx} style={styles.barColumn}>
                   <Text style={styles.barDetailText}>{b.detail}</Text>
@@ -553,7 +584,7 @@ export default function StatsScreen() {
                   <Text style={styles.barLabel}>{b.label}</Text>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           ) : (
             <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
               <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database heart rate data found yet. Connect your device to load efficiency curves.</Text>
@@ -570,7 +601,7 @@ export default function StatsScreen() {
         </View>
         <View style={styles.graphContainer}>
           {dynamicWeeklyVolumeBars.length > 0 ? (
-            <View style={styles.barsArea}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
               {dynamicWeeklyVolumeBars.map((b: any, idx: number) => (
                 <View key={idx} style={styles.barColumn}>
                   <Text style={styles.barDetailText}>{b.detail}</Text>
@@ -580,10 +611,80 @@ export default function StatsScreen() {
                   <Text style={styles.barLabel}>{b.label}</Text>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           ) : (
             <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
               <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database weekly distance totals found yet. Log or sync workouts to track weekly volume.</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* GRAPH 4: Sleep Score & Duration Trends (Real DB) */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="moon" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+            <Text style={styles.cardTitle}>4. Sleep Score & Duration History</Text>
+          </View>
+          <View style={styles.badgeSuccess}>
+            <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
+          Tracks nightly sleep quality score (0-100) and total hours synced from Garmin or Apple Health.
+        </Text>
+        <View style={styles.graphContainer}>
+          {dynamicSleepBars.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
+              {dynamicSleepBars.map((b: any, idx: number) => (
+                <View key={idx} style={styles.barColumn}>
+                  <Text style={styles.barDetailText}>{b.detail}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#2563EB' }]} />
+                  </View>
+                  <Text style={styles.barLabel}>{b.label}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database sleep logs found yet. Connect Garmin or Apple Health to load sleep history.</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* GRAPH 5: HRV & Recovery Baseline Trends (Real DB) */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="pulse" size={18} color="#059669" style={{ marginRight: 6 }} />
+            <Text style={styles.cardTitle}>5. HRV (ms) & Autonomic Recovery</Text>
+          </View>
+          <View style={styles.badgeSuccess}>
+            <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
+          Heart Rate Variability (rMSSD in ms) reflecting nervous system recovery and training adaptation.
+        </Text>
+        <View style={styles.graphContainer}>
+          {dynamicHrvBars.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
+              {dynamicHrvBars.map((b: any, idx: number) => (
+                <View key={idx} style={styles.barColumn}>
+                  <Text style={styles.barDetailText}>{b.detail}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#059669' }]} />
+                  </View>
+                  <Text style={styles.barLabel}>{b.label}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database HRV records found yet. Connect your watch or Apple Health to track HRV baselines.</Text>
             </View>
           )}
         </View>
@@ -937,35 +1038,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 120,
-    paddingTop: 20,
+    height: 130,
+    paddingTop: 16,
+  },
+  scrollGraphContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 8,
+    paddingTop: 16,
+    height: 130,
   },
   barColumn: {
     alignItems: 'center',
-    flex: 1,
+    minWidth: 54,
+    marginHorizontal: 6,
   },
   barDetailText: {
     fontSize: 9,
+    fontWeight: 'bold',
     color: Colors.light.subtext,
     marginBottom: 4,
+    textAlign: 'center',
   },
   barTrack: {
-    width: 14,
+    width: 16,
     height: 80,
     backgroundColor: Colors.light.border,
-    borderRadius: 7,
+    borderRadius: 8,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   barFill: {
     backgroundColor: Colors.light.primary,
-    borderRadius: 7,
+    borderRadius: 8,
   },
   barLabel: {
     fontSize: 10,
     color: Colors.light.text,
     fontWeight: '600',
     marginTop: 6,
+    textAlign: 'center',
   },
   prGrid: {
     flexDirection: 'row',
