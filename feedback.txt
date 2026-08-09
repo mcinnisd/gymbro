@@ -1,70 +1,71 @@
-when user logs in for the first time they should be prompted to connect their garmin account and sync their data (setup integrations and profile)
-this should be done seamlessly and shouldnt take long and should have good ui design, being simple, intuitive, and easy to use, while looking nice and modern
-then they should be prompted to take a survey to get their goals and preferences
+user should be promped to connect accounts upon creation. 
 
-when user logs in with germin account they should be prompted to sync their data and sync should happen in the background
-when user logs in with strava account they should be prompted to sync their data and sync should happen in the background
+data should be loaded immediately onto screens for the users to look through
 
-user should then fill out a survey to get their goals and preferences
-after survey is completed user should be directed to the interview questions 
+chat interface should have more ui elements that make the sign up seamless
 
-Interview questions should be asked in order and should be asked one at a time, there shouldnt be a rush to ask the next question and conversation should flow naturally
-Once the user has answered all of the relevant context from the first question they should then be asked the next question in the interview questions Overview
-once all questions have been asked and answered the context and information should be saved to the user_context table
+look into the multiple workflows that the ai has to interview users about
 
+there should be pages to look through data and insights (sleep data, hrv, heart rate, other data)
 
-# error seen while connecting garmin account
-2025-12-26T12:26:58.341544 - Error fetching activities for user 14: The read operation timed out
+also the training plan never actually gets generated
 
-When trying to fill out the form prior to interview questions errors are seen wuth fetching dailt data and read operations timed out
+the chat really doesnt seem to work too great so far
 
-Error fetching daily data for 2024-12-26, user 14: The read operation timed out
-Error fetching daily data for 2024-12-27, user 14: The read operation timed out
-Error fetching daily data for 2024-12-28, user 14: The read operation timed out
+we should also make sure all notes are saved and used in the deep rag eventually
 
-unable to click the next button on the form in set up users and integrations, could be issue stemming from garmin account connecting issues
+we should make deep tests for fake users doing everyhing (uplaoding fake pdf with bloodwork, inputting manual data, connecting garmin, etc)
 
+make a deep testing suite to find all possible bugs
 
-REQUEST: Clean up the repo and make it more organized
-REQUEST: Simplify the code and make it more readable
-REQUEST: Make the website more user friendly and intuitive
-REQUEST: Make the website more visually appealing and modern
-REQUEST: Make the website more responsive and mobile friendly
-REQUEST: Make the website more secure
-REQUEST: Set up verify code as jenkins for the repo, automatic testing
-FIRST REQUEST: Formulate all of this into a roadmap and break it down into smaller tasks
+lets review the various interview archetype structures to ensure there are no issues in them
 
-MAKE THE START INTERVIEW SEND YOU DIRECTLY TO CHAT WITH QUESTIONS
+make sure our rag is optimized for the multi hop process we designed, espeically with our various databases
 
-okay nice that seems to be working better, when i make a new account and connect my garmin account i see this message twice Garmin connected! Syncing in background... and when i wait for a little bit that it says it synced successfully but then also this error message EOF occurred in violation of protocol (_ssl.c:2427) when i got to the dashboard page i see that my activities have loaded, some of them, but the personal bests have not loaded and there is nothing visible on the summary page. also there are only 20 activities, and there is not all of my most recent data, like steps and heart rate are 2 weeks behind, also there is no sleep data, when i click sync now after about 1-2 minutes and seems to get all activities and updated sleep data and such. can we make sure it does that on first creation? lets also try and fix the summary page, also can we show more relevant good information? maybe when we click on an activity we can see past data, also it seems like a bike ride is being confused as a run by the coach but at least its pulling some data? 
+lets make sure all data integration methods are working properly
 
-"Great work completing that step—your sub-4 hour marathon goal for Feb 22 is ambitious and exciting, especially with that solid 24.17km run on Christmas Day!
+strava doesnt seem to have its endpoint point us back towards the app to confirm oauth
 
-To tailor your plan perfectly, let's verify a few basics: What's your age, height, and current weight (in metric)? Any running experience years or past races I should know? And importantly, any injuries or niggles to work around?
+shouldnt say coach bro, i dont like that name
 
-Looking forward to locking this in! 🚀"
+also doesnt always need to say calculating response, in the coach chat
 
-like this is great but it thinks my bikeride was a run, we need to differentiate those
+also the chat shouldnt always be showing the choose days to workout
 
-"Step 3: Data Review
-I've pulled your synced Garmin data (last sync: Dec 27). It shows solid current fitness:
+chat should be able to make a new window if you want to
 
-All-time 5K PR: 22:03 (Apr 13, 2025)
-All-time 10K PR: 50:23 (Feb 12, 2025)
-Avg weekly distance (last 4w): 35.36km
-9-week streak! Recent highlights: 24.17km @ 2:53/km (Dec 25), 10.56km (Dec 24), 10.50km (Dec 22).
-Does this accurately reflect your current fitness? Any key activities missing? Confirm, and we'll proceed! 🚀"
+it isnt showing a chart of my running or anything when i ask it to
 
-on top of prs we should get longest run data and best efforts in half marathon and marathon if exist
+when i ask it context questions it should be getting its just not
 
-it also seems like the coach is not differentiating between bike and run
+we need to overhaul the chat mcp/tool calling and ui displaying in the chat
 
-chat feature FUTURE: have buttons during interview to confirm some questions instead of chatting
+stats should have more graphs and more info on the user
 
-kinda gets confused between miles and kilometers
+maybe we need to rethink the main 5 tabs on the bottom
 
-add to calendar?
+all the prs should be pulled from the users data we get and then it should ask if there are any others it would like to updated
 
-easier flow for onboarding, once plan is generated move to another chat with default coach personality
+the athlete dashboard should have more editable information and it should be clearer what the user can edit and adjust if they so please
 
-make sure being built for iphone eventually, good basis for that?
+recovery tab should also show more data with intuitive interactive graphs that can also be customizable. 
+
+we should be able to layer graphs and see sleep performance and compare trends and historical data or chat with coach if we want to
+
+user should be able to rename coach if they want to
+
+nutritionpage is pretty good but we should be able to update the names of an item with the ai scan, and if we do then it should reeval the calories and macros, also we should have a history of the days of food
+
+we should also be able to adjust manually through nuturition or dynamically through chat what our macro and calories intakes should be, depending on our goals, these should also be calculated by users goals and age and bodyweight
+
+if we manually log events onto the calendar we should have the ai scan it and if it wants more context, say from a push lift about what exercises you did it will ask.
+
+we should also have better calendar views or more variations
+
+the training should be auto populated from garmin, strava, apple fitness etc
+
+we should be able to generate training plans from the chat that updates the training calendar
+
+in general the ui should be rehauled. i want it to be simplistic, light, engaging, user friendly, modern, and motivating. right now the darks and purples are not the vibe
+
+i probably have lots more feedback but this is all for now

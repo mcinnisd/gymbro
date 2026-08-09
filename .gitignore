@@ -7,4 +7,6 @@
 # dont wants
 venv/
 __pycache__/
+*.log
+.DS_Store
 

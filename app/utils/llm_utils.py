@@ -1,4 +1,5 @@
-import google.generativeai as genai
+from google import genai as google_genai
+from google.genai import types as google_genai_types
 from openai import OpenAI
 from flask import current_app
 from app.config import Config
@@ -9,9 +10,24 @@ from typing import List, Optional
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# Initialize Gemini (if key present)
-if Config.GEMINI_API_KEY:
-    genai.configure(api_key=Config.GEMINI_API_KEY)
+_gemini_client = None
+
+def get_gemini_client():
+    global _gemini_client
+    if _gemini_client is not None:
+        return _gemini_client
+        
+    if Config.USE_VERTEX_AI:
+        logger.info(f"Initializing Google GenAI Client with Vertex AI (project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION})")
+        _gemini_client = google_genai.Client(
+            vertexai=True,
+            project=Config.GOOGLE_CLOUD_PROJECT,
+            location=Config.GOOGLE_CLOUD_LOCATION
+        )
+    else:
+        logger.info("Initializing Google GenAI Client with Gemini API (API Key)")
+        _gemini_client = google_genai.Client(api_key=Config.GEMINI_API_KEY)
+    return _gemini_client
 
 def generate_chat_response(messages, model_name=None, mode="normal", system_prompt=None, provider=None, context=None, stream=False, tools=None):
     """
@@ -32,8 +48,21 @@ def generate_chat_response(messages, model_name=None, mode="normal", system_prom
     """
     if not provider:
         provider = Config.LLM_PROVIDER
+        
+    # Dynamically resolve provider and model names if a specific model identifier is passed as 'provider'
+    if provider:
+        provider_lower = provider.lower()
+        if "gemini" in provider_lower:
+            model_name = provider
+            provider = "gemini"
+        elif "gpt" in provider_lower:
+            model_name = provider
+            provider = "openai"
+        elif "grok" in provider_lower or "xai" in provider_lower:
+            model_name = provider
+            provider = "xai"
     
-    logger.info(f"Using LLM provider: {provider}")
+    logger.info(f"Using LLM provider: {provider} (model: {model_name})")
     
     # Prepare system instruction
     system_instruction = system_prompt
@@ -235,24 +264,38 @@ If you do not need to use a tool, just respond normally.
 
     # --- GEMINI ---
     elif provider == "gemini":
-        if not Config.GEMINI_API_KEY:
-            return "Gemini API Key missing."
+        if not Config.USE_VERTEX_AI and not Config.GEMINI_API_KEY:
+            return "Gemini API Key missing and Vertex AI not enabled."
 
         try:
-            if not model_name:
-                model_name = "gemini-2.0-flash-exp"
+            if not model_name or model_name.lower() == "gemini":
+                if Config.USE_VERTEX_AI:
+                    if tools or mode in ["agent", "coach"]:
+                        model_name = "gemini-3.5-flash"
+                    else:
+                        model_name = "gemini-3.1-flash-lite"
+                else:
+                    model_name = "gemini-2.0-flash-exp"
                 
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=system_instruction
-            )
+            # Map model names for Vertex AI
+            if Config.USE_VERTEX_AI:
+                if model_name in ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash"]:
+                    logger.info(f"Mapping Vertex AI model '{model_name}' to 'gemini-2.5-flash'")
+                    model_name = "gemini-2.5-flash"
+
+            client = get_gemini_client()
 
             gemini_history = []
             for msg in messages:
                 if msg["role"] == "system":
                     continue
                 gemini_role = "user" if msg["role"] == "user" else "model"
-                gemini_history.append({"role": gemini_role, "parts": [msg["content"]]})
+                gemini_history.append(
+                    google_genai_types.Content(
+                        role=gemini_role,
+                        parts=[google_genai_types.Part.from_text(text=msg["content"])]
+                    )
+                )
 
             if not gemini_history:
                 return "Error: No messages provided."
@@ -260,20 +303,36 @@ If you do not need to use a tool, just respond normally.
             last_message = gemini_history[-1]
             history_to_send = gemini_history[:-1]
             
-            if last_message["role"] != "user":
+            # Prepend dummy user turn if history starts with a model turn
+            if history_to_send and history_to_send[0].role == "model":
+                history_to_send.insert(0, google_genai_types.Content(role="user", parts=[google_genai_types.Part.from_text(text=" ")]))
+            
+            if last_message.role != "user":
                 logger.warning("Last message in history is not from user.")
             
-            chat = model.start_chat(history=history_to_send)
-            response = chat.send_message(last_message["parts"][0], stream=stream)
+            config = google_genai_types.GenerateContentConfig(
+                system_instruction=system_instruction
+            )
+            
+            chat = client.chats.create(
+                model=model_name,
+                history=history_to_send,
+                config=config
+            )
+            
+            last_message_text = last_message.parts[0].text
             
             if stream:
+                response = chat.send_message_stream(last_message_text)
                 def generate():
                     for chunk in response:
                         if chunk.text:
                             yield chunk.text
                 return generate()
             else:
+                response = chat.send_message(last_message_text)
                 content = response.text
+                
                 # Attempt to parse tool call (Same logic as Local)
                 try:
                     if tools and "tool_calls" in content:
@@ -391,17 +450,22 @@ def get_embedding(text: str, provider: Optional[str] = None) -> Optional[List[fl
     
     # --- GEMINI EMBEDDINGS (768-dim) ---
     if provider == "gemini":
-        if not Config.GEMINI_API_KEY:
-            logger.warning("Gemini API Key missing, cannot generate embedding.")
+        if not Config.USE_VERTEX_AI and not Config.GEMINI_API_KEY:
+            logger.warning("Gemini API Key missing and Vertex AI not enabled, cannot generate embedding.")
             return None
         try:
-            # Use models/text-embedding-004 which is the latest as of late 2024
-            result = genai.embed_content(
-                model=Config.GEMINI_EMBEDDING_MODEL,
-                content=text,
-                task_type="retrieval_document"
+            client = get_gemini_client()
+            model_name = Config.GEMINI_EMBEDDING_MODEL
+            if Config.USE_VERTEX_AI and "embedding-001" in model_name:
+                model_name = "gemini-embedding-001"
+            response = client.models.embed_content(
+                model=model_name,
+                contents=text,
+                config=google_genai_types.EmbedContentConfig(
+                    output_dimensionality=768
+                )
             )
-            return result['embedding']
+            return response.embeddings[0].values
         except Exception as e:
             logger.error(f"Gemini embedding error: {e}")
             return None

@@ -1,4 +1,397 @@
-2026-06-14T10:49:42.056260 - Starting unified sync for user 14 (Force Resync: False)
-2026-06-14T10:49:42.445287 - Garmin session not available for user 14, skipping.
-2026-06-14T10:49:43.780437 - Starting unified sync for user 14 (Force Resync: False)
-2026-06-14T10:49:44.081006 - Garmin session not available for user 14, skipping.
+2026-08-08T14:19:27.784235 - Starting unified sync for user 109 (Force Resync: False)
+2026-08-08T14:19:27.998857 - Garmin session not available for user 109, skipping.
+2026-08-08T14:19:40.367456 - Starting unified sync for user 109 (Force Resync: False)
+2026-08-08T14:19:40.648756 - Garmin session not available for user 109, skipping.
+2026-08-08T14:19:56.332711 - Starting unified sync for user 112 (Force Resync: False)
+2026-08-08T14:19:56.628592 - Garmin session not available for user 112, skipping.
+2026-08-08T14:20:03.894890 - Starting unified sync for user 112 (Force Resync: False)
+2026-08-08T14:20:04.197765 - Garmin session not available for user 112, skipping.
+2026-08-08T14:24:56.851961 - Starting unified sync for user 121 (Force Resync: False)
+2026-08-08T14:24:57.136484 - Garmin session not available for user 121, skipping.
+2026-08-08T14:25:11.203205 - Starting unified sync for user 121 (Force Resync: False)
+2026-08-08T14:25:11.486436 - Garmin session not available for user 121, skipping.
+2026-08-08T14:28:48.476287 - Starting unified sync for user 125 (Force Resync: False)
+2026-08-08T14:28:48.783431 - Garmin session not available for user 125, skipping.
+2026-08-08T14:28:57.175249 - Starting unified sync for user 125 (Force Resync: False)
+2026-08-08T14:28:57.454321 - Garmin session not available for user 125, skipping.
+2026-08-08T14:39:38.524876 - Starting unified sync for user 126 (Force Resync: False)
+2026-08-08T14:39:42.660481 - Initial/Forced Sync detected. Activities: 5y, Daily: 30d (from 2026-07-09)
+2026-08-08T14:39:42.798220 - Fetching activities from 2021-08-09...
+2026-08-08T14:39:42.798662 - Fetching batch start=0 limit=100...
+2026-08-08T14:39:42.799108 - Fetching batch start=0 limit=100...
+2026-08-08T14:39:43.053617 - Fetching batch start=100 limit=100...
+2026-08-08T14:39:43.053904 - Fetching batch start=100 limit=100...
+2026-08-08T14:39:43.300031 - Fetching batch start=200 limit=100...
+2026-08-08T14:39:43.300201 - Fetching batch start=200 limit=100...
+2026-08-08T14:39:43.578350 - Fetching batch start=300 limit=100...
+2026-08-08T14:39:43.578551 - Fetching batch start=300 limit=100...
+2026-08-08T14:39:43.847520 - Fetching batch start=400 limit=100...
+2026-08-08T14:39:43.847804 - Fetching batch start=400 limit=100...
+2026-08-08T14:39:43.964297 - Fetched 428 activities.
+2026-08-08T14:40:25.513781 - Fetching daily: 2026-07-09
+2026-08-08T14:40:25.514521 - Fetching daily: 2026-07-09
+2026-08-08T14:40:26.291339 - Fetching daily: 2026-07-10
+2026-08-08T14:40:26.291872 - Fetching daily: 2026-07-10
+2026-08-08T14:40:26.935990 - Fetching daily: 2026-07-11
+2026-08-08T14:40:26.936556 - Fetching daily: 2026-07-11
+2026-08-08T14:40:27.697733 - Fetching daily: 2026-07-12
+2026-08-08T14:40:27.698035 - Fetching daily: 2026-07-12
+2026-08-08T14:40:28.266635 - Fetching daily: 2026-07-13
+2026-08-08T14:40:28.266873 - Fetching daily: 2026-07-13
+2026-08-08T14:40:28.917231 - Fetching daily: 2026-07-14
+2026-08-08T14:40:28.917783 - Fetching daily: 2026-07-14
+2026-08-08T14:40:29.858009 - Fetching daily: 2026-07-15
+2026-08-08T14:40:29.858317 - Fetching daily: 2026-07-15
+2026-08-08T14:40:31.372674 - Fetching daily: 2026-07-16
+2026-08-08T14:40:31.372851 - Fetching daily: 2026-07-16
+2026-08-08T14:40:32.046582 - Fetching daily: 2026-07-17
+2026-08-08T14:40:32.046853 - Fetching daily: 2026-07-17
+2026-08-08T14:40:32.993937 - Fetching daily: 2026-07-18
+2026-08-08T14:40:32.994220 - Fetching daily: 2026-07-18
+2026-08-08T14:40:33.714522 - Fetching daily: 2026-07-19
+2026-08-08T14:40:33.714960 - Fetching daily: 2026-07-19
+2026-08-08T14:40:34.430439 - Fetching daily: 2026-07-20
+2026-08-08T14:40:34.430901 - Fetching daily: 2026-07-20
+2026-08-08T14:40:35.141848 - Fetching daily: 2026-07-21
+2026-08-08T14:40:35.142376 - Fetching daily: 2026-07-21
+2026-08-08T14:40:36.001026 - Fetching daily: 2026-07-22
+2026-08-08T14:40:36.001566 - Fetching daily: 2026-07-22
+2026-08-08T14:40:37.308877 - Fetching daily: 2026-07-23
+2026-08-08T14:40:37.309044 - Fetching daily: 2026-07-23
+2026-08-08T14:40:38.471918 - Fetching daily: 2026-07-24
+2026-08-08T14:40:38.472518 - Fetching daily: 2026-07-24
+2026-08-08T14:40:39.146646 - Fetching daily: 2026-07-25
+2026-08-08T14:40:39.147106 - Fetching daily: 2026-07-25
+2026-08-08T14:40:39.900535 - Fetching daily: 2026-07-26
+2026-08-08T14:40:39.900726 - Fetching daily: 2026-07-26
+2026-08-08T14:40:40.593202 - Fetching daily: 2026-07-27
+2026-08-08T14:40:40.593773 - Fetching daily: 2026-07-27
+2026-08-08T14:40:41.241451 - Fetching daily: 2026-07-28
+2026-08-08T14:40:41.241782 - Fetching daily: 2026-07-28
+2026-08-08T14:40:41.988171 - Fetching daily: 2026-07-29
+2026-08-08T14:40:41.988349 - Fetching daily: 2026-07-29
+2026-08-08T14:40:43.340478 - Fetching daily: 2026-07-30
+2026-08-08T14:40:43.340959 - Fetching daily: 2026-07-30
+2026-08-08T14:40:43.975879 - Fetching daily: 2026-07-31
+2026-08-08T14:40:43.976179 - Fetching daily: 2026-07-31
+2026-08-08T14:40:44.559724 - Fetching daily: 2026-08-01
+2026-08-08T14:40:44.560301 - Fetching daily: 2026-08-01
+2026-08-08T14:40:45.236171 - Fetching daily: 2026-08-02
+2026-08-08T14:40:45.236443 - Fetching daily: 2026-08-02
+2026-08-08T14:40:45.959494 - Fetching daily: 2026-08-03
+2026-08-08T14:40:45.960068 - Fetching daily: 2026-08-03
+2026-08-08T14:40:46.484656 - Fetching daily: 2026-08-04
+2026-08-08T14:40:46.485204 - Fetching daily: 2026-08-04
+2026-08-08T14:40:47.154947 - Fetching daily: 2026-08-05
+2026-08-08T14:40:47.155278 - Fetching daily: 2026-08-05
+2026-08-08T14:40:48.232639 - Fetching daily: 2026-08-06
+2026-08-08T14:40:48.232898 - Fetching daily: 2026-08-06
+2026-08-08T14:40:48.927546 - Fetching daily: 2026-08-07
+2026-08-08T14:40:48.928478 - Fetching daily: 2026-08-07
+2026-08-08T14:40:49.819808 - Fetching daily: 2026-08-08
+2026-08-08T14:40:49.820110 - Fetching daily: 2026-08-08
+2026-08-08T14:40:51.554923 - Sync Complete.
+2026-08-08T15:34:46.739841 - Starting unified sync for user 41 (Force Resync: False)
+2026-08-08T15:34:50.259287 - Initial/Forced Sync detected. Activities: 5y, Daily: 30d (from 2026-07-09)
+2026-08-08T15:34:50.406299 - Fetching activities from 2021-08-09...
+2026-08-08T15:34:50.406615 - Fetching batch start=0 limit=100...
+2026-08-08T15:34:50.407016 - Fetching batch start=0 limit=100...
+2026-08-08T15:34:50.675362 - Fetching batch start=100 limit=100...
+2026-08-08T15:34:50.675683 - Fetching batch start=100 limit=100...
+2026-08-08T15:34:50.904505 - Fetching batch start=200 limit=100...
+2026-08-08T15:34:50.904731 - Fetching batch start=200 limit=100...
+2026-08-08T15:34:51.184830 - Fetching batch start=300 limit=100...
+2026-08-08T15:34:51.185019 - Fetching batch start=300 limit=100...
+2026-08-08T15:34:51.499953 - Fetching batch start=400 limit=100...
+2026-08-08T15:34:51.500105 - Fetching batch start=400 limit=100...
+2026-08-08T15:34:51.700434 - Fetched 428 activities.
+2026-08-08T15:35:36.643765 - Fetching daily: 2026-07-09
+2026-08-08T15:35:36.645245 - Fetching daily: 2026-07-09
+2026-08-08T15:35:37.452687 - Fetching daily: 2026-07-10
+2026-08-08T15:35:37.452873 - Fetching daily: 2026-07-10
+2026-08-08T15:35:38.204986 - Fetching daily: 2026-07-11
+2026-08-08T15:35:38.205478 - Fetching daily: 2026-07-11
+2026-08-08T15:35:39.043872 - Fetching daily: 2026-07-12
+2026-08-08T15:35:39.044458 - Fetching daily: 2026-07-12
+2026-08-08T15:35:39.650788 - Fetching daily: 2026-07-13
+2026-08-08T15:35:39.651354 - Fetching daily: 2026-07-13
+2026-08-08T15:35:40.457039 - Fetching daily: 2026-07-14
+2026-08-08T15:35:40.457223 - Fetching daily: 2026-07-14
+2026-08-08T15:35:41.371685 - Fetching daily: 2026-07-15
+2026-08-08T15:35:41.372307 - Fetching daily: 2026-07-15
+2026-08-08T15:35:42.978826 - Fetching daily: 2026-07-16
+2026-08-08T15:35:42.978976 - Fetching daily: 2026-07-16
+2026-08-08T15:35:43.747017 - Fetching daily: 2026-07-17
+2026-08-08T15:35:43.747368 - Fetching daily: 2026-07-17
+2026-08-08T15:35:44.649626 - Fetching daily: 2026-07-18
+2026-08-08T15:35:44.649914 - Fetching daily: 2026-07-18
+2026-08-08T15:35:45.412852 - Fetching daily: 2026-07-19
+2026-08-08T15:35:45.413440 - Fetching daily: 2026-07-19
+2026-08-08T15:35:46.227546 - Fetching daily: 2026-07-20
+2026-08-08T15:35:46.227998 - Fetching daily: 2026-07-20
+2026-08-08T15:35:46.958219 - Fetching daily: 2026-07-21
+2026-08-08T15:35:46.958801 - Fetching daily: 2026-07-21
+2026-08-08T15:35:47.624247 - Fetching daily: 2026-07-22
+2026-08-08T15:35:47.624733 - Fetching daily: 2026-07-22
+2026-08-08T15:35:48.946158 - Fetching daily: 2026-07-23
+2026-08-08T15:35:48.946319 - Fetching daily: 2026-07-23
+2026-08-08T15:35:49.998803 - Fetching daily: 2026-07-24
+2026-08-08T15:35:49.998988 - Fetching daily: 2026-07-24
+2026-08-08T15:35:50.940824 - Fetching daily: 2026-07-25
+2026-08-08T15:35:50.941403 - Fetching daily: 2026-07-25
+2026-08-08T15:35:51.604384 - Fetching daily: 2026-07-26
+2026-08-08T15:35:51.604945 - Fetching daily: 2026-07-26
+2026-08-08T15:35:52.413675 - Fetching daily: 2026-07-27
+2026-08-08T15:35:52.414163 - Fetching daily: 2026-07-27
+2026-08-08T15:35:53.194350 - Fetching daily: 2026-07-28
+2026-08-08T15:35:53.194559 - Fetching daily: 2026-07-28
+2026-08-08T15:35:53.783871 - Fetching daily: 2026-07-29
+2026-08-08T15:35:53.784122 - Fetching daily: 2026-07-29
+2026-08-08T15:35:55.361758 - Fetching daily: 2026-07-30
+2026-08-08T15:35:55.362012 - Fetching daily: 2026-07-30
+2026-08-08T15:35:55.953264 - Fetching daily: 2026-07-31
+2026-08-08T15:35:55.953721 - Fetching daily: 2026-07-31
+2026-08-08T15:35:56.481402 - Fetching daily: 2026-08-01
+2026-08-08T15:35:56.481872 - Fetching daily: 2026-08-01
+2026-08-08T15:35:57.310555 - Fetching daily: 2026-08-02
+2026-08-08T15:35:57.311056 - Fetching daily: 2026-08-02
+2026-08-08T15:35:57.852038 - Fetching daily: 2026-08-03
+2026-08-08T15:35:57.852247 - Fetching daily: 2026-08-03
+2026-08-08T15:35:58.367161 - Fetching daily: 2026-08-04
+2026-08-08T15:35:58.367741 - Fetching daily: 2026-08-04
+2026-08-08T15:35:59.035167 - Fetching daily: 2026-08-05
+2026-08-08T15:35:59.035364 - Fetching daily: 2026-08-05
+2026-08-08T15:35:59.982836 - Fetching daily: 2026-08-06
+2026-08-08T15:35:59.982986 - Fetching daily: 2026-08-06
+2026-08-08T15:36:00.601459 - Fetching daily: 2026-08-07
+2026-08-08T15:36:00.601693 - Fetching daily: 2026-08-07
+2026-08-08T15:36:01.430755 - Fetching daily: 2026-08-08
+2026-08-08T15:36:01.431616 - Fetching daily: 2026-08-08
+2026-08-08T15:36:03.312662 - Sync Complete.
+2026-08-08T16:36:30.008590 - Starting unified sync for user 127 (Force Resync: False)
+2026-08-08T16:36:34.612101 - Initial/Forced Sync detected. Activities: 5y, Daily: 30d (from 2026-07-09)
+2026-08-08T16:36:34.762179 - Fetching activities from 2021-08-09...
+2026-08-08T16:36:34.762404 - Fetching batch start=0 limit=100...
+2026-08-08T16:36:34.762511 - Fetching batch start=0 limit=100...
+2026-08-08T16:36:35.061258 - Fetching batch start=100 limit=100...
+2026-08-08T16:36:35.061497 - Fetching batch start=100 limit=100...
+2026-08-08T16:36:35.273879 - Fetching batch start=200 limit=100...
+2026-08-08T16:36:35.274212 - Fetching batch start=200 limit=100...
+2026-08-08T16:36:35.494174 - Fetching batch start=300 limit=100...
+2026-08-08T16:36:35.494469 - Fetching batch start=300 limit=100...
+2026-08-08T16:36:35.687695 - Fetching batch start=400 limit=100...
+2026-08-08T16:36:35.687952 - Fetching batch start=400 limit=100...
+2026-08-08T16:36:35.954104 - Fetched 428 activities.
+2026-08-08T16:37:20.137317 - Fetching daily: 2026-07-09
+2026-08-08T16:37:20.138885 - Fetching daily: 2026-07-09
+2026-08-08T16:37:20.889682 - Fetching daily: 2026-07-10
+2026-08-08T16:37:20.890262 - Fetching daily: 2026-07-10
+2026-08-08T16:37:21.565550 - Fetching daily: 2026-07-11
+2026-08-08T16:37:21.566143 - Fetching daily: 2026-07-11
+2026-08-08T16:37:22.381054 - Fetching daily: 2026-07-12
+2026-08-08T16:37:22.381596 - Fetching daily: 2026-07-12
+2026-08-08T16:37:23.221096 - Fetching daily: 2026-07-13
+2026-08-08T16:37:23.221254 - Fetching daily: 2026-07-13
+2026-08-08T16:37:23.891671 - Fetching daily: 2026-07-14
+2026-08-08T16:37:23.892269 - Fetching daily: 2026-07-14
+2026-08-08T16:37:24.785547 - Fetching daily: 2026-07-15
+2026-08-08T16:37:24.785801 - Fetching daily: 2026-07-15
+2026-08-08T16:37:26.497694 - Fetching daily: 2026-07-16
+2026-08-08T16:37:26.497867 - Fetching daily: 2026-07-16
+2026-08-08T16:37:27.165625 - Fetching daily: 2026-07-17
+2026-08-08T16:37:27.166607 - Fetching daily: 2026-07-17
+2026-08-08T16:37:27.998569 - Fetching daily: 2026-07-18
+2026-08-08T16:37:27.998784 - Fetching daily: 2026-07-18
+2026-08-08T16:37:28.614708 - Fetching daily: 2026-07-19
+2026-08-08T16:37:28.615270 - Fetching daily: 2026-07-19
+2026-08-08T16:37:29.260667 - Fetching daily: 2026-07-20
+2026-08-08T16:37:29.261180 - Fetching daily: 2026-07-20
+2026-08-08T16:37:30.049200 - Fetching daily: 2026-07-21
+2026-08-08T16:37:30.049829 - Fetching daily: 2026-07-21
+2026-08-08T16:37:30.708581 - Fetching daily: 2026-07-22
+2026-08-08T16:37:30.709146 - Fetching daily: 2026-07-22
+2026-08-08T16:37:32.070974 - Fetching daily: 2026-07-23
+2026-08-08T16:37:32.071103 - Fetching daily: 2026-07-23
+2026-08-08T16:37:32.871554 - Fetching daily: 2026-07-24
+2026-08-08T16:37:32.872178 - Fetching daily: 2026-07-24
+2026-08-08T16:37:33.476712 - Fetching daily: 2026-07-25
+2026-08-08T16:37:33.477176 - Fetching daily: 2026-07-25
+2026-08-08T16:37:34.154038 - Fetching daily: 2026-07-26
+2026-08-08T16:37:34.154625 - Fetching daily: 2026-07-26
+2026-08-08T16:37:34.836477 - Fetching daily: 2026-07-27
+2026-08-08T16:37:34.837099 - Fetching daily: 2026-07-27
+2026-08-08T16:37:35.444334 - Fetching daily: 2026-07-28
+2026-08-08T16:37:35.444503 - Fetching daily: 2026-07-28
+2026-08-08T16:37:36.138078 - Fetching daily: 2026-07-29
+2026-08-08T16:37:36.138265 - Fetching daily: 2026-07-29
+2026-08-08T16:37:37.548197 - Fetching daily: 2026-07-30
+2026-08-08T16:37:37.548349 - Fetching daily: 2026-07-30
+2026-08-08T16:37:38.132638 - Fetching daily: 2026-07-31
+2026-08-08T16:37:38.133207 - Fetching daily: 2026-07-31
+2026-08-08T16:37:38.866272 - Fetching daily: 2026-08-01
+2026-08-08T16:37:38.866876 - Fetching daily: 2026-08-01
+2026-08-08T16:37:39.535053 - Fetching daily: 2026-08-02
+2026-08-08T16:37:39.535670 - Fetching daily: 2026-08-02
+2026-08-08T16:37:40.198563 - Fetching daily: 2026-08-03
+2026-08-08T16:37:40.199159 - Fetching daily: 2026-08-03
+2026-08-08T16:37:40.713658 - Fetching daily: 2026-08-04
+2026-08-08T16:37:40.713843 - Fetching daily: 2026-08-04
+2026-08-08T16:37:41.492771 - Fetching daily: 2026-08-05
+2026-08-08T16:37:41.493416 - Fetching daily: 2026-08-05
+2026-08-08T16:37:42.474749 - Fetching daily: 2026-08-06
+2026-08-08T16:37:42.475008 - Fetching daily: 2026-08-06
+2026-08-08T16:37:43.207495 - Fetching daily: 2026-08-07
+2026-08-08T16:37:43.208061 - Fetching daily: 2026-08-07
+2026-08-08T16:37:44.114275 - Fetching daily: 2026-08-08
+2026-08-08T16:37:44.114929 - Fetching daily: 2026-08-08
+2026-08-08T16:37:45.837055 - Sync Complete.
+2026-08-08T18:16:47.342339 - Starting unified sync for user 128 (Force Resync: False)
+2026-08-08T18:16:51.875884 - Initial/Forced Sync detected. Activities: 5y, Daily: 30d (from 2026-07-09)
+2026-08-08T18:16:52.013589 - Fetching activities from 2021-08-09...
+2026-08-08T18:16:52.014052 - Fetching batch start=0 limit=100...
+2026-08-08T18:16:52.014622 - Fetching batch start=0 limit=100...
+2026-08-08T18:16:52.277790 - Fetching batch start=100 limit=100...
+2026-08-08T18:16:52.278006 - Fetching batch start=100 limit=100...
+2026-08-08T18:16:52.488170 - Fetching batch start=200 limit=100...
+2026-08-08T18:16:52.488384 - Fetching batch start=200 limit=100...
+2026-08-08T18:16:52.687935 - Fetching batch start=300 limit=100...
+2026-08-08T18:16:52.688152 - Fetching batch start=300 limit=100...
+2026-08-08T18:16:52.875568 - Fetching batch start=400 limit=100...
+2026-08-08T18:16:52.875846 - Fetching batch start=400 limit=100...
+2026-08-08T18:16:53.012024 - Fetched 428 activities.
+2026-08-08T18:17:38.027072 - Fetching daily: 2026-07-09
+2026-08-08T18:17:38.029588 - Fetching daily: 2026-07-09
+2026-08-08T18:17:38.659309 - Fetching daily: 2026-07-10
+2026-08-08T18:17:38.659566 - Fetching daily: 2026-07-10
+2026-08-08T18:17:39.282829 - Fetching daily: 2026-07-11
+2026-08-08T18:17:39.283388 - Fetching daily: 2026-07-11
+2026-08-08T18:17:40.127615 - Fetching daily: 2026-07-12
+2026-08-08T18:17:40.128234 - Fetching daily: 2026-07-12
+2026-08-08T18:17:41.040464 - Fetching daily: 2026-07-13
+2026-08-08T18:17:41.041064 - Fetching daily: 2026-07-13
+2026-08-08T18:17:41.684226 - Fetching daily: 2026-07-14
+2026-08-08T18:17:41.684892 - Fetching daily: 2026-07-14
+2026-08-08T18:17:42.459435 - Fetching daily: 2026-07-15
+2026-08-08T18:17:42.460028 - Fetching daily: 2026-07-15
+2026-08-08T18:17:44.324077 - Fetching daily: 2026-07-16
+2026-08-08T18:17:44.324244 - Fetching daily: 2026-07-16
+2026-08-08T18:17:44.934048 - Fetching daily: 2026-07-17
+2026-08-08T18:17:44.934251 - Fetching daily: 2026-07-17
+2026-08-08T18:17:45.743840 - Fetching daily: 2026-07-18
+2026-08-08T18:17:45.744431 - Fetching daily: 2026-07-18
+2026-08-08T18:17:46.795902 - Fetching daily: 2026-07-19
+2026-08-08T18:17:46.796416 - Fetching daily: 2026-07-19
+2026-08-08T18:17:47.489902 - Fetching daily: 2026-07-20
+2026-08-08T18:17:47.490374 - Fetching daily: 2026-07-20
+2026-08-08T18:17:48.217397 - Fetching daily: 2026-07-21
+2026-08-08T18:17:48.217651 - Fetching daily: 2026-07-21
+2026-08-08T18:17:48.893398 - Fetching daily: 2026-07-22
+2026-08-08T18:17:48.893961 - Fetching daily: 2026-07-22
+2026-08-08T18:17:50.278876 - Fetching daily: 2026-07-23
+2026-08-08T18:17:50.279036 - Fetching daily: 2026-07-23
+2026-08-08T18:17:51.124246 - Fetching daily: 2026-07-24
+2026-08-08T18:17:51.124655 - Fetching daily: 2026-07-24
+2026-08-08T18:17:51.746225 - Fetching daily: 2026-07-25
+2026-08-08T18:17:51.746766 - Fetching daily: 2026-07-25
+2026-08-08T18:17:52.382986 - Fetching daily: 2026-07-26
+2026-08-08T18:17:52.383207 - Fetching daily: 2026-07-26
+2026-08-08T18:17:53.246942 - Fetching daily: 2026-07-27
+2026-08-08T18:17:53.247466 - Fetching daily: 2026-07-27
+2026-08-08T18:17:53.839271 - Fetching daily: 2026-07-28
+2026-08-08T18:17:53.839496 - Fetching daily: 2026-07-28
+2026-08-08T18:17:54.503281 - Fetching daily: 2026-07-29
+2026-08-08T18:17:54.503495 - Fetching daily: 2026-07-29
+2026-08-08T18:17:56.016650 - Fetching daily: 2026-07-30
+2026-08-08T18:17:56.016926 - Fetching daily: 2026-07-30
+2026-08-08T18:17:56.627845 - Fetching daily: 2026-07-31
+2026-08-08T18:17:56.628059 - Fetching daily: 2026-07-31
+2026-08-08T18:17:57.165666 - Fetching daily: 2026-08-01
+2026-08-08T18:17:57.166149 - Fetching daily: 2026-08-01
+2026-08-08T18:17:57.881348 - Fetching daily: 2026-08-02
+2026-08-08T18:17:57.881929 - Fetching daily: 2026-08-02
+2026-08-08T18:17:58.431035 - Fetching daily: 2026-08-03
+2026-08-08T18:17:58.431604 - Fetching daily: 2026-08-03
+2026-08-08T18:17:58.942125 - Fetching daily: 2026-08-04
+2026-08-08T18:17:58.942403 - Fetching daily: 2026-08-04
+2026-08-08T18:17:59.620851 - Fetching daily: 2026-08-05
+2026-08-08T18:17:59.620965 - Fetching daily: 2026-08-05
+2026-08-08T18:18:00.748784 - Fetching daily: 2026-08-06
+2026-08-08T18:18:00.749123 - Fetching daily: 2026-08-06
+2026-08-08T18:18:01.522228 - Fetching daily: 2026-08-07
+2026-08-08T18:18:01.522784 - Fetching daily: 2026-08-07
+2026-08-08T18:18:02.419952 - Fetching daily: 2026-08-08
+2026-08-08T18:18:02.421021 - Fetching daily: 2026-08-08
+2026-08-08T18:18:04.415490 - Sync Complete.
+2026-08-08T23:08:15.767043 - Starting unified sync for user 131 (Force Resync: False)
+2026-08-08T23:08:16.104594 - Garmin session not available for user 131, skipping.
+2026-08-08T23:08:42.303765 - Starting unified sync for user 137 (Force Resync: False)
+2026-08-08T23:08:42.666489 - Garmin session not available for user 137, skipping.
+2026-08-08T23:08:47.299345 - Starting unified sync for user 137 (Force Resync: False)
+2026-08-08T23:08:47.697523 - Garmin session not available for user 137, skipping.
+2026-08-08T23:09:02.837971 - Starting unified sync for user 140 (Force Resync: False)
+2026-08-08T23:09:02.981489 - CRITICAL SYNC ERROR: Server disconnected
+2026-08-08T23:09:16.982239 - Starting unified sync for user 146 (Force Resync: False)
+2026-08-08T23:09:17.506797 - Garmin session not available for user 146, skipping.
+2026-08-08T23:09:23.733663 - Starting unified sync for user 146 (Force Resync: False)
+2026-08-08T23:09:23.981707 - Garmin session not available for user 146, skipping.
+2026-08-09T11:23:07.495897 - Starting unified sync for user 4 (Force Resync: False)
+2026-08-09T11:23:07.496693 - Garmin session not available for user 4, skipping.
+2026-08-09T11:23:09.926199 - Starting unified sync for user 4 (Force Resync: False)
+2026-08-09T11:23:09.927325 - Garmin session not available for user 4, skipping.
+2026-08-09T11:23:18.637638 - Starting unified sync for user 4 (Force Resync: False)
+2026-08-09T11:23:18.638125 - Garmin session not available for user 4, skipping.
+2026-08-09T11:23:21.249996 - Starting unified sync for user 4 (Force Resync: False)
+2026-08-09T11:23:21.250538 - Garmin session not available for user 4, skipping.
+2026-08-09T11:23:21.324775 - Starting unified sync for user 4 (Force Resync: False)
+2026-08-09T11:23:21.325317 - Garmin session not available for user 4, skipping.
+2026-08-09T11:23:23.856312 - Starting unified sync for user 4 (Force Resync: False)
+2026-08-09T11:23:23.856562 - Garmin session not available for user 4, skipping.
+2026-08-09T11:32:38.409410 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T11:32:38.419404 - Garmin session not available for user 6, skipping.
+2026-08-09T11:32:38.689393 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T11:32:48.402571 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T11:32:48.410508 - Garmin session not available for user 6, skipping.
+2026-08-09T11:32:48.685522 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T11:32:58.881116 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T11:32:58.887787 - Garmin session not available for user 6, skipping.
+2026-08-09T11:32:59.139342 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T11:33:02.687445 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T11:33:02.694634 - Garmin session not available for user 6, skipping.
+2026-08-09T11:33:02.985127 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T11:33:02.996877 - Garmin session not available for user 8, skipping.
+2026-08-09T11:33:03.428934 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T11:33:03.429129 - Garmin session not available for user 11, skipping.
+2026-08-09T11:33:05.702960 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T11:33:05.703528 - Garmin session not available for user 11, skipping.
+2026-08-09T11:33:20.135561 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T11:33:20.143615 - Garmin session not available for user 6, skipping.
+2026-08-09T11:33:20.400525 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T11:33:20.414444 - Garmin session not available for user 8, skipping.
+2026-08-09T11:33:20.864985 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T11:33:20.865206 - Garmin session not available for user 11, skipping.
+2026-08-09T11:33:23.271088 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T11:33:23.271701 - Garmin session not available for user 11, skipping.
+2026-08-09T11:33:44.648189 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T11:33:44.656365 - Garmin session not available for user 6, skipping.
+2026-08-09T11:33:44.903449 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T11:33:44.913144 - Garmin session not available for user 8, skipping.
+2026-08-09T11:33:45.342648 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T11:33:45.342962 - Garmin session not available for user 11, skipping.
+2026-08-09T11:33:47.711124 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T11:33:47.711821 - Garmin session not available for user 11, skipping.
+2026-08-09T12:03:36.760671 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T12:03:36.769215 - Garmin session not available for user 6, skipping.
+2026-08-09T12:03:37.013662 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T12:03:37.022610 - Garmin session not available for user 8, skipping.
+2026-08-09T12:03:37.459349 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T12:03:37.459528 - Garmin session not available for user 11, skipping.
+2026-08-09T12:03:39.896007 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T12:03:39.897101 - Garmin session not available for user 11, skipping.
+2026-08-09T12:04:15.990388 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T12:04:15.998726 - Garmin session not available for user 6, skipping.
+2026-08-09T12:04:16.248581 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T12:04:16.258560 - Garmin session not available for user 8, skipping.
+2026-08-09T12:04:16.687683 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T12:04:16.687861 - Garmin session not available for user 11, skipping.
+2026-08-09T12:04:19.092581 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T12:04:19.093278 - Garmin session not available for user 11, skipping.

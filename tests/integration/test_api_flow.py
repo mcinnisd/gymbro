@@ -46,6 +46,21 @@ def test_profile_lifecycle(auth_header):
     fetched_profile = resp.json()["profile"]
     assert fetched_profile["sport_history"] == "Running"
 
+def test_prepopulate_profile(auth_header):
+    resp = requests.post(f"{BASE_URL}/coach/prepopulate", headers=auth_header)
+    assert resp.status_code == 200, f"Prepopulate profile failed: {resp.text}"
+    
+    data = resp.json()
+    assert "age" in data
+    assert "weight" in data
+    assert "height" in data
+    assert "sport_history" in data
+    assert "running_experience" in data
+    assert "weekly_volume" in data
+    assert "resting_hr" in data
+    assert "sleep_hours" in data
+    assert "personal_records" in data
+
 def test_chat_interaction(auth_header):
     # Create Chat
     resp = requests.post(f"{BASE_URL}/chats/", json={"title": "Test Chat"}, headers=auth_header)

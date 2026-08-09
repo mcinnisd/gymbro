@@ -1,11 +1,11 @@
 from datetime import datetime
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Source Priority Ranking (Lower numerical value = higher priority)
-SOURCE_PRIORITY = {
+# Default Source Priority Ranking (Lower numerical value = higher priority)
+DEFAULT_SOURCE_PRIORITY = {
     'garmin': 1,
     'strava': 2,
     'apple_health': 3,
@@ -20,13 +20,21 @@ def parse_iso_datetime(dt_str: str) -> datetime:
     except Exception:
         return datetime.now()
 
-def deduplicate_activities(activities: List[Dict]) -> List[Dict]:
+def get_effective_priority_map(custom_priority: Optional[Dict[str, int]] = None) -> Dict[str, int]:
+    p_map = dict(DEFAULT_SOURCE_PRIORITY)
+    if custom_priority:
+        p_map.update(custom_priority)
+    return p_map
+
+def deduplicate_activities(activities: List[Dict], custom_priority: Optional[Dict[str, int]] = None) -> List[Dict]:
     """
-    Deduplicate activities occurring within +-5 minutes with similar distance/duration.
-    Marks native recording device (Garmin > Strava > Apple Health) as primary.
+    Deduplicate activities occurring within +-5 minutes with similar distance/duration (within 5%).
+    Marks native recording device (Garmin > Strava > Apple Health) as primary unless custom priority is supplied.
     """
     if not activities:
         return []
+
+    priority_map = get_effective_priority_map(custom_priority)
 
     # Sort activities by start_time
     sorted_activities = sorted(activities, key=lambda a: parse_iso_datetime(a.get('start_time', '')))
@@ -59,14 +67,14 @@ def deduplicate_activities(activities: List[Dict]) -> List[Dict]:
             if time_diff_s <= 300:
                 other_dist = other.get('distance_m', 0)
                 # If distance within 5% or both 0
-                if act_dist == 0 or abs(act_dist - other_dist) / max(act_dist, 1) <= 0.08:
+                if act_dist == 0 or abs(act_dist - other_dist) / max(act_dist, 1) <= 0.05:
                     matching_cluster.append(other)
                     used_ids.add(other_id)
             else:
                 break # Sorted by time, so no further matches
 
-        # Select primary source based on SOURCE_PRIORITY
-        matching_cluster.sort(key=lambda x: SOURCE_PRIORITY.get(x.get('source', 'manual'), 99))
+        # Select primary source based on priority_map
+        matching_cluster.sort(key=lambda x: priority_map.get(x.get('source', 'manual'), 99))
         primary_act = dict(matching_cluster[0])
         primary_act['is_primary'] = True
         
@@ -77,19 +85,22 @@ def deduplicate_activities(activities: List[Dict]) -> List[Dict]:
 
     return deduped
 
-def resolve_biometrics_priority(biometrics_list: List[Dict]) -> Dict:
+def resolve_biometrics_priority(biometrics_list: List[Dict], custom_priority: Optional[Dict[str, int]] = None) -> Dict:
     """
     Resolve biometrics from multiple sources using continuous wearable priority hierarchy.
     """
     if not biometrics_list:
         return {}
 
-    # Sort list by SOURCE_PRIORITY
+    priority_map = get_effective_priority_map(custom_priority)
+
+    # Sort list by priority_map
     sorted_sources = sorted(
         biometrics_list,
-        key=lambda x: SOURCE_PRIORITY.get(x.get('raw_source', 'manual'), 99)
+        key=lambda x: priority_map.get(x.get('raw_source', 'manual'), 99)
     )
 
     primary = dict(sorted_sources[0])
     primary['primary_source'] = primary.get('raw_source', 'manual')
     return primary
+

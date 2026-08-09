@@ -1,15 +1,19 @@
 import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
+import Colors from '../../constants/Colors';
 
 interface MarkdownTextProps {
   content: string;
+  isUser?: boolean;
   style?: any;
 }
 
-export const MarkdownText: React.FC<MarkdownTextProps> = ({ content, style }) => {
+export const MarkdownText: React.FC<MarkdownTextProps> = ({ content, isUser = false, style }) => {
   if (!content) return null;
 
-  // Split into lines
+  const textColor = isUser ? '#FFFFFF' : Colors.light.text;
+  const headingColor = isUser ? '#FFFFFF' : Colors.light.primary;
+
   const lines = content.split('\n');
 
   return (
@@ -20,33 +24,30 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ content, style }) =>
           return <View key={lineIdx} style={{ height: 6 }} />;
         }
 
-        // Headings (e.g. ### Heading or ## Heading)
         if (trimmed.startsWith('#')) {
           const headingText = trimmed.replace(/^#+\s*/, '');
           return (
-            <Text key={lineIdx} style={[styles.headingText, style]}>
-              {renderFormattedInline(headingText)}
+            <Text key={lineIdx} style={[styles.headingText, { color: headingColor }, style]}>
+              {renderFormattedInline(headingText, textColor)}
             </Text>
           );
         }
 
-        // Bullet points (e.g. - Bullet or * Bullet)
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           const bulletText = trimmed.substring(2);
           return (
             <View key={lineIdx} style={styles.bulletRow}>
-              <Text style={styles.bulletDot}>•</Text>
-              <Text style={[styles.bulletText, style]}>
-                {renderFormattedInline(bulletText)}
+              <Text style={[styles.bulletDot, { color: isUser ? '#FFFFFF' : Colors.light.secondary }]}>•</Text>
+              <Text style={[styles.bulletText, { color: textColor }, style]}>
+                {renderFormattedInline(bulletText, textColor)}
               </Text>
             </View>
           );
         }
 
-        // Standard Paragraph
         return (
-          <Text key={lineIdx} style={[styles.paragraphText, style]}>
-            {renderFormattedInline(line)}
+          <Text key={lineIdx} style={[styles.paragraphText, { color: textColor }, style]}>
+            {renderFormattedInline(line, textColor)}
           </Text>
         );
       })}
@@ -54,16 +55,14 @@ export const MarkdownText: React.FC<MarkdownTextProps> = ({ content, style }) =>
   );
 };
 
-// Helper function to parse **bold** and *italic* inlines
-const renderFormattedInline = (text: string) => {
-  // Regex splitting on **bold** or *italic*
+const renderFormattedInline = (text: string, defaultColor: string) => {
   const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
 
   return parts.map((part, idx) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       const boldStr = part.slice(2, -2);
       return (
-        <Text key={idx} style={styles.boldText}>
+        <Text key={idx} style={[styles.boldText, { color: defaultColor }]}>
           {boldStr}
         </Text>
       );
@@ -71,12 +70,12 @@ const renderFormattedInline = (text: string) => {
     if (part.startsWith('*') && part.endsWith('*')) {
       const italicStr = part.slice(1, -1);
       return (
-        <Text key={idx} style={styles.italicText}>
+        <Text key={idx} style={[styles.italicText, { color: defaultColor }]}>
           {italicStr}
         </Text>
       );
     }
-    return <Text key={idx}>{part}</Text>;
+    return <Text key={idx} style={{ color: defaultColor }}>{part}</Text>;
   });
 };
 
@@ -85,13 +84,11 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   paragraphText: {
-    color: '#F8FAFC',
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 4,
   },
   headingText: {
-    color: '#00E5FF',
     fontSize: 16,
     fontWeight: 'bold',
     marginVertical: 6,
@@ -103,23 +100,19 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   bulletDot: {
-    color: '#10B981',
     fontSize: 16,
     marginRight: 8,
     lineHeight: 20,
   },
   bulletText: {
-    color: '#F8FAFC',
     fontSize: 14,
     lineHeight: 20,
     flex: 1,
   },
   boldText: {
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   italicText: {
     fontStyle: 'italic',
-    color: '#CBD5E1',
   },
 });
