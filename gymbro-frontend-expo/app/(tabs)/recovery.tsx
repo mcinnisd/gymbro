@@ -15,12 +15,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import RecoveryChart, { RecoveryDataPoint } from '../../components/RecoveryChart';
+import { GarminModal } from '../../components/GarminModal';
 
 export default function RecoveryScreen() {
   const router = useRouter();
   const { authToken, apiUrl } = useContext(AuthContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showGarminModal, setShowGarminModal] = useState(false);
 
   // Journal Form State
   const [energyLevel, setEnergyLevel] = useState<number>(7);
@@ -425,6 +427,31 @@ export default function RecoveryScreen() {
           </LinearGradient>
         </View>
 
+        {/* Device Sync & Garmin Login Modal Trigger */}
+        <View style={styles.deviceSyncBar}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <Ionicons name="watch-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+            <Text style={styles.deviceSyncBarText}>
+              {wearableConnected ? 'Garmin Watch Connected & Synced' : 'Connect Garmin Watch to Auto-Sync Biometrics'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.deviceSyncBarBtn}
+            onPress={() => setShowGarminModal(true)}
+          >
+            <Text style={styles.deviceSyncBarBtnText}>
+              {wearableConnected ? 'Re-Sync' : 'Connect Garmin'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Garmin Connection Modal */}
+        <GarminModal
+          visible={showGarminModal}
+          onClose={() => setShowGarminModal(false)}
+          onSuccess={() => fetchAnalyticsData()}
+        />
+
         {/* Interactive Layered Trends Analytics Component */}
         <RecoveryChart
           dataPoints={recoveryDataPoints}
@@ -820,5 +847,37 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     alignItems: 'center',
+  },
+  deviceSyncBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  deviceSyncBarText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  deviceSyncBarBtn: {
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  deviceSyncBarBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });
