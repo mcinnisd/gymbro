@@ -183,15 +183,22 @@ def populate_calendar_from_plan(user_id: str):
             return {"error": "User not found"}
         
         user = user_res.data[0]
-        plan = user.get("training_plan")
+        plan = user.get("training_plan") or user.get("training_plan_phased")
         
-        if not plan or "weeks" not in plan:
+        if not plan or not isinstance(plan, dict):
             return {"error": "No structured plan found to populate calendar"}
 
-        # Start from today or next Monday? Let's say next Monday for consistency if it's a "plan"
-        # Or just start from today.
+        weeks_list = plan.get("weeks", [])
+        if not weeks_list and "phases" in plan:
+            for phase in plan.get("phases", []):
+                if isinstance(phase, dict) and "weeks" in phase:
+                    weeks_list.extend(phase["weeks"])
+
+        if not weeks_list:
+            return {"error": "No structured weeks found in plan to populate calendar"}
+
+        # Start from today or next Monday
         start_date = datetime.now(timezone.utc).date()
-        # Find next Monday
         days_ahead = 0 - start_date.weekday()
         if days_ahead <= 0: days_ahead += 7
         next_monday = start_date + timedelta(days=days_ahead)
@@ -205,7 +212,7 @@ def populate_calendar_from_plan(user_id: str):
         }
 
         event_list = []
-        for week in plan.get("weeks", []):
+        for week in weeks_list:
             week_num = week.get("week_number", 1)
             for day_data in week.get("days", []):
                 day_name = day_data.get("day")

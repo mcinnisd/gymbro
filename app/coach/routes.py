@@ -34,6 +34,26 @@ def start_interview_route():
         return jsonify({"error": str(e)}), 500
 
 
+@coach_bp.route("/prepopulate", methods=["POST"])
+@jwt_required()
+def prepopulate_profile_route():
+    """
+    Computes profile prepopulate fields from Garmin & Strava.
+    """
+    try:
+        user_id = get_jwt_identity()
+        from app.coach.prepopulate_service import calculate_prepopulation_data
+        
+        data = calculate_prepopulation_data(user_id)
+        if data:
+            return jsonify(data), 200
+        else:
+            return jsonify({"error": "Failed to calculate prepopulate data."}), 500
+    except Exception as e:
+        logger.error(f"Error in prepopulate_profile_route: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @coach_bp.route("/generate_plan", methods=["POST"])
 @jwt_required()
 def generate_plan():
@@ -115,10 +135,14 @@ def generate_plan():
         )
 
         # 2. Call Plan Service
-        from app.coach.plan_service import generate_baseline_plan
+        from app.coach.plan_service import generate_baseline_plan, populate_calendar_from_plan
         plan_json = generate_baseline_plan(user_id)
 
         if plan_json:
+            try:
+                populate_calendar_from_plan(user_id)
+            except Exception as e:
+                logger.warning(f"Auto populate calendar warning: {e}")
             return jsonify({
                 "message": "Plan generated successfully.",
                 "plan": plan_json
@@ -150,10 +174,14 @@ def organize_plan():
         race_date = user.get("goals", {}).get("next_race_date", "Not specified")
         
         # Call Plan Service
-        from app.coach.plan_service import organize_phased_plan
+        from app.coach.plan_service import organize_phased_plan, populate_calendar_from_plan
         phased_plan = organize_phased_plan(user_id)
 
         if phased_plan:
+            try:
+                populate_calendar_from_plan(user_id)
+            except Exception as e:
+                logger.warning(f"Auto populate calendar warning: {e}")
             return jsonify({
                 "message": "Plan organized into phases successfully.",
                 "phased_plan": phased_plan
