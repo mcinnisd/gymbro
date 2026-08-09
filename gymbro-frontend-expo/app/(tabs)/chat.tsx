@@ -430,7 +430,9 @@ export default function ChatScreen() {
     setInputText('');
 
     // Prepend page context
-    const contextPrompt = `[Context: Fullscreen Onboarding Chat] ${textToSend}`;
+    const contextPrompt = coachStatus === 'interviewing'
+      ? textToSend
+      : `[Context: Coach Chat] ${textToSend}`;
 
     // Optimistically add user message
     const userMsg: Message = {
