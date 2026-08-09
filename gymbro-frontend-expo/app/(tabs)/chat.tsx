@@ -16,6 +16,8 @@ import { AuthContext } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MarkdownText } from '../components/MarkdownText';
+import { DaySelectorWidget } from '../components/DaySelectorWidget';
+import { TrainingVolumeChart } from '../components/TrainingVolumeChart';
 
 interface Message {
   sender: 'user' | 'bot' | 'system';
@@ -1053,8 +1055,10 @@ export default function ChatScreen() {
             </View>
             <Text style={styles.introTitle}>Interview Completed!</Text>
             <Text style={styles.introDesc}>
-              Awesome! Coach Bro has successfully collected all details about your running experience, goals, and schedule. Click below to generate your calendar workout plan.
+              Awesome! Coach Bro has successfully collected all details about your experience, goals, and schedule.
             </Text>
+
+            <TrainingVolumeChart />
 
             {statusMessage !== '' && (
               <View style={styles.planStatusBox}>
@@ -1138,6 +1142,10 @@ export default function ChatScreen() {
                     )}
                   </View>
                 </View>
+
+                {msg.sender === 'bot' && isLastMessage && coachStatus === 'interviewing' && (
+                  <DaySelectorWidget onSelectDays={(formatted) => handleSendMessageText(formatted)} />
+                )}
 
                 {msg.sender === 'bot' && isLastMessage && coachStatus === 'interviewing' && (
                   <View style={styles.quickRepliesContainer}>
