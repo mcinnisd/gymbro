@@ -15,6 +15,7 @@ import { AuthContext } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import Colors from '../../constants/Colors';
 
 interface MealLog {
   id: number;
@@ -764,21 +765,28 @@ export default function NutritionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0E17',
+    backgroundColor: Colors.light.background,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 90, // space for drawer peek
+    paddingBottom: 90,
   },
   calorieCard: {
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.card,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   gradientCard: {
     padding: 20,
+    backgroundColor: '#FFFFFF',
   },
   headerRow: {
     flexDirection: 'row',
@@ -787,25 +795,25 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   cardSubtitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     letterSpacing: 1,
   },
   cardTitle: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: Colors.light.text,
     marginTop: 4,
   },
   cardTarget: {
     fontSize: 14,
     fontWeight: 'normal',
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
   },
   progressBarBg: {
     height: 10,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#E2E8F0',
     borderRadius: 5,
     overflow: 'hidden',
     marginVertical: 10,
@@ -815,7 +823,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   pctLabel: {
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -826,32 +834,32 @@ const styles = StyleSheet.create({
   },
   macroCol: {
     flex: 1,
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.light.card,
     borderRadius: 12,
     padding: 12,
     marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
   },
   macroName: {
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
   },
   macroVal: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: Colors.light.text,
     marginTop: 4,
   },
   macroTarget: {
     fontSize: 10,
-    color: '#64748B',
+    color: Colors.light.mutedText,
     fontWeight: 'normal',
   },
   macroProgressBg: {
     height: 4,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#E2E8F0',
     borderRadius: 2,
     marginTop: 8,
     overflow: 'hidden',
@@ -861,17 +869,17 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   actionsContainer: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.light.card,
     borderRadius: 16,
     padding: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: Colors.light.text,
     marginBottom: 12,
   },
   actionButtonsRow: {
@@ -883,12 +891,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginRight: 8,
+    backgroundColor: Colors.light.primary,
   },
   scanBtnGradient: {
     height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.light.primary,
   },
   scanBtnText: {
     color: '#FFFFFF',
@@ -899,16 +909,16 @@ const styles = StyleSheet.create({
   manualBtn: {
     flex: 1,
     height: 48,
-    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    backgroundColor: '#EFF6FF',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.3)',
+    borderColor: Colors.light.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
   manualBtnText: {
-    color: '#00E5FF',
+    color: Colors.light.primary,
     fontWeight: 'bold',
     fontSize: 14,
   },
@@ -920,7 +930,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   galleryBtnText: {
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -929,7 +939,7 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   loaderText: {
-    color: '#00E5FF',
+    color: Colors.light.primary,
     fontSize: 13,
     fontWeight: '600',
     marginTop: 8,
@@ -938,21 +948,21 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   emptyMealsText: {
-    color: '#64748B',
+    color: Colors.light.mutedText,
     fontSize: 13,
     fontStyle: 'italic',
     paddingLeft: 4,
   },
   mealItem: {
     flexDirection: 'row',
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.light.card,
     padding: 12,
     borderRadius: 12,
     marginBottom: 10,
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
   },
   mealLeft: {
     flexDirection: 'row',
@@ -962,7 +972,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -970,11 +980,11 @@ const styles = StyleSheet.create({
   mealName: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: Colors.light.text,
   },
   mealTime: {
     fontSize: 11,
-    color: '#64748B',
+    color: Colors.light.mutedText,
     marginTop: 2,
   },
   mealRight: {
@@ -983,16 +993,16 @@ const styles = StyleSheet.create({
   mealCalories: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#EF4444',
+    color: Colors.light.danger,
   },
   mealMacros: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     marginTop: 2,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
     justifyContent: 'flex-end',
   },
   modalScroll: {
@@ -1000,11 +1010,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.light.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
     padding: 20,
     maxHeight: '90%',
   },
@@ -1017,7 +1027,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: Colors.light.text,
   },
   foodPreview: {
     width: '100%',
@@ -1026,29 +1036,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   questionsContainer: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.2)',
+    borderColor: Colors.light.border,
   },
   questionsTitle: {
-    color: '#00E5FF',
+    color: Colors.light.primary,
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 4,
   },
   questionsSubtitle: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     marginBottom: 12,
   },
   questionBlock: {
     marginBottom: 12,
   },
   questionText: {
-    color: '#F8FAFC',
+    color: Colors.light.text,
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 6,
@@ -1058,56 +1068,56 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   optionChip: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 8,
     marginRight: 6,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
   },
   optionChipSelected: {
-    backgroundColor: '#00E5FF',
-    borderColor: '#00E5FF',
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
   },
   optionText: {
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     fontSize: 11,
   },
   optionTextSelected: {
-    color: '#020617',
+    color: '#FFFFFF',
     fontWeight: 'bold',
   },
   inputsForm: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
   },
   formSectionTitle: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: Colors.light.text,
     marginBottom: 10,
   },
   inputLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     marginBottom: 4,
     marginTop: 6,
   },
   textInput: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
     borderRadius: 8,
     height: 40,
     paddingHorizontal: 12,
-    color: '#F8FAFC',
+    color: Colors.light.text,
     fontSize: 14,
     width: '100%',
   },
@@ -1125,7 +1135,7 @@ const styles = StyleSheet.create({
   },
   confidenceLabel: {
     fontSize: 11,
-    color: '#64748B',
+    color: Colors.light.mutedText,
   },
   confidenceValue: {
     fontSize: 11,
@@ -1133,7 +1143,7 @@ const styles = StyleSheet.create({
   },
   logSubmitBtn: {
     height: 48,
-    backgroundColor: '#6C63FF',
+    backgroundColor: Colors.light.primary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1146,10 +1156,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   emptyMealsCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.light.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.light.border,
     padding: 20,
     alignItems: 'center',
     marginTop: 8,
@@ -1157,7 +1167,7 @@ const styles = StyleSheet.create({
   emptyScanBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6C63FF',
+    backgroundColor: Colors.light.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,

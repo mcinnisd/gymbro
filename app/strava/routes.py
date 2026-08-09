@@ -1,12 +1,12 @@
 # app/strava/routes.py
-from flask import Blueprint, redirect, request, jsonify
+from flask import Blueprint, redirect, request, jsonify, render_template_string
 from flask_jwt_extended import jwt_required, get_jwt_identity
-import requests
-from datetime import datetime, timezone
+import logging
 from app.supabase_client import supabase
 from app.config import Config
 
 strava_bp = Blueprint('strava', __name__)
+logger = logging.getLogger(__name__)
 
 def token_required(f):
     from functools import wraps
@@ -55,10 +55,12 @@ def exchange_token():
 
     redirect_url = handle_strava_oauth_callback(code, state, error)
 
+    # If requested via API / JSON
     if request.headers.get("Accept") == "application/json" or request.args.get("json") == "true":
         return jsonify({
             "redirect_url": redirect_url,
             "status": "success" if "status=success" in redirect_url else "error"
         }), 200
 
+    # Default to 302 HTTP redirect for mobile deep-linking and browser flow
     return redirect(redirect_url, code=302)

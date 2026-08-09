@@ -161,19 +161,19 @@ def get_garmin_status():
     """
     user_id = get_jwt_identity()
     try:
-        # Fetch status and goals (where progress is stored)
-        response = supabase.table("users").select("garmin_sync_status", "garmin_last_sync_error", "goals").eq("id", user_id).execute()
+        # Fetch status, garmin_email, and goals
+        response = supabase.table("users").select("garmin_sync_status", "garmin_last_sync_error", "garmin_email", "goals").eq("id", user_id).execute()
         if not response.data:
             return jsonify({"error": "User not found"}), 404
             
         user_data = response.data[0]
         goals = user_data.get("goals") or {}
-        
-        # Extract progress from goals
         progress = goals.get("sync_progress", 0)
+        garmin_connected = bool(user_data.get("garmin_email"))
 
         return jsonify({
-            "garmin_sync_status": user_data.get("garmin_sync_status"),
+            "garmin_connected": garmin_connected,
+            "garmin_sync_status": user_data.get("garmin_sync_status") or ("completed" if garmin_connected else "disconnected"),
             "garmin_last_sync_error": user_data.get("garmin_last_sync_error"),
             "garmin_sync_progress": progress 
         }), 200

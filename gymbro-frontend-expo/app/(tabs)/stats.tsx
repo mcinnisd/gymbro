@@ -635,6 +635,8 @@ const styles = StyleSheet.create({
   deviceInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
   },
   deviceName: {
     fontSize: 14,
