@@ -29,6 +29,73 @@ STEP_MISSIONS = {
     10: "Final Polish: Any last requests before we launch?"
 }
 
+ARCHETYPE_MISSIONS = {
+    "muscle_strength": {
+        "total_steps": 5,
+        "missions": {
+            1: "Goal & Target Lifts: Confirm specific hypertrophy or strength targets (e.g., bench/squat/deadlift PRs or target muscle groups).",
+            2: "Equipment & Location: Audit available gear (commercial gym, dumbbells-only, home rack, bodyweight).",
+            3: "Split & Schedule: Confirm weekly lifting frequency (e.g., 3-5 days/week PPL, Upper/Lower, or Full Body).",
+            4: "Plan Preview: Generate tailored strength workout routine and preview split.",
+            5: "Calendar & Commit: Confirm writing routine to calendar and initial workout launch."
+        }
+    },
+    "fat_loss": {
+        "total_steps": 5,
+        "missions": {
+            1: "Goal & Rate: Confirm recomposition vs weight loss target and weekly target rate.",
+            2: "Nutrition & Deficit: Audit key nutrition habits and macro tracking preferences.",
+            3: "Cardio & Daily Movement: Determine daily step goal and preferred cardio modality (Zone 2 incline walk, cycling, running).",
+            4: "Plan Preview: Generate caloric deficit targets, macro splits, and movement routine.",
+            5: "Calendar & Commit: Confirm schedule and launch."
+        }
+    },
+    "endurance_running": {
+        "total_steps": 5,
+        "missions": {
+            1: "Goal & Race: Confirm race distance, target date, and time PR.",
+            2: "Data Reality Check: CITE recent Garmin/Strava weekly volume & resting HR baselines.",
+            3: "Schedule & Long Run: Determine weekly running days and preferred long run day.",
+            4: "Plan Preview: Generate base building/phased running plan.",
+            5: "Calendar & Commit: Confirm writing plan to calendar."
+        }
+    },
+    "longevity_energy": {
+        "total_steps": 4,
+        "missions": {
+            1: "Goal & Health Priorities: Focus on sleep quality, daily energy, stress management, or metabolic health.",
+            2: "Health Sync Audit: CITE Garmin sleep scores, HRV, and RHR trends.",
+            3: "Daily Protocol: Confirm daily movement, bedtime routine, and recovery habits.",
+            4: "Protocol Launch: Finalize daily wellness checklist and calendar reminders."
+        }
+    },
+    "hybrid_fitness": {
+        "total_steps": 5,
+        "missions": {
+            1: "Goal Balance: Confirm strength vs running/cardio priority weighting.",
+            2: "Multi-Modal Audit: Audit lifting experience and running volume together.",
+            3: "Hybrid Schedule: Determine combined weekly split (e.g., 3 lifts + 2 runs) to manage fatigue.",
+            4: "Plan Preview: Generate integrated strength + running plan.",
+            5: "Calendar & Commit: Write hybrid schedule to calendar."
+        }
+    },
+    "custom_open_ended": {
+        "total_steps": 4,
+        "missions": {
+            1: "Free Goal Intake: Explore user's custom free-form goal input.",
+            2: "Constraint Discovery: Adaptive slot-filling for schedule, equipment, and medical/injury constraints.",
+            3: "Tailored Plan Preview: Generate custom routine based on free-form intake.",
+            4: "Calendar & Commit: Confirm routine launch."
+        }
+    }
+}
+
+
+def get_mission(archetype: str, step: int) -> str:
+    archetype_data = ARCHETYPE_MISSIONS.get(archetype, ARCHETYPE_MISSIONS["endurance_running"])
+    return archetype_data["missions"].get(step, STEP_MISSIONS.get(step, "Continue the coaching conversation."))
+
+
 
 def _generate_dynamic_response(user_id: str, step: int, context: str) -> str:
     """Generates a natural coach response for a specific step/instruction."""
@@ -209,12 +276,16 @@ def process_answer(user_id: str, answer: str, chat_id: str = None) -> Dict[str, 
 def get_next_question(user_id: str, chat_id: str = None) -> Dict[str, Any]:
     """
     The main engine for the dynamic interview. 
-    Analyzes history and decides whether to advance or follow up.
+    Analyzes history and decides whether to advance or follow up based on user archetype.
     """
     try:
         user_res = supabase.table("users").select("*").eq("id", user_id).execute()
         user = user_res.data[0]
         current_step = user.get("interview_step", 1)
+        user_archetype = user.get("archetype") or "endurance_running"
+        
+        archetype_config = ARCHETYPE_MISSIONS.get(user_archetype, ARCHETYPE_MISSIONS["endurance_running"])
+        total_steps = archetype_config["total_steps"]
         
         # Fetch history
         chat_res = supabase.table("chats").select("messages").eq("id", chat_id).execute()
@@ -222,7 +293,7 @@ def get_next_question(user_id: str, chat_id: str = None) -> Dict[str, Any]:
         
         last_message = history[-1]["content"] if history else ""
         
-        mission = STEP_MISSIONS.get(current_step, "Continue the coaching conversation.")
+        mission = get_mission(user_archetype, current_step)
         
         # 1. Ask the supervisor if current step is done
         progress_analysis = _analyze_progress(user_id, current_step, history)
@@ -230,36 +301,33 @@ def get_next_question(user_id: str, chat_id: str = None) -> Dict[str, Any]:
         should_advance = progress_analysis.get("is_complete", False)
         llm_response = progress_analysis.get("response", "")
         
-        if should_advance and current_step < 10:
-            has_connected_data = bool(user.get("garmin_email")) or bool(user.get("strava_access_token"))
-            if current_step == 1 and has_connected_data:
-                current_step = 4
-            else:
-                current_step += 1
+        if should_advance and current_step < total_steps:
+            current_step += 1
             supabase.table("users").update({"interview_step": current_step}).eq("id", user_id).execute()
             
             # Action Steps
-            if current_step == 5:
+            plan_preview_step = total_steps - 1
+            if current_step == plan_preview_step:
                 # Generate Plan
                 from app.coach.plan_service import generate_baseline_plan
-                generate_baseline_plan(user_id)
-            elif current_step == 6:
-                # Organize phases
-                from app.coach.plan_service import organize_phased_plan
-                organize_phased_plan(user_id)
-            elif current_step == 9:
-                # Populate calendar (if they confirmed, supervisor should have marked done)
+                generate_baseline_plan(user_id, archetype=user_archetype)
+            elif current_step == total_steps:
+                # Populate calendar upon final step commitment
                 from app.coach.plan_service import populate_calendar_from_plan
                 populate_calendar_from_plan(user_id)
 
             # Re-generate response for the NEW step
-            new_mission = STEP_MISSIONS.get(current_step)
+            new_mission = get_mission(user_archetype, current_step)
             llm_response = _generate_dynamic_response(user_id, current_step, f"The user has completed the previous step. MISSION SUCCESS. Now move to mission: {new_mission}. Acknowledge their previous answer naturally and enthusiastically.")
+
+        is_complete = (current_step >= total_steps)
+        if is_complete:
+            supabase.table("users").update({"coach_status": "interview_completed"}).eq("id", user_id).execute()
 
         return {
             "success": True,
             "question": llm_response,
-            "is_complete": (current_step == 10),
+            "is_complete": is_complete,
             "step": current_step
         }
 
