@@ -77,27 +77,32 @@ def extract_json_from_text(text: str) -> Optional[Any]:
     """
     if not text or not isinstance(text, str):
         return None
+
+    cleaned = clean_response(text.strip())
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
         
-    # Try finding an array first [ ... ]
-    array_match = re.search(r'\[.*\]', text, re.DOTALL)
-    if array_match:
+    md_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+    if md_match:
         try:
-            return json.loads(array_match.group(0))
+            return json.loads(md_match.group(1).strip())
         except json.JSONDecodeError:
             pass
-            
-    # Try finding an object next { ... }
-    object_match = re.search(r'\{.*\}', text, re.DOTALL)
+
+    object_match = re.search(r'\{[\s\S]*\}', text)
     if object_match:
         try:
             return json.loads(object_match.group(0))
         except json.JSONDecodeError:
             pass
-            
-    # Fallback to direct json.loads of the whole text if no delimiters found
-    try:
-        return json.loads(text.strip())
-    except json.JSONDecodeError:
-        pass
+
+    array_match = re.search(r'\[[\s\S]*\]', text)
+    if array_match:
+        try:
+            return json.loads(array_match.group(0))
+        except json.JSONDecodeError:
+            pass
         
     return None

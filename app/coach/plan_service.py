@@ -15,9 +15,9 @@ from app.utils.helpers import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
-def generate_baseline_plan(user_id: str, context: str = None):
+def generate_baseline_plan(user_id: str, context: str = None, archetype: str = None):
     """
-    Generates a 4-week baseline training plan for the user.
+    Generates a 4-week baseline training plan for the user based on their goal archetype.
     """
     try:
         # Fetch user data
@@ -25,6 +25,8 @@ def generate_baseline_plan(user_id: str, context: str = None):
         if not user_res.data:
             return None
         user = user_res.data[0]
+        
+        target_archetype = archetype or user.get("archetype") or "endurance_running"
 
         # Fetch interview context
         from app.coach.interview_service import get_interview_context
@@ -50,6 +52,7 @@ def generate_baseline_plan(user_id: str, context: str = None):
             "age": user.get("age"),
             "weight": user.get("weight"),
             "height": user.get("height"),
+            "archetype": target_archetype,
             "running_experience": user.get("running_experience"),
             "past_injuries": user.get("past_injuries"),
             "lifestyle": user.get("lifestyle"),
@@ -62,6 +65,18 @@ def generate_baseline_plan(user_id: str, context: str = None):
             activity_summary=activity_summary,
             interview_qa=interview_qa
         )
+        
+        prompt += f"\n\n[GOAL ARCHETYPE]: {target_archetype.upper()}"
+        if target_archetype == "muscle_strength":
+            prompt += "\nSpecial Instructions: Focus on a progressive lifting routine (Push/Pull/Legs, Upper/Lower, or Full Body) with set/rep targets and progressive overload rules."
+        elif target_archetype == "fat_loss":
+            prompt += "\nSpecial Instructions: Focus on caloric deficit, high protein intake targets, daily step count, and scheduled cardio modalities."
+        elif target_archetype == "longevity_energy":
+            prompt += "\nSpecial Instructions: Focus on sleep hygiene protocols, daily movement/step baselines, Zone 2 cardio, and stress reduction habits."
+        elif target_archetype == "hybrid_fitness":
+            prompt += "\nSpecial Instructions: Focus on a balanced schedule combining strength workouts and running days to optimize performance without overtraining."
+        elif target_archetype == "custom_open_ended":
+            prompt += "\nSpecial Instructions: Create a flexible custom protocol derived directly from the user's explicit intake responses."
         
         # Inject explicit context (from tool) if provided
         if context:
