@@ -66,6 +66,111 @@ export default function NutritionScreen() {
   const [carbsInput, setCarbsInput] = useState('');
   const [fatInput, setFatInput] = useState('');
 
+  // Edit Existing Log Modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingLogId, setEditingLogId] = useState<number | string | null>(null);
+  const [editItemName, setEditItemName] = useState('');
+  const [editCalories, setEditCalories] = useState('');
+  const [editProtein, setEditProtein] = useState('');
+  const [editCarbs, setEditCarbs] = useState('');
+  const [editFat, setEditFat] = useState('');
+  const [updatingLog, setUpdatingLog] = useState(false);
+
+  const openEditModal = (log: MealLog) => {
+    setEditingLogId(log.id);
+    setEditItemName(log.meal_name);
+    setEditCalories(String(Math.round(log.calories)));
+    setEditProtein(String(Math.round(log.protein)));
+    setEditCarbs(String(Math.round(log.carbs)));
+    setEditFat(String(Math.round(log.fat)));
+    setShowEditModal(true);
+  };
+
+  const handleRecalculateMacros = async () => {
+    if (!editItemName.trim() || !editingLogId) return;
+    setUpdatingLog(true);
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/logs/${editingLogId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ item_name: editItemName }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setEditCalories(String(Math.round(data.calories)));
+        setEditProtein(String(Math.round(data.protein)));
+        setEditCarbs(String(Math.round(data.carbs)));
+        setEditFat(String(Math.round(data.fat)));
+      }
+    } catch (err) {
+      console.error('Error recalculating macros:', err);
+    }
+    setUpdatingLog(false);
+  };
+
+  const handleUpdateLog = async () => {
+    if (!editingLogId) return;
+    setUpdatingLog(true);
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/logs/${editingLogId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          item_name: editItemName,
+          calories: Number(editCalories),
+          protein: Number(editProtein),
+          carbs: Number(editCarbs),
+          fat: Number(editFat),
+        }),
+      });
+
+      if (response.ok) {
+        setShowEditModal(false);
+        setEditingLogId(null);
+        fetchHistory();
+        Alert.alert('Success', 'Nutrition log updated successfully!');
+      } else {
+        const err = await response.json();
+        Alert.alert('Error', err.error || 'Failed to update log.');
+      }
+    } catch (err) {
+      console.error('Error updating log:', err);
+      Alert.alert('Error', 'Network error updating log.');
+    }
+    setUpdatingLog(false);
+  };
+
+  const handleDeleteLog = async (id: number | string) => {
+    Alert.alert('Delete Log', 'Are you sure you want to delete this meal log?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const response = await fetch(`${apiUrl}/nutrition/logs/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${authToken}` },
+            });
+            if (response.ok) {
+              fetchHistory();
+            }
+          } catch (err) {
+            console.error('Error deleting log:', err);
+          }
+        },
+      },
+    ]);
+  };
+
+
   useEffect(() => {
     if (authToken) {
       fetchHistory();
@@ -391,7 +496,7 @@ export default function NutritionScreen() {
             </View>
           ) : (
             logs.map((log) => (
-              <View key={log.id} style={styles.mealItem}>
+              <TouchableOpacity key={log.id} style={styles.mealItem} onPress={() => openEditModal(log)}>
                 <View style={styles.mealLeft}>
                   <View style={styles.mealBadge}>
                     <Ionicons name="restaurant-outline" size={16} color="#00E5FF" />
@@ -403,17 +508,26 @@ export default function NutritionScreen() {
                     </Text>
                   </View>
                 </View>
-                <View style={styles.mealRight}>
-                  <Text style={styles.mealCalories}>{Math.round(log.calories)} kcal</Text>
-                  <Text style={styles.mealMacros}>
-                    P: {Math.round(log.protein)}g • C: {Math.round(log.carbs)}g • F: {Math.round(log.fat)}g
-                  </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={styles.mealRight}>
+                    <Text style={styles.mealCalories}>{Math.round(log.calories)} kcal</Text>
+                    <Text style={styles.mealMacros}>
+                      P: {Math.round(log.protein)}g • C: {Math.round(log.carbs)}g • F: {Math.round(log.fat)}g
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={{ marginLeft: 10, padding: 4 }} onPress={() => openEditModal(log)}>
+                    <Ionicons name="create-outline" size={18} color="#00E5FF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ marginLeft: 6, padding: 4 }} onPress={() => handleDeleteLog(log.id)}>
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
       </ScrollView>
+
 
       {/* Estimations & Confirmation Modal */}
       <Modal
@@ -542,9 +656,110 @@ export default function NutritionScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Edit Existing Log Modal */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalScroll}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>✏️ Edit Food Log & Re-evaluate</Text>
+                <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                  <Ionicons name="close" size={24} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputsForm}>
+                <Text style={styles.formSectionTitle}>Item Name & Portion</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={editItemName}
+                  onChangeText={setEditItemName}
+                  placeholder="e.g. 200g Grilled Chicken Breast"
+                  placeholderTextColor="#64748B"
+                />
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+                    borderColor: '#00E5FF',
+                    borderWidth: 1,
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                    marginTop: 10,
+                    marginBottom: 14,
+                  }}
+                  onPress={handleRecalculateMacros}
+                  disabled={updatingLog}
+                >
+                  <Text style={{ color: '#00E5FF', fontWeight: 'bold', fontSize: 13 }}>
+                    {updatingLog ? 'Recalculating...' : '⚡ Auto-Recalculate Calories & Macros'}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.formSectionTitle}>Macros</Text>
+                <View style={styles.macroInputsRow}>
+                  <View style={styles.macroInputWrapper}>
+                    <Text style={styles.inputLabel}>Calories (kcal)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      keyboardType="numeric"
+                      value={editCalories}
+                      onChangeText={setEditCalories}
+                    />
+                  </View>
+                  <View style={styles.macroInputWrapper}>
+                    <Text style={styles.inputLabel}>Protein (g)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      keyboardType="numeric"
+                      value={editProtein}
+                      onChangeText={setEditProtein}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.macroInputsRow}>
+                  <View style={styles.macroInputWrapper}>
+                    <Text style={styles.inputLabel}>Carbs (g)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      keyboardType="numeric"
+                      value={editCarbs}
+                      onChangeText={setEditCarbs}
+                    />
+                  </View>
+                  <View style={styles.macroInputWrapper}>
+                    <Text style={styles.inputLabel}>Fat (g)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      keyboardType="numeric"
+                      value={editFat}
+                      onChangeText={setEditFat}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.logSubmitBtn} onPress={handleUpdateLog} disabled={updatingLog}>
+                <Text style={styles.logSubmitText}>
+                  {updatingLog ? 'Saving...' : 'Save & Re-evaluate Log'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

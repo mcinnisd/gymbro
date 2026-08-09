@@ -166,3 +166,162 @@ def analyze_photo():
     analysis = analyze_meal_image(image_bytes)
     return jsonify(analysis), 200
 
+
+def reevaluate_macros(item_name: str) -> dict:
+    """
+    Recalculates calories, protein, carbs, and fat dynamically based on item name and portion/quantity.
+    Uses LLM if configured/available, with robust heuristic parsing fallback.
+    """
+    import re
+    item_lower = item_name.lower()
+    
+    if Config.GEMINI_API_KEY or Config.USE_VERTEX_AI:
+        try:
+            client = get_gemini_client()
+            prompt = f"""Estimate calories and macronutrients for this food item: "{item_name}".
+Output ONLY valid JSON with keys: "calories", "protein", "carbs", "fat" (all numeric).
+Example: {{"calories": 330, "protein": 62, "carbs": 0, "fat": 7.2}}
+"""
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[prompt]
+            )
+            parsed = extract_json_from_text(response.text)
+            if parsed and all(k in parsed for k in ["calories", "protein", "carbs", "fat"]):
+                return {
+                    "calories": float(parsed["calories"]),
+                    "protein": float(parsed["protein"]),
+                    "carbs": float(parsed["carbs"]),
+                    "fat": float(parsed["fat"])
+                }
+        except Exception as e:
+            logger.warning(f"LLM macro re-evaluation failed, using heuristic: {e}")
+
+    # Heuristic estimation parser
+    grams_match = re.search(r'(\d+(?:\.\d+)?)\s*g(?:rams)?', item_lower)
+    weight_g = float(grams_match.group(1)) if grams_match else None
+
+    # Base density per gram defaults
+    cal_per_g = 1.5
+    p_per_g = 0.15
+    c_per_g = 0.15
+    f_per_g = 0.05
+
+    if 'chicken' in item_lower or 'turkey' in item_lower:
+        cal_per_g = 1.65
+        p_per_g = 0.31
+        c_per_g = 0.0
+        f_per_g = 0.036
+    elif 'steak' in item_lower or 'beef' in item_lower:
+        cal_per_g = 2.5
+        p_per_g = 0.26
+        c_per_g = 0.0
+        f_per_g = 0.15
+    elif 'salmon' in item_lower or 'fish' in item_lower or 'tuna' in item_lower:
+        cal_per_g = 2.0
+        p_per_g = 0.22
+        c_per_g = 0.0
+        f_per_g = 0.13
+    elif 'rice' in item_lower or 'oats' in item_lower or 'pasta' in item_lower or 'quinoa' in item_lower:
+        cal_per_g = 1.3
+        p_per_g = 0.03
+        c_per_g = 0.28
+        f_per_g = 0.005
+    elif 'egg' in item_lower:
+        egg_match = re.search(r'(\d+)\s*egg', item_lower)
+        num_eggs = int(egg_match.group(1)) if egg_match else 2
+        return {
+            "calories": float(num_eggs * 70),
+            "protein": float(num_eggs * 6),
+            "carbs": float(num_eggs * 0.5),
+            "fat": float(num_eggs * 5)
+        }
+
+    if weight_g is not None:
+        return {
+            "calories": round(weight_g * cal_per_g, 1),
+            "protein": round(weight_g * p_per_g, 1),
+            "carbs": round(weight_g * c_per_g, 1),
+            "fat": round(weight_g * f_per_g, 1)
+        }
+    else:
+        return {
+            "calories": round(200 * cal_per_g, 1),
+            "protein": round(200 * p_per_g, 1),
+            "carbs": round(200 * c_per_g, 1),
+            "fat": round(200 * f_per_g, 1)
+        }
+
+
+@nutrition_bp.route("/logs/<log_id>", methods=["PUT"], strict_slashes=False)
+@jwt_required(optional=True)
+def update_nutrition_log(log_id):
+    user_id = get_jwt_identity() or "1"
+    data = request.get_json() or {}
+
+    item_name = data.get("item_name") or data.get("meal_name")
+    
+    existing_log = None
+    try:
+        res = supabase.table("nutrition_logs").select("*").eq("id", log_id).execute()
+        if res.data and len(res.data) > 0:
+            existing_log = res.data[0]
+    except Exception as e:
+        logger.warning(f"Could not query existing log {log_id}: {e}")
+
+    final_meal_name = item_name or (existing_log.get("meal_name") if existing_log else "Updated Meal")
+
+    if all(k in data for k in ["calories", "protein", "carbs", "fat"]):
+        calories = float(data["calories"])
+        protein = float(data["protein"])
+        carbs = float(data["carbs"])
+        fat = float(data["fat"])
+    else:
+        macros = reevaluate_macros(final_meal_name)
+        calories = float(data.get("calories", macros["calories"]))
+        protein = float(data.get("protein", macros["protein"]))
+        carbs = float(data.get("carbs", macros["carbs"]))
+        fat = float(data.get("fat", macros["fat"]))
+
+    update_payload = {
+        "meal_name": final_meal_name,
+        "calories": calories,
+        "protein": protein,
+        "carbs": carbs,
+        "fat": fat,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    try:
+        res = supabase.table("nutrition_logs").update(update_payload).eq("id", log_id).execute()
+        updated_data = res.data[0] if (res.data and len(res.data) > 0) else {**update_payload, "id": log_id, "user_id": user_id}
+        
+        response_body = {
+            "message": "Log updated successfully.",
+            "log": updated_data,
+            "id": log_id,
+            "meal_name": final_meal_name,
+            "item_name": final_meal_name,
+            "calories": calories,
+            "protein": protein,
+            "carbs": carbs,
+            "fat": fat
+        }
+        return jsonify(response_body), 200
+    except Exception as e:
+        logger.error(f"Error updating nutrition log {log_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@nutrition_bp.route("/logs/<log_id>", methods=["DELETE"], strict_slashes=False)
+@jwt_required(optional=True)
+def delete_nutrition_log(log_id):
+    user_id = get_jwt_identity() or "1"
+    try:
+        supabase.table("nutrition_logs").delete().eq("id", log_id).execute()
+        return jsonify({"message": "Log deleted successfully.", "id": log_id}), 200
+    except Exception as e:
+        logger.error(f"Error deleting nutrition log {log_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+

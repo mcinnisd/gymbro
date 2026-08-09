@@ -18,3 +18,11 @@ def test_analyze_photo_endpoint(client):
     json_data = response.get_json()
     assert 'estimated_calories' in json_data
     assert 'meal_name' in json_data
+
+def test_update_food_log_item_recalculates_macros(client):
+    res = client.put('/nutrition/logs/log_123', json={
+        'item_name': '200g Grilled Chicken Breast',
+    })
+    assert res.status_code == 200
+    assert res.json['calories'] > 0
+
