@@ -62,5 +62,79 @@ def exchange_token():
             "status": "success" if "status=success" in redirect_url else "error"
         }), 200
 
-    # Default to 302 HTTP redirect for mobile deep-linking and browser flow
+    # Render clean HTML landing page for web browsers (supports Expo Go and standalone app links)
+    user_agent = request.headers.get("User-Agent", "").lower()
+    if "mozilla" in user_agent or "chrome" in user_agent or "safari" in user_agent:
+        html_page = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Strava Connection - GYMBro</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    background-color: #F8FAFC;
+                    color: #0F172A;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    padding: 20px;
+                    box-sizing: border-box;
+                }}
+                .card {{
+                    background: #FFFFFF;
+                    border: 1px solid #E2E8F0;
+                    border-radius: 16px;
+                    padding: 32px;
+                    max-width: 440px;
+                    text-align: center;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+                }}
+                .icon {{
+                    font-size: 48px;
+                    margin-bottom: 16px;
+                }}
+                h1 {{
+                    font-size: 22px;
+                    font-weight: 700;
+                    margin-bottom: 8px;
+                }}
+                p {{
+                    color: #475569;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    margin-bottom: 24px;
+                }}
+                .btn {{
+                    display: inline-block;
+                    background-color: #FC4C02;
+                    color: #FFFFFF;
+                    font-weight: 700;
+                    font-size: 15px;
+                    padding: 12px 24px;
+                    border-radius: 10px;
+                    text-decoration: none;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="icon">🏃‍♂️🔥</div>
+                <h1>Strava Connected Successfully!</h1>
+                <p>Your Strava workouts are now synced with <strong>GYMBro</strong>. You can close this window and return to your mobile app.</p>
+                <a href="{redirect_url}" class="btn">Return to GYMBro App</a>
+            </div>
+            <script>
+                setTimeout(function() {{
+                    window.location.href = "{redirect_url}";
+                }}, 1500);
+            </script>
+        </body>
+        </html>
+        """
+        return render_template_string(html_page), 200
+
     return redirect(redirect_url, code=302)

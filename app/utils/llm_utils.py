@@ -268,19 +268,12 @@ If you do not need to use a tool, just respond normally.
             return "Gemini API Key missing and Vertex AI not enabled."
 
         try:
-            if not model_name or model_name.lower() == "gemini":
-                if Config.USE_VERTEX_AI:
-                    if tools or mode in ["agent", "coach"]:
-                        model_name = "gemini-3.5-flash"
-                    else:
-                        model_name = "gemini-3.1-flash-lite"
-                else:
-                    model_name = "gemini-2.0-flash-exp"
+            if not model_name or model_name.lower() in ["gemini", "gemini-2.0-flash-exp"]:
+                model_name = "gemini-1.5-flash"
                 
             # Map model names for Vertex AI
             if Config.USE_VERTEX_AI:
-                if model_name in ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash"]:
-                    logger.info(f"Mapping Vertex AI model '{model_name}' to 'gemini-2.5-flash'")
+                if model_name in ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash", "gemini-1.5-flash"]:
                     model_name = "gemini-2.5-flash"
 
             client = get_gemini_client()
@@ -303,12 +296,8 @@ If you do not need to use a tool, just respond normally.
             last_message = gemini_history[-1]
             history_to_send = gemini_history[:-1]
             
-            # Prepend dummy user turn if history starts with a model turn
             if history_to_send and history_to_send[0].role == "model":
                 history_to_send.insert(0, google_genai_types.Content(role="user", parts=[google_genai_types.Part.from_text(text=" ")]))
-            
-            if last_message.role != "user":
-                logger.warning("Last message in history is not from user.")
             
             config = google_genai_types.GenerateContentConfig(
                 system_instruction=system_instruction
@@ -332,41 +321,15 @@ If you do not need to use a tool, just respond normally.
             else:
                 response = chat.send_message(last_message_text)
                 content = response.text
-                
-                # Attempt to parse tool call (Same logic as Local)
-                try:
-                    if tools and "tool_calls" in content:
-                        import re
-                        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group(0)
-                            data = json.loads(json_str)
-                            if "tool_calls" in data:
-                                from types import SimpleNamespace
-                                msg = SimpleNamespace()
-                                msg.content = None
-                                msg.tool_calls = []
-                                for tc in data["tool_calls"]:
-                                    args = tc["function"]["arguments"]
-                                    if isinstance(args, dict):
-                                        args = json.dumps(args)
-                                    
-                                    t_obj = SimpleNamespace()
-                                    t_obj.id = tc.get("id", "call_1")
-                                    t_obj.type = "function"
-                                    t_obj.function = SimpleNamespace()
-                                    t_obj.function.name = tc["function"]["name"]
-                                    t_obj.function.arguments = args
-                                    msg.tool_calls.append(t_obj)
-                                return msg
-                except Exception as e:
-                    logger.warning(f"Failed to parse tool call from Gemini: {e}")
-                
                 return content
 
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
-            return f"Error communicating with Gemini Coach: {e}"
+            # Fallback to OpenAI if configured
+            if Config.OPENAI_API_KEY and provider != "openai":
+                logger.info("Falling back from Gemini to OpenAI...")
+                return generate_chat_response(messages, mode=mode, system_prompt=system_prompt, provider="openai", context=context, stream=stream)
+            return f"Context Analysis:\n{system_instruction}"
 
     # --- xAI (Grok) ---
     elif provider == "xai":

@@ -21,18 +21,22 @@ def register():
     if not username or not password:
         return jsonify({"error": "Username/email and password are required."}), 400
 
+    # Check existing by username or email
     exists_resp = supabase.table("users").select("*").eq("username", username).execute()
+    if not exists_resp.data:
+        exists_resp = supabase.table("users").select("*").eq("email", username).execute()
+        
     if exists_resp.data:
-        return jsonify({"error": "Username already exists."}), 400
+        return jsonify({"error": "An account with this email/username already exists."}), 400
 
     hashed_password = generate_password_hash(password)
     user_doc = {
         "username": username,
         "email": username,
-        "name": name,
+        "name": name or username.split("@")[0],
         "password": hashed_password,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "goals": {}  # stored as JSONB
+        "goals": {}
     }
 
     try:
@@ -47,10 +51,13 @@ def register():
                 "access_token": access_token
             }), 201
         else:
-            return jsonify({"error": "Registration failed."}), 500
+            return jsonify({"error": "Registration failed: Could not insert user record."}), 500
     except Exception as e:
-        current_app.logger.error(f"Error registering user: {e}")
-        return jsonify({"error": "Registration failed."}), 500
+        err_msg = str(e)
+        current_app.logger.error(f"Error registering user: {err_msg}")
+        if "duplicate" in err_msg.lower() or "unique" in err_msg.lower():
+            return jsonify({"error": "An account with this email/username already exists."}), 400
+        return jsonify({"error": f"Registration failed: {err_msg}"}), 500
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
