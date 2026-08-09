@@ -496,3 +496,30 @@
 2026-08-09T13:09:15.024172 - Garmin session not available for user 11, skipping.
 2026-08-09T13:09:19.181994 - Starting unified sync for user 11 (Force Resync: False)
 2026-08-09T13:09:19.182554 - Garmin session not available for user 11, skipping.
+2026-08-09T13:09:23.859897 - Starting unified sync for user 15 (Force Resync: False)
+2026-08-09T13:09:23.875853 - Garmin session not available for user 15, skipping.
+2026-08-09T13:12:07.452566 - Starting unified sync for user 41 (Force Resync: False)
+2026-08-09T13:12:11.977466 - Incremental Sync detected. Fetching from 2026-08-06 to 2026-08-09
+2026-08-09T13:12:12.127984 - Fetching activities from 2026-08-06...
+2026-08-09T13:12:12.128436 - Fetching batch start=0 limit=100...
+2026-08-09T13:12:12.128606 - Fetching batch start=0 limit=100...
+2026-08-09T13:12:12.352650 - Fetched 2 activities.
+2026-08-09T13:12:14.059529 - Fetching daily: 2026-08-06
+2026-08-09T13:12:14.060026 - Fetching daily: 2026-08-06
+2026-08-09T13:12:14.871080 - Fetching daily: 2026-08-07
+2026-08-09T13:12:14.871619 - Fetching daily: 2026-08-07
+2026-08-09T13:12:15.697305 - Fetching daily: 2026-08-08
+2026-08-09T13:12:15.697488 - Fetching daily: 2026-08-08
+2026-08-09T13:12:16.537786 - Fetching daily: 2026-08-09
+2026-08-09T13:12:16.538324 - Fetching daily: 2026-08-09
+2026-08-09T13:12:18.842606 - Sync Complete.
+2026-08-09T13:33:46.830875 - Starting unified sync for user 6 (Force Resync: False)
+2026-08-09T13:33:46.838955 - Garmin session not available for user 6, skipping.
+2026-08-09T13:33:50.070703 - Starting unified sync for user 8 (Force Resync: False)
+2026-08-09T13:33:50.077426 - Garmin session not available for user 8, skipping.
+2026-08-09T13:33:53.259981 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T13:33:53.260384 - Garmin session not available for user 11, skipping.
+2026-08-09T13:33:57.335677 - Starting unified sync for user 11 (Force Resync: False)
+2026-08-09T13:33:57.336857 - Garmin session not available for user 11, skipping.
+2026-08-09T13:34:01.825651 - Starting unified sync for user 15 (Force Resync: False)
+2026-08-09T13:34:01.841534 - Garmin session not available for user 15, skipping.

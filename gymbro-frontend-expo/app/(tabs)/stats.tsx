@@ -66,6 +66,66 @@ export default function StatsScreen() {
   const [prSwim100m, setPrSwim100m] = useState('');
   const [prHikePeak, setPrHikePeak] = useState('');
 
+  // Real Database Data Calculations
+  const rawActivities = analyticsData?.raw_activities || [];
+  const weeklyVolObj = analyticsData?.weekly_volume || {};
+
+  const dynamicActivityBars = React.useMemo(() => {
+    if (!rawActivities || rawActivities.length === 0) return [];
+    return rawActivities.slice(0, 6).map((act: any) => {
+      let val = 50;
+      let detail = `${act.distance_km} km`;
+      if (selectedMetric === 'pace') {
+        detail = act.pace_min_km > 0 ? `${act.pace_min_km} m/km` : `${act.duration_min} min`;
+        val = act.pace_min_km > 0 ? Math.min(100, Math.max(20, Math.round((7.0 - Math.min(7.0, act.pace_min_km)) * 22))) : 50;
+      } else if (selectedMetric === 'distance') {
+        detail = `${act.distance_km} km`;
+        val = Math.min(100, Math.max(15, Math.round((act.distance_km / 15.0) * 100)));
+      } else if (selectedMetric === 'heart_rate') {
+        detail = act.avg_hr ? `${act.avg_hr} bpm` : 'N/A';
+        val = act.avg_hr ? Math.min(100, Math.max(20, Math.round(((act.avg_hr - 100) / 90) * 100))) : 40;
+      } else {
+        detail = `${act.duration_min} min`;
+        val = Math.min(100, Math.max(20, Math.round((act.duration_min / 60.0) * 100)));
+      }
+      return {
+        label: act.date ? act.date.slice(5) : 'Run',
+        val,
+        detail,
+      };
+    });
+  }, [rawActivities, selectedMetric]);
+
+  const dynamicEfficiencyBars = React.useMemo(() => {
+    if (!rawActivities || rawActivities.length === 0) return [];
+    return rawActivities.slice(0, 6).map((act: any) => {
+      const hr = act.avg_hr || 145;
+      const paceStr = act.pace_min_km > 0 ? `${act.pace_min_km} m/km` : `${act.distance_km} km`;
+      const effVal = act.pace_min_km > 0 ? Math.min(100, Math.max(25, Math.round((6.5 / act.pace_min_km) * 60))) : 50;
+      return {
+        label: act.date ? act.date.slice(5) : 'Act',
+        val: effVal,
+        detail: `${hr} bpm (${paceStr})`,
+      };
+    });
+  }, [rawActivities]);
+
+  const dynamicWeeklyVolumeBars = React.useMemo(() => {
+    const keys = Object.keys(weeklyVolObj);
+    if (keys.length === 0) return [];
+    const sortedKeys = keys.sort();
+    const maxDist = Math.max(...sortedKeys.map((k) => (weeklyVolObj[k].distance || 0) / 1000.0), 10);
+    return sortedKeys.slice(-6).map((k) => {
+      const distKm = Math.round(((weeklyVolObj[k].distance || 0) / 1000.0) * 10) / 10;
+      const pct = Math.min(100, Math.max(10, Math.round((distKm / maxDist) * 100)));
+      return {
+        label: k.slice(5),
+        val: pct,
+        detail: `${distKm} km`,
+      };
+    });
+  }, [weeklyVolObj]);
+
   useEffect(() => {
     if (authToken) {
       fetchProfile();
@@ -450,23 +510,23 @@ export default function StatsScreen() {
             <Text style={styles.graphSummaryText}>Live Updated from Garmin</Text>
           </View>
 
-          <View style={styles.barsArea}>
-            {[
-              { label: 'Run 1', val: 78, detail: '4:52 min/km' },
-              { label: 'Run 2', val: 88, detail: '4:45 min/km' },
-              { label: 'Run 3', val: 65, detail: '5:02 min/km' },
-              { label: 'Run 4', val: 94, detail: '4:39 min/km' },
-              { label: 'Run 5', val: 85, detail: '4:46 min/km' },
-            ].map((bar, i) => (
-              <View key={i} style={styles.barColumn}>
-                <Text style={styles.barDetailText}>{bar.detail}</Text>
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { height: `${bar.val}%` }]} />
+          {dynamicActivityBars.length > 0 ? (
+            <View style={styles.barsArea}>
+              {dynamicActivityBars.map((bar: any, i: number) => (
+                <View key={i} style={styles.barColumn}>
+                  <Text style={styles.barDetailText}>{bar.detail}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { height: `${bar.val}%` }]} />
+                  </View>
+                  <Text style={styles.barLabel}>{bar.label}</Text>
                 </View>
-                <Text style={styles.barLabel}>{bar.label}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database activities logged yet for this metric. Tap "Connect Garmin" above to sync your watch.</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -475,30 +535,30 @@ export default function StatsScreen() {
         <View style={styles.cardHeaderRow}>
           <Text style={styles.cardTitle}>2. Aerobic Efficiency Curve (Pace vs. HR)</Text>
           <View style={styles.badgeSuccess}>
-            <Text style={styles.badgeTextSuccess}>Zone 2 Fit</Text>
+            <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
           </View>
         </View>
         <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
           Tracks your cardiovascular efficiency ratio (m/min per bpm). Higher bar = lower heart rate at higher speeds.
         </Text>
         <View style={styles.graphContainer}>
-          <View style={styles.barsArea}>
-            {[
-              { label: 'Easy Run', val: 68, detail: '142 bpm' },
-              { label: 'Tempo', val: 85, detail: '164 bpm' },
-              { label: 'Intervals', val: 92, detail: '178 bpm' },
-              { label: 'Long Run', val: 74, detail: '148 bpm' },
-              { label: 'Recovery', val: 60, detail: '136 bpm' },
-            ].map((b, idx) => (
-              <View key={idx} style={styles.barColumn}>
-                <Text style={styles.barDetailText}>{b.detail}</Text>
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: Colors.light.secondary }]} />
+          {dynamicEfficiencyBars.length > 0 ? (
+            <View style={styles.barsArea}>
+              {dynamicEfficiencyBars.map((b: any, idx: number) => (
+                <View key={idx} style={styles.barColumn}>
+                  <Text style={styles.barDetailText}>{b.detail}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: Colors.light.secondary }]} />
+                  </View>
+                  <Text style={styles.barLabel}>{b.label}</Text>
                 </View>
-                <Text style={styles.barLabel}>{b.label}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database heart rate data found yet. Connect your device to load efficiency curves.</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -509,22 +569,23 @@ export default function StatsScreen() {
           <Text style={{ fontSize: 12, fontWeight: 'bold', color: Colors.light.primary }}>Goal: 40 km/wk</Text>
         </View>
         <View style={styles.graphContainer}>
-          <View style={styles.barsArea}>
-            {[
-              { label: 'Wk 1', val: 60, detail: '24 km' },
-              { label: 'Wk 2', val: 80, detail: '32 km' },
-              { label: 'Wk 3', val: 95, detail: '38 km' },
-              { label: 'Wk 4', val: 100, detail: '42 km' },
-            ].map((b, idx) => (
-              <View key={idx} style={styles.barColumn}>
-                <Text style={styles.barDetailText}>{b.detail}</Text>
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: Colors.light.primary }]} />
+          {dynamicWeeklyVolumeBars.length > 0 ? (
+            <View style={styles.barsArea}>
+              {dynamicWeeklyVolumeBars.map((b: any, idx: number) => (
+                <View key={idx} style={styles.barColumn}>
+                  <Text style={styles.barDetailText}>{b.detail}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: Colors.light.primary }]} />
+                  </View>
+                  <Text style={styles.barLabel}>{b.label}</Text>
                 </View>
-                <Text style={styles.barLabel}>{b.label}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database weekly distance totals found yet. Log or sync workouts to track weekly volume.</Text>
+            </View>
+          )}
         </View>
       </View>
 

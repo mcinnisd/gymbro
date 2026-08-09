@@ -355,6 +355,28 @@ class AnalyticsService:
         # 4. Wellness (Standard for everyone)
         response['wellness'] = AnalyticsService._analyze_wellness(user_id, start_date)
         
+        # 5. Raw Activities for Live UI Charts
+        raw_acts_list = []
+        for a in activities:
+            dist = a.get("distance") or 0
+            dur = a.get("duration") or 0
+            dist_km = round(dist / 1000.0, 2) if dist > 100 else round(dist, 2)
+            dur_min = round(dur / 60.0, 1) if dur > 300 else round(dur, 1)
+            pace_min_km = round(dur_min / dist_km, 2) if dist_km > 0.2 else 0
+            raw_acts_list.append({
+                "id": a.get("activity_id") or a.get("id"),
+                "title": a.get("activity_name") or "Workout",
+                "date": str(a.get("start_time_local") or "")[:10],
+                "type": a.get("activity_type") or "run",
+                "distance_km": dist_km,
+                "duration_min": dur_min,
+                "avg_hr": a.get("average_hr") or 0,
+                "max_hr": a.get("max_hr") or 0,
+                "pace_min_km": pace_min_km,
+                "elevation_gain": a.get("elevation_gain") or 0
+            })
+        response['raw_activities'] = raw_acts_list
+
         return response
 
     @staticmethod
