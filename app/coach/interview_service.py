@@ -182,7 +182,9 @@ def start_interview(user_id: str) -> Dict[str, Any]:
                         "success": True,
                         "chat_id": existing_chat_id,
                         "step": user_res.data[0].get("interview_step", 1),
-                        "is_existing": True
+                        "is_existing": True,
+                        "question": "Continuing existing interview...",
+                        "prompt": "Continuing existing interview..."
                     }
                 else:
                     # Chat ID exists in user record but chat is gone. Reset.
@@ -234,7 +236,7 @@ def start_interview(user_id: str) -> Dict[str, Any]:
         
         supabase.table("users").update({"interview_chat_id": chat_id}).eq("id", user_id).execute()
         
-        return {"success": True, "chat_id": chat_id, "step": 1, "prompt": opening_prompt}
+        return {"success": True, "chat_id": chat_id, "step": 1, "question": opening_prompt, "prompt": opening_prompt}
     except Exception as e:
         logger.error(f"Error starting interview: {e}")
         return {"success": False, "error": str(e)}
@@ -618,7 +620,12 @@ def _get_garmin_summary(user_id: str) -> str:
 
 def _analyze_progress(user_id: str, step: int, history: List[Dict]) -> Dict:
     """Uses a fast LLM to decide if the mission is complete and how to respond."""
-    mission = STEP_MISSIONS.get(step)
+    # Use archetype-aware mission instead of generic STEP_MISSIONS
+    user_res_arch = supabase.table("users").select("archetype").eq("id", user_id).execute()
+    user_archetype = "endurance_running"
+    if user_res_arch.data:
+        user_archetype = user_res_arch.data[0].get("archetype") or "endurance_running"
+    mission = get_mission(user_archetype, step)
     
     # Format history for classifier
     history_str = ""
