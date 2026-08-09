@@ -25,7 +25,7 @@ class Config:
     # OAuth (Strava) configuration
     STRAVA_CLIENT_ID = os.getenv("STRAVA_CLIENT_ID")
     STRAVA_CLIENT_SECRET = os.getenv("STRAVA_CLIENT_SECRET")
-    REDIRECT_URI = os.getenv("REDIRECT_URI", "http://127.0.0.1:5001/exchange_token")
+    REDIRECT_URI = os.getenv("REDIRECT_URI", "http://127.0.0.1:5001/strava/exchange_token")
     
     # Other keys
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")

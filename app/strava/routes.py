@@ -14,10 +14,14 @@ def token_required(f):
     @jwt_required()
     def decorated(*args, **kwargs):
         current_user_id = get_jwt_identity()
-        response = supabase.table("users").select("*").eq("id", current_user_id).execute()
-        if not response.data:
-            return jsonify({"error": "User not found!"}), 401
-        request.current_user = response.data[0]
+        try:
+            response = supabase.table("users").select("*").eq("id", current_user_id).execute()
+            if response.data:
+                request.current_user = response.data[0]
+            else:
+                request.current_user = {"id": current_user_id}
+        except Exception:
+            request.current_user = {"id": current_user_id}
         return f(*args, **kwargs)
     return decorated
 
@@ -96,7 +100,7 @@ def exchange_token():
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Strava Connected</title>
       <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0A0E17; color: #F8FAFC; text-align: center; padding: 50px 20px; }
+        body { font-family: -apple-system, sans-serif; background: #0A0E17; color: #F8FAFC; text-align: center; padding: 50px 20px; }
         .card { background: #1E293B; border-radius: 16px; border: 1px solid #334155; padding: 32px; max-width: 400px; margin: 0 auto; }
         h1 { color: #FC4C02; margin-bottom: 12px; font-size: 22px; font-weight: bold; }
         p { color: #94A3B8; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
@@ -107,12 +111,12 @@ def exchange_token():
       <div class="card">
         <h1>✅ Strava Account Connected!</h1>
         <p>Your Strava runs and activities are now linked with Coach Bro. You can return to the app.</p>
-        <a class="btn" href="gymbro://">Return to GYMBro App</a>
+        <a class="btn" href="gymbro://chat">Return to GYMBro App</a>
       </div>
       <script>
         setTimeout(function() {
-          try { window.location.href = "gymbro://"; } catch (e) {}
-        }, 1500);
+          try { window.location.href = "gymbro://chat"; } catch (e) {}
+        }, 1000);
       </script>
     </body>
     </html>
