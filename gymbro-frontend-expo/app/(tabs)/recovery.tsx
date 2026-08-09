@@ -47,8 +47,27 @@ export default function RecoveryScreen() {
     if (authToken) {
       fetchTodayJournal();
       fetchFlaggedBiomarkers();
+      fetchAnalyticsData();
     }
   }, [authToken]);
+
+  const fetchAnalyticsData = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/analytics/summary`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const wellness = data.wellness || {};
+        if (wellness.rhr_trend && wellness.rhr_trend.length > 0) {
+          setRhrHistory(wellness.rhr_trend.map((d: any) => d.val));
+          setWearableConnected(true);
+        }
+      }
+    } catch (e) {
+      console.error('Analytics load error:', e);
+    }
+  };
 
   const fetchFlaggedBiomarkers = async () => {
     try {
@@ -259,10 +278,18 @@ export default function RecoveryScreen() {
           </View>
         ) : (
           <View style={styles.emptyWearableCard}>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+              <View style={[styles.syncBadge, { backgroundColor: 'rgba(0, 229, 255, 0.15)' }]}>
+                <Text style={[styles.syncBadgeText, { color: '#00E5FF' }]}>⌚ Garmin (Primary)</Text>
+              </View>
+              <View style={[styles.syncBadge, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                <Text style={[styles.syncBadgeText, { color: '#EF4444' }]}>🍎 Apple Health</Text>
+              </View>
+            </View>
             <Ionicons name="watch-outline" size={24} color="#00E5FF" style={{ marginBottom: 6 }} />
             <Text style={{ color: '#F8FAFC', fontWeight: 'bold', fontSize: 14 }}>No Wearable Connected</Text>
             <Text style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
-              Connect your Garmin or Apple Health watch to automatically stream Resting HR, HRV, and Sleep scores.
+              Connect Apple Health, Garmin, or Strava to automatically stream Resting HR, HRV, and Sleep scores.
             </Text>
             <TouchableOpacity style={styles.emptyActionBtn} onPress={() => router.push('/(tabs)/chat')}>
               <Text style={styles.emptyActionBtnText}>⌚ Sync Device in Coach Chat</Text>
