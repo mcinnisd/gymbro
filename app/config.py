@@ -31,10 +31,14 @@ class Config:
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "gymbro-499418")
+    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "gymbro-health-uploads")
+    USE_VERTEX_AI = os.getenv("USE_VERTEX_AI", "true").lower() == "true"
     XAI_API_KEY = os.getenv("XAI_API_KEY")
     
     # LLM Configuration
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "xai") # 'gemini', 'openai', 'local', or 'xai'
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini") # 'gemini', 'openai', 'local', or 'xai'
     LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://localhost:8080/v1")
     LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "gemma-2-9b-it")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -43,11 +47,11 @@ class Config:
     
     # Embedding Configuration
     EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini") # 'gemini' or 'openai'
-    GEMINI_EMBEDDING_MODEL = "models/text-embedding-004"
+    GEMINI_EMBEDDING_MODEL = "models/embedding-001"
     OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
     
     # CORS: Use a default for local development; override in production
-    CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:3000,http://localhost:3001")
+    CORS_ORIGIN = os.getenv("CORS_ORIGIN") or os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082"
 
 class DevelopmentConfig(Config):
     DEBUG = True

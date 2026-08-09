@@ -4,7 +4,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request
 from .config import DevelopmentConfig, ProductionConfig
-from .extensions import cors, jwt, limiter  # Removed 'mongo'
+from .extensions import cors, jwt, limiter
 import os
 
 def create_app():
@@ -17,13 +17,11 @@ def create_app():
     else:
         app.config.from_object(DevelopmentConfig)
 
-    # Remove Mongo initialization since we now use Supabase.
-    # mongo.init_app(app)
-    # app.mongo = mongo  # No longer needed.
-
     # Initialize CORS
-    # Allow localhost:3000 specifically to support credentials
-    cors.init_app(app, resources={r"/*": {"origins": ["http://localhost:3000"]}}, supports_credentials=True)
+    # Allow configured origins to support credentials
+    cors_origins_str = app.config.get("CORS_ORIGIN") or "http://localhost:3000"
+    cors_origins = [orig.strip() for orig in cors_origins_str.split(",") if orig.strip()]
+    cors.init_app(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
     # Initialize JWT and rate limiter
     jwt.init_app(app)
@@ -36,6 +34,8 @@ def create_app():
     from app.garmin.routes import garmin_bp
     from app.chats.routes import chats_bp
     from app.analytics.routes import analytics_bp
+    from app.nutrition.routes import nutrition_bp
+    from app.journal.routes import journal_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(activities_bp, url_prefix="/activities")
@@ -43,12 +43,17 @@ def create_app():
     app.register_blueprint(garmin_bp, url_prefix="/garmin")
     app.register_blueprint(chats_bp, url_prefix="/chats")
     app.register_blueprint(analytics_bp, url_prefix="/analytics")
+    app.register_blueprint(nutrition_bp, url_prefix="/nutrition")
+    app.register_blueprint(journal_bp, url_prefix="/journal")
     
     from app.coach.routes import coach_bp
     app.register_blueprint(coach_bp, url_prefix="/coach")
     
     from app.calendar.routes import calendar_bp
     app.register_blueprint(calendar_bp, url_prefix="/calendar")
+
+    from app.biomarkers.routes import biomarkers_bp
+    app.register_blueprint(biomarkers_bp)
 
     # Set up logging if not in debug mode
     if not app.debug:
