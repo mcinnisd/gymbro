@@ -17,7 +17,7 @@ from app.coach.plan_service import generate_baseline_plan, organize_phased_plan 
 logger = logging.getLogger(__name__)
 
 STEP_MISSIONS = {
-    1: "Goal Definition: Identify the user's primary health & fitness goal (e.g. Build Muscle & Strength, Fat Loss & Recomposition, Endurance & Speed PRs, Longevity & Daily Energy, or Custom Goal). Present options: [🏋️ Build Muscle & Strength] [🔥 Fat Loss & Recomposition] [🏃 Endurance & Speed PRs] [🌿 Longevity & Daily Energy] [✍️ Custom Goal]",
+    1: "Goal Definition: Identify the user's primary health & fitness goal. You MUST include these 6 options in brackets at the end of your response: [🏋️ Build Muscle & Strength] [🔥 Fat Loss & Recomposition] [🏃 Endurance & Speed PRs] [🌿 Longevity & Daily Energy] [⚡ Hybrid / General Fitness] [✍️ Custom Goal]",
     2: "Profile Audit: LIST the user's Age, Weight, Height, and History summary. Ask ONE question: 'Is this accurate?'",
     3: "Data Reality Check: CITE the specific weekly volume (e.g. 50km) and patterns from Garmin. Ask: 'Does this match your real-world training?'",
     4: "Lifestyle Constraints: Ask about their weekly schedule constraints (running days vs gym days).",
@@ -208,11 +208,11 @@ def start_interview(user_id: str) -> Dict[str, Any]:
         if has_connected_data:
             opening_instruction = (
                 "Start the interview by introducing yourself as their AI Coach, "
-                "warmly acknowledging their connected Garmin/Strava training stats (e.g. mention their recent running volume or resting heart rate if available in the context), "
-                "and ask for their primary goal (race distance, target date, and time goal)."
+                "warmly acknowledging their connected Garmin/Strava training stats (e.g. mention their recent volume or resting heart rate), "
+                "and ask for their primary goal. Present options: [🏋️ Build Muscle & Strength] [🔥 Fat Loss & Recomposition] [🏃 Endurance & Speed PRs] [🌿 Longevity & Daily Energy] [⚡ Hybrid / General Fitness] [✍️ Custom Goal]"
             )
         else:
-            opening_instruction = "Start the interview by introducing yourself as their AI Coach and asking for their goal."
+            opening_instruction = "Start the interview by introducing yourself as their AI Coach and asking for their goal. Present options: [🏋️ Build Muscle & Strength] [🔥 Fat Loss & Recomposition] [🏃 Endurance & Speed PRs] [🌿 Longevity & Daily Energy] [⚡ Hybrid / General Fitness] [✍️ Custom Goal]"
 
         opening_prompt = _generate_dynamic_response(user_id, 1, opening_instruction)
         
@@ -240,6 +240,22 @@ def start_interview(user_id: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+def _detect_archetype_from_answer(answer: str) -> str:
+    lower = answer.lower()
+    if "muscle" in lower or "strength" in lower or "lift" in lower or "hypertrophy" in lower:
+        return "muscle_strength"
+    elif "fat loss" in lower or "recomposition" in lower or "weight loss" in lower or "recomp" in lower:
+        return "fat_loss"
+    elif "endurance" in lower or "speed" in lower or "running" in lower or "run" in lower or "race" in lower:
+        return "endurance_running"
+    elif "longevity" in lower or "daily energy" in lower or "sleep" in lower or "wellness" in lower:
+        return "longevity_energy"
+    elif "hybrid" in lower or "general fitness" in lower or "lift and run" in lower or "general" in lower:
+        return "hybrid_fitness"
+    else:
+        return "custom_open_ended"
+
+
 def get_current_step(user_id: str) -> int:
     """Get user's current interview step (0-10)."""
     try:
@@ -257,6 +273,10 @@ def process_answer(user_id: str, answer: str, chat_id: str = None) -> Dict[str, 
     """
     try:
         current_step = get_current_step(user_id)
+        
+        if current_step == 1:
+            detected_archetype = _detect_archetype_from_answer(answer)
+            supabase.table("users").update({"archetype": detected_archetype}).eq("id", user_id).execute()
         
         # Store the answer
         store_user_context(

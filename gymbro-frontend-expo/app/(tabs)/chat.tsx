@@ -1144,10 +1144,12 @@ export default function ChatScreen() {
                 </View>
 
                 {msg.sender === 'bot' && isLastMessage && coachStatus === 'interviewing' && (
+                  /days|schedule|frequency|which days|available days|days\/week|select days/i.test(msg.content)
+                ) && (
                   <DaySelectorWidget onSelectDays={(formatted) => handleSendMessageText(formatted)} />
                 )}
 
-                {msg.sender === 'bot' && isLastMessage && coachStatus === 'interviewing' && (
+                {msg.sender === 'bot' && isLastMessage && coachStatus === 'interviewing' && options.length > 0 && (
                   <View style={styles.quickRepliesContainer}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRepliesScroll}>
                       {options.map((opt, oIdx) => (
@@ -1159,18 +1161,6 @@ export default function ChatScreen() {
                           <Text style={styles.quickReplyText}>{opt}</Text>
                         </TouchableOpacity>
                       ))}
-                      <TouchableOpacity
-                        style={[styles.quickReplyPill, styles.staticPill]}
-                        onPress={() => handleSendQuickReply('Yes, sounds good!')}
-                      >
-                        <Text style={styles.quickReplyText}>Yes, sounds good!</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.quickReplyPill, styles.staticPill]}
-                        onPress={() => handleSendQuickReply('No, let me change that')}
-                      >
-                        <Text style={styles.quickReplyText}>No, let me change that</Text>
-                      </TouchableOpacity>
                     </ScrollView>
                   </View>
                 )}

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from app.coach.interview_service import ARCHETYPE_MISSIONS, get_mission, get_next_question
+from app.coach.interview_service import ARCHETYPE_MISSIONS, get_mission, get_next_question, _detect_archetype_from_answer
 
 def test_archetype_missions_registry_structure():
     expected_archetypes = [
@@ -22,6 +22,14 @@ def test_get_mission_resolution():
 
     fallback = get_mission("unknown_archetype", 1)
     assert "Goal & Race" in fallback
+
+def test_detect_archetype_from_answer():
+    assert _detect_archetype_from_answer("🏋️ Build Muscle & Strength") == "muscle_strength"
+    assert _detect_archetype_from_answer("🔥 Fat Loss & Recomposition") == "fat_loss"
+    assert _detect_archetype_from_answer("🏃 Endurance & Speed PRs") == "endurance_running"
+    assert _detect_archetype_from_answer("🌿 Longevity & Daily Energy") == "longevity_energy"
+    assert _detect_archetype_from_answer("⚡ Hybrid / General Fitness") == "hybrid_fitness"
+    assert _detect_archetype_from_answer("ACL rehab recovery") == "custom_open_ended"
 
 def test_get_next_question_advancement():
     mock_supabase = MagicMock()
