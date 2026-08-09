@@ -463,33 +463,91 @@ class AnalyticsService:
     def _analyze_wellness(user_id, start_date):
         # Fetch daily data
         daily_res = supabase.table("garmin_daily")\
-            .select("date, resting_hr, stress, steps")\
+            .select("*")\
             .eq("user_id", user_id)\
             .gte("date", start_date)\
             .order("date")\
             .execute()
             
         data = daily_res.data or []
-        
+
+        if not data:
+            try:
+                bio_res = supabase.table("biometrics_daily")\
+                    .select("*")\
+                    .eq("user_id", user_id)\
+                    .gte("date", start_date)\
+                    .order("date")\
+                    .execute()
+                data = bio_res.data or []
+            except Exception:
+                data = []
         
         rhr_trend = []
-        for d in data:
-            val = d.get('resting_hr')
-            # Sanitize: ensure valid number
-            safe_val = AnalyticsService._extract_val(val)
-            if safe_val > 0:
-                rhr_trend.append({"date": d['date'], "val": safe_val})
-
+        hrv_trend = []
+        sleep_trend = []
         stress_trend = []
+        training_load_trend = []
+
         for d in data:
-            val = d.get('stress')
-            safe_val = AnalyticsService._extract_val(val)
-            if safe_val > 0:
-                stress_trend.append({"date": d['date'], "val": safe_val})
-        
+            date_str = d.get('date') or str(d.get('created_at', ''))[:10]
+            if not date_str:
+                continue
+
+            rhr = AnalyticsService._extract_val(d.get('resting_hr') or d.get('rhr'))
+            if rhr > 0:
+                rhr_trend.append({"date": date_str, "val": rhr})
+
+            hrv = AnalyticsService._extract_val(d.get('hrv') or d.get('hrv_sdnn') or d.get('rmssd'))
+            if hrv > 0:
+                hrv_trend.append({"date": date_str, "val": hrv})
+
+            sleep_sc = AnalyticsService._extract_val(d.get('sleep_score') or d.get('sleep_quality'))
+            sleep_hr = AnalyticsService._extract_val(d.get('sleep_hours') or d.get('total_sleep_hours'))
+            if sleep_sc > 0 or sleep_hr > 0:
+                sleep_val = sleep_sc if sleep_sc > 0 else round(sleep_hr * 10)
+                sleep_trend.append({"date": date_str, "val": sleep_val, "hours": sleep_hr})
+
+            stress = AnalyticsService._extract_val(d.get('stress') or d.get('stress_level'))
+            if stress > 0:
+                stress_trend.append({"date": date_str, "val": stress})
+
+            tload = AnalyticsService._extract_val(d.get('training_load') or d.get('load'))
+            if tload > 0:
+                training_load_trend.append({"date": date_str, "val": tload})
+
+        # If training_load_trend is empty from daily records, derive from activities
+        if not training_load_trend:
+            try:
+                act_res = supabase.table("garmin_activities")\
+                    .select("start_time_local, duration, average_hr")\
+                    .eq("user_id", user_id)\
+                    .gte("start_time_local", start_date)\
+                    .execute()
+                acts = act_res.data or []
+                daily_loads = {}
+                for a in acts:
+                    st = a.get("start_time_local", "")[:10]
+                    dur = a.get("duration", 0) or 0
+                    hr = a.get("average_hr", 130) or 130
+                    load_val = round((dur / 60) * (hr / 100))
+                    if st:
+                        daily_loads[st] = daily_loads.get(st, 0) + load_val
+                training_load_trend = [{"date": k, "val": v} for k, v in sorted(daily_loads.items())]
+            except Exception:
+                pass
+
+        primary_src = "garmin"
+        if data and data[0].get("source"):
+            primary_src = data[0].get("source")
+
         return {
-            "rhr_trend": rhr_trend, 
-            "stress_trend": stress_trend
+            "rhr_trend": rhr_trend,
+            "hrv_trend": hrv_trend,
+            "sleep_trend": sleep_trend,
+            "stress_trend": stress_trend,
+            "training_load_trend": training_load_trend,
+            "primary_source": primary_src
         }
 
     @staticmethod
