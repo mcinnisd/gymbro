@@ -1,5 +1,6 @@
 import pytest
-from app.coach.interview_service import ARCHETYPE_MISSIONS, get_mission
+from unittest.mock import MagicMock, patch
+from app.coach.interview_service import ARCHETYPE_MISSIONS, get_mission, get_next_question
 
 def test_archetype_missions_registry_structure():
     expected_archetypes = [
@@ -21,3 +22,22 @@ def test_get_mission_resolution():
 
     fallback = get_mission("unknown_archetype", 1)
     assert "Goal & Race" in fallback
+
+def test_get_next_question_advancement():
+    mock_supabase = MagicMock()
+    mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [{
+        "id": "user_456",
+        "interview_step": 3,
+        "archetype": "muscle_strength"
+    }]
+
+    with patch("app.coach.interview_service.supabase", mock_supabase), \
+         patch("app.coach.interview_service._analyze_progress", return_value={"is_complete": True, "response": "Great work!"}), \
+         patch("app.coach.interview_service._generate_dynamic_response", return_value="Next question: preview plan"), \
+         patch("app.coach.plan_service.generate_baseline_plan") as mock_gen_plan:
+
+        res = get_next_question("user_456", chat_id="chat_789")
+        assert res["success"] is True
+        assert res["step"] == 4
+        assert res["is_complete"] is False
+        mock_gen_plan.assert_called_once_with("user_456", archetype="muscle_strength")
