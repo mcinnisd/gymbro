@@ -46,6 +46,18 @@ export default function ChatScreen() {
   const [garminStatus, setGarminStatus] = useState<string>('disconnected'); // 'disconnected' | 'connecting' | 'syncing' | 'completed' | 'failed'
   const [garminProgress, setGarminProgress] = useState<number>(0);
   const [stravaConnected, setStravaConnected] = useState<boolean>(false);
+  const [healthkitConnected, setHealthkitConnected] = useState<boolean>(false);
+
+  const handleSyncHealthKit = async () => {
+    const { syncAppleHealthKitData } = await import('../services/healthkit');
+    const data = await syncAppleHealthKitData();
+    if (data) {
+      setHealthkitConnected(true);
+      if (data.resting_hr) setRestingHr(String(data.resting_hr));
+      if (data.sleep_hours) setSleepHours(String(data.sleep_hours));
+      Alert.alert('Apple Health Synced', 'Resting HR, sleep, and activity metrics auto-imported!');
+    }
+  };
   const [pollingInterval, setPollingInterval] = useState<any>(null);
 
   // Pre-population profile states
@@ -610,10 +622,49 @@ export default function ChatScreen() {
             >
               <View style={styles.wizardHeader}>
                 <Text style={styles.wizardStepText}>Step 1 of 2</Text>
-                <Text style={styles.wizardTitle}>Connect Integrations</Text>
+                <Text style={styles.wizardTitle}>Connect Integrations or Health Data</Text>
                 <Text style={styles.wizardSubTitle}>
-                  Connect Garmin or Strava to import your training history and auto-populate your profile.
+                  Connect Apple Health, Garmin, or Strava — or proceed directly with manual baseline inputs.
                 </Text>
+              </View>
+
+              {/* Apple HealthKit Card */}
+              <View style={styles.integrationCard}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardTitleRow}>
+                    <View style={[styles.cardIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                      <Ionicons name="heart" size={20} color="#EF4444" />
+                    </View>
+                    <Text style={styles.cardTitle}>Apple Health (iOS)</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      { backgroundColor: healthkitConnected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.1)' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        { color: healthkitConnected ? '#10B981' : '#94A3B8' },
+                      ]}
+                    >
+                      {healthkitConnected ? 'Connected' : 'Disconnected'}
+                    </Text>
+                  </View>
+                </View>
+
+                {!healthkitConnected ? (
+                  <TouchableOpacity style={styles.connectButton} onPress={handleSyncHealthKit}>
+                    <LinearGradient colors={['#EF4444', '#B91C1C']} style={styles.connectButtonGradient}>
+                      <Text style={styles.connectButtonText}>Sync Apple HealthKit</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={{ color: '#94A3B8', fontSize: 13, textAlign: 'center' }}>
+                    Apple Health data (Resting HR, Sleep, HRV) connected and auto-imported.
+                  </Text>
+                )}
               </View>
 
               {/* Garmin Card */}
