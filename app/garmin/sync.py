@@ -96,6 +96,38 @@ def log_to_file(msg):
     except:
         pass
 
+def _sync_activities_to_calendar(user_id: str, activities: list):
+    """
+    Populates Garmin activities into the training_events table for calendar strip display.
+    """
+    if not supabase or not activities:
+        return
+    try:
+        calendar_batch = []
+        uid = int(user_id) if str(user_id).isdigit() else user_id
+        for doc in activities:
+            act_date = str(doc.get("start_time_local", ""))[:10]
+            if act_date:
+                raw_dist = doc.get("distance") or 0
+                dist_km = round(raw_dist / 1000, 2) if raw_dist > 100 else round(raw_dist, 2)
+                raw_dur = doc.get("duration") or 0
+                dur_min = round(raw_dur / 60, 1) if raw_dur > 300 else round(raw_dur, 1)
+                calendar_batch.append({
+                    "user_id": uid,
+                    "date": act_date,
+                    "title": doc.get("activity_name") or "Garmin Activity",
+                    "description": f"Distance: {dist_km}km, Duration: {dur_min}min, Avg HR: {doc.get('average_hr', 'N/A')} bpm",
+                    "event_type": doc.get("activity_type") or "run",
+                    "status": "completed",
+                    "created_by": "garmin",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+        if calendar_batch:
+            supabase.table("training_events").upsert(calendar_batch).execute()
+            logger.info(f"Synced {len(calendar_batch)} Garmin activities to training_events calendar for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to sync Garmin activities to training_events calendar: {e}")
+
 def update_progress(user_id: str, progress: int):
     """
     Updates the sync progress in the user's 'goals' JSONB column.
@@ -299,10 +331,12 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
 
                 if len(batch_activities) >= 20:
                     supabase.table("garmin_activities").upsert(batch_activities, on_conflict="activity_id").execute()
+                    _sync_activities_to_calendar(user_id, batch_activities)
                     batch_activities = []
             
             if batch_activities:
                 supabase.table("garmin_activities").upsert(batch_activities, on_conflict="activity_id").execute()
+                _sync_activities_to_calendar(user_id, batch_activities)
 
         except Exception as e:
             log_to_file(f"Error processing activities: {e}")
