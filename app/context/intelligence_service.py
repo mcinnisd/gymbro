@@ -22,8 +22,9 @@ class IntelligenceService:
                 logger.error("Failed to generate embedding for intelligence")
                 return None
             
+            uid = int(user_id) if str(user_id).isdigit() else user_id
             data = {
-                "user_id": int(user_id),
+                "user_id": uid,
                 "content": content,
                 "category": category,
                 "metadata": metadata or {},
@@ -48,9 +49,10 @@ class IntelligenceService:
                 logger.warning("No embedding generated for query, using keyword fallback.")
                 return IntelligenceService._keyword_search(user_id, query, limit, categories)
             
+            uid = int(user_id) if str(user_id).isdigit() else user_id
             params = {
                 "query_embedding": query_embedding,
-                "match_user_id": int(user_id),
+                "match_user_id": uid,
                 "match_count": limit,
                 "match_threshold": 0.4,
                 "filter_categories": categories
@@ -67,7 +69,8 @@ class IntelligenceService:
     def _keyword_search(user_id: str, query: str, limit: int, categories: List[str] = None) -> List[Dict]:
         """Simple keyword-based fallback search."""
         try:
-            q = supabase.table("user_intelligence").select("id, content, category, created_at").eq("user_id", int(user_id))
+            uid = int(user_id) if str(user_id).isdigit() else user_id
+            q = supabase.table("user_intelligence").select("id, content, category, created_at").eq("user_id", uid)
             if categories:
                 q = q.in_("category", categories)
             
@@ -126,7 +129,8 @@ class IntelligenceService:
     def get_all_intelligence(user_id: str, category: str = None) -> List[Dict[str, Any]]:
         """Retrieve all intelligence records for a user."""
         try:
-            q = supabase.table("user_intelligence").select("*").eq("user_id", int(user_id))
+            uid = int(user_id) if str(user_id).isdigit() else user_id
+            q = supabase.table("user_intelligence").select("*").eq("user_id", uid)
             if category:
                 q = q.eq("category", category)
             q = q.order("created_at", desc=True)

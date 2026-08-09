@@ -4,5 +4,6 @@
 from .intent_detector import detect_intent, IntentType
 from .context_builder import build_context
 from .baseline_service import get_user_baselines
+from .builder import build_user_context
 
-__all__ = ['detect_intent', 'IntentType', 'build_context', 'get_user_baselines']
+__all__ = ['detect_intent', 'IntentType', 'build_context', 'get_user_baselines', 'build_user_context']

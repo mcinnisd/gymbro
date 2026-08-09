@@ -92,7 +92,25 @@ class MockSupabaseClient:
         self.single_mode = True
         return self
 
+    def rpc(self, fn_name, params=None):
+        self.rpc_fn = fn_name
+        self.rpc_params = params or {}
+        return self
+
     def execute(self):
+        if hasattr(self, 'rpc_fn'):
+            fn = self.rpc_fn
+            params = self.rpc_params
+            del self.rpc_fn
+            del self.rpc_params
+            if fn == "match_intelligence":
+                match_uid = params.get("match_user_id")
+                rows = self.data.get("user_intelligence", [])
+                if match_uid is not None:
+                    rows = [r for r in rows if str(r.get("user_id")) == str(match_uid)]
+                return MockResponse(rows)
+            return MockResponse([])
+
         rows = self.data.get(self.current_table, [])
         
         # Apply filters
