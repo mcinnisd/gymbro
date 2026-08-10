@@ -385,15 +385,14 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
                 steps = robust_api_call(garmin_api.get_steps_data, day_str)
                 sleep = robust_api_call(garmin_api.get_sleep_data, day_str)
                 hr = robust_api_call(garmin_api.get_heart_rates, day_str)
-                # Helper data extraction
                 rhr_raw = robust_api_call(garmin_api.get_rhr_day, day_str)
                 stress_raw = robust_api_call(garmin_api.get_stress_data, day_str)
+                hrv_raw = robust_api_call(garmin_api.get_hrv_data, day_str)
 
                 # Normalize RHR (Extract scalar from heavy JSON)
                 rhr_val = None
                 try:
                     if isinstance(rhr_raw, dict):
-                         # Path: allMetrics -> metricsMap -> WELLNESS_RESTING_HEART_RATE -> [0] -> value
                          mmap = rhr_raw.get('allMetrics', {}).get('metricsMap', {})
                          vals = mmap.get('WELLNESS_RESTING_HEART_RATE', [])
                          if vals and isinstance(vals, list):
@@ -413,16 +412,64 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
                 except:
                     pass
 
+                # Normalize Sleep Score & Hours
+                sleep_score = None
+                sleep_hours = None
+                try:
+                    if isinstance(sleep, dict):
+                        daily_dto = sleep.get('dailySleepDTO') or {}
+                        scores = daily_dto.get('sleepScores') or {}
+                        if isinstance(scores, dict):
+                            overall = scores.get('overall') or {}
+                            if isinstance(overall, dict):
+                                sleep_score = overall.get('value')
+                        if not sleep_score:
+                            sleep_score = sleep.get('sleepQualityScore') or sleep.get('overallSleepScore')
+                        sleep_sec = daily_dto.get('sleepTimeSeconds') or sleep.get('totalSleepSeconds') or 0
+                        if sleep_sec > 0:
+                            sleep_hours = round(sleep_sec / 3600.0, 1)
+                except:
+                    pass
+
+                # Normalize HRV
+                hrv_val = None
+                try:
+                    if isinstance(hrv_raw, dict):
+                        summary = hrv_raw.get('hrvSummary') or {}
+                        hrv_val = summary.get('lastNightAvg') or summary.get('weeklyAvg') or hrv_raw.get('lastNight5MinHigh')
+                    elif isinstance(hrv_raw, (int, float)):
+                        hrv_val = hrv_raw
+                except:
+                    pass
+
                 daily_doc = {
                     "user_id": user_id,
                     "date": day_str,
                     "steps": steps,
                     "heartrate": hr,
-                    "resting_hr": rhr_val, # Cleaned
-                    "stress": stress_val,  # Cleaned
+                    "resting_hr": rhr_val,
+                    "stress": stress_val,
                     "synced_at": datetime.now(timezone.utc).isoformat()
                 }
                 daily_batch.append(daily_doc)
+
+                # Save parsed scalars into biometrics_daily
+                uid_parsed = int(user_id) if str(user_id).isdigit() else user_id
+                bio_doc = {
+                    "user_id": uid_parsed,
+                    "date": day_str,
+                    "resting_hr": rhr_val,
+                    "hrv": hrv_val,
+                    "sleep_score": sleep_score,
+                    "sleep_hours": sleep_hours,
+                    "stress_level": stress_val,
+                    "source": "garmin",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+                try:
+                    supabase.table("biometrics_daily").upsert(bio_doc, on_conflict="user_id, date").execute()
+                except Exception as bio_err:
+                    log_to_file(f"Failed biometrics_daily upsert for {day_str}: {bio_err}")
 
                 if sleep:
                     sleep_doc = {

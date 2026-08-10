@@ -483,54 +483,101 @@ class AnalyticsService:
 
     @staticmethod
     def _analyze_wellness(user_id, start_date):
-        # Fetch daily data
-        daily_res = supabase.table("garmin_daily")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .gte("date", start_date)\
-            .order("date")\
-            .execute()
-            
-        data = daily_res.data or []
+        # Merge biometrics from biometrics_daily, garmin_daily, and garmin_sleep by date
+        date_map = {}
 
-        if not data:
-            try:
-                bio_res = supabase.table("biometrics_daily")\
-                    .select("*")\
-                    .eq("user_id", user_id)\
-                    .gte("date", start_date)\
-                    .order("date")\
-                    .execute()
-                data = bio_res.data or []
-            except Exception:
-                data = []
-        
+        # 1. Fetch biometrics_daily
+        try:
+            bio_res = supabase.table("biometrics_daily")\
+                .select("*")\
+                .eq("user_id", user_id)\
+                .gte("date", start_date)\
+                .order("date")\
+                .execute()
+            for row in (bio_res.data or []):
+                dt = row.get("date")
+                if dt:
+                    date_map[dt] = {
+                        "date": dt,
+                        "rhr": row.get("resting_hr"),
+                        "hrv": row.get("hrv"),
+                        "sleep_score": row.get("sleep_score"),
+                        "sleep_hours": row.get("sleep_hours"),
+                        "stress": row.get("stress_level")
+                    }
+        except Exception:
+            pass
+
+        # 2. Fetch garmin_daily
+        try:
+            daily_res = supabase.table("garmin_daily")\
+                .select("*")\
+                .eq("user_id", user_id)\
+                .gte("date", start_date)\
+                .order("date")\
+                .execute()
+            for row in (daily_res.data or []):
+                dt = row.get("date")
+                if not dt: continue
+                if dt not in date_map: date_map[dt] = {"date": dt}
+                if not date_map[dt].get("rhr") and row.get("resting_hr"):
+                    date_map[dt]["rhr"] = AnalyticsService._extract_val(row.get("resting_hr"))
+                if not date_map[dt].get("stress") and row.get("stress"):
+                    date_map[dt]["stress"] = AnalyticsService._extract_val(row.get("stress"))
+        except Exception:
+            pass
+
+        # 3. Fetch garmin_sleep
+        try:
+            sleep_res = supabase.table("garmin_sleep")\
+                .select("*")\
+                .eq("user_id", user_id)\
+                .gte("date", start_date)\
+                .order("date")\
+                .execute()
+            for row in (sleep_res.data or []):
+                dt = row.get("date")
+                if not dt: continue
+                if dt not in date_map: date_map[dt] = {"date": dt}
+                sdata = row.get("sleep_data") or {}
+                if isinstance(sdata, dict):
+                    dto = sdata.get("dailySleepDTO") or {}
+                    scores = dto.get("sleepScores") or {}
+                    overall = scores.get("overall") or {} if isinstance(scores, dict) else {}
+                    score_val = overall.get("value") if isinstance(overall, dict) else None
+                    if not score_val:
+                        score_val = sdata.get("sleepQualityScore") or sdata.get("overallSleepScore")
+                    sec = dto.get("sleepTimeSeconds") or sdata.get("totalSleepSeconds") or 0
+                    if score_val and not date_map[dt].get("sleep_score"):
+                        date_map[dt]["sleep_score"] = score_val
+                    if sec > 0 and not date_map[dt].get("sleep_hours"):
+                        date_map[dt]["sleep_hours"] = round(sec / 3600.0, 1)
+        except Exception:
+            pass
+
         rhr_trend = []
         hrv_trend = []
         sleep_trend = []
         stress_trend = []
         training_load_trend = []
 
-        for d in data:
-            date_str = d.get('date') or str(d.get('created_at', ''))[:10]
-            if not date_str:
-                continue
-
-            rhr = AnalyticsService._extract_val(d.get('resting_hr') or d.get('rhr'))
+        for date_str in sorted(date_map.keys()):
+            d = date_map[date_str]
+            rhr = AnalyticsService._extract_val(d.get('rhr'))
             if rhr > 0:
                 rhr_trend.append({"date": date_str, "val": rhr})
 
-            hrv = AnalyticsService._extract_val(d.get('hrv') or d.get('hrv_sdnn') or d.get('rmssd'))
+            hrv = AnalyticsService._extract_val(d.get('hrv'))
             if hrv > 0:
                 hrv_trend.append({"date": date_str, "val": hrv})
 
-            sleep_sc = AnalyticsService._extract_val(d.get('sleep_score') or d.get('sleep_quality'))
-            sleep_hr = AnalyticsService._extract_val(d.get('sleep_hours') or d.get('total_sleep_hours'))
+            sleep_sc = AnalyticsService._extract_val(d.get('sleep_score'))
+            sleep_hr = AnalyticsService._extract_val(d.get('sleep_hours'))
             if sleep_sc > 0 or sleep_hr > 0:
                 sleep_val = sleep_sc if sleep_sc > 0 else round(sleep_hr * 10)
                 sleep_trend.append({"date": date_str, "val": sleep_val, "hours": sleep_hr})
 
-            stress = AnalyticsService._extract_val(d.get('stress') or d.get('stress_level'))
+            stress = AnalyticsService._extract_val(d.get('stress'))
             if stress > 0:
                 stress_trend.append({"date": date_str, "val": stress})
 
@@ -560,8 +607,10 @@ class AnalyticsService:
                 pass
 
         primary_src = "garmin"
-        if data and data[0].get("source"):
-            primary_src = data[0].get("source")
+        if date_map:
+            first_key = next(iter(date_map))
+            if isinstance(date_map[first_key], dict) and date_map[first_key].get("source"):
+                primary_src = date_map[first_key].get("source")
 
         return {
             "rhr_trend": rhr_trend,
