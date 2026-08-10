@@ -63,9 +63,10 @@ class MockSupabaseClient:
                 item_copy = dict(item)
                 conflict_key = on_conflict or "id"
                 existing = None
-                if conflict_key in item_copy:
+                keys = [k.strip() for k in conflict_key.split(",")]
+                if all(k in item_copy for k in keys):
                     for row in self.data[self.current_table]:
-                        if str(row.get(conflict_key)) == str(item_copy[conflict_key]):
+                        if all(str(row.get(k)) == str(item_copy[k]) for k in keys):
                             existing = row
                             break
                 if existing:

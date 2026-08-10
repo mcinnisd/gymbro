@@ -83,3 +83,52 @@ def test_garmin_sync_flow(app_context):
     
     daily_res = supabase.table("garmin_daily").select("count", count="exact").eq("user_id", user_id).execute()
     assert daily_res.count >= 0
+
+def test_garmin_deep_telemetry_sync(app_context):
+    user_id = "garmin_deep_telemetry_user"
+    
+    # Ensure user exists in users table
+    supabase.table("users").upsert({
+        "id": user_id,
+        "username": user_id,
+        "garmin_email": "test@garmin.com",
+        "garmin_password": "encrypted_secret",
+        "goals": {}
+    }).execute()
+
+    mock_api = unittest.mock.MagicMock()
+    mock_api.get_activities.return_value = []
+    mock_api.get_steps_data.return_value = 10000
+    mock_api.get_sleep_data.return_value = {
+        "dailySleepDTO": {
+            "sleepTimeSeconds": 28800,
+            "deepSleepSeconds": 7200,
+            "remSleepSeconds": 7200,
+            "lightSleepSeconds": 12600,
+            "awakeSleepSeconds": 1800,
+            "sleepScores": {"overall": {"value": 88}}
+        }
+    }
+    mock_api.get_heart_rates.return_value = [60, 62, 65]
+    mock_api.get_rhr_day.return_value = 52
+    mock_api.get_stress_data.return_value = {"avgStressLevel": 22}
+    mock_api.get_hrv_data.return_value = {"hrvSummary": {"lastNightAvg": 68}}
+    mock_api.get_max_metrics.return_value = [{"generic": {"vo2MaxValue": 54.5}, "fitnessAge": 26}]
+    mock_api.get_training_status.return_value = {"trainingStatusKey": "PRODUCTIVE", "acuteTrainingLoad": 450}
+    mock_api.get_body_battery.return_value = [{"charged": 92}]
+    mock_api.get_spo2_data.return_value = {"averageSpO2": 98}
+    mock_api.get_respiration_data.return_value = {"avgSleepRespirationValue": 14.2}
+
+    with unittest.mock.patch("app.garmin.sync.init_garmin_api_for_user", return_value=mock_api):
+        sync_all_garmin_data_for_user(user_id=user_id, days_back=1, force_resync=True)
+
+    res = supabase.table("biometrics_daily").select("*").eq("user_id", user_id).execute()
+    assert res.data is not None and len(res.data) > 0
+    row = res.data[0]
+    assert row.get("vo2_max") == 54.5
+    assert row.get("fitness_age") == 26
+    assert row.get("body_battery") == 92
+    assert row.get("training_status") == "PRODUCTIVE"
+    assert row.get("spo2") == 98
+    assert row.get("sleep_stages") == {"deep": 7200, "rem": 7200, "light": 12600, "awake": 1800}
+

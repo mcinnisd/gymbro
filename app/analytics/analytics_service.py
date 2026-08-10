@@ -503,7 +503,15 @@ class AnalyticsService:
                         "hrv": row.get("hrv"),
                         "sleep_score": row.get("sleep_score"),
                         "sleep_hours": row.get("sleep_hours"),
-                        "stress": row.get("stress_level")
+                        "stress": row.get("stress_level"),
+                        "vo2_max": row.get("vo2_max"),
+                        "fitness_age": row.get("fitness_age"),
+                        "body_battery": row.get("body_battery"),
+                        "sleep_stages": row.get("sleep_stages"),
+                        "training_status": row.get("training_status"),
+                        "acute_load": row.get("acute_load"),
+                        "spo2": row.get("spo2"),
+                        "respiration": row.get("respiration")
                     }
         except Exception:
             pass
@@ -552,6 +560,19 @@ class AnalyticsService:
                         date_map[dt]["sleep_score"] = score_val
                     if sec > 0 and not date_map[dt].get("sleep_hours"):
                         date_map[dt]["sleep_hours"] = round(sec / 3600.0, 1)
+
+                    if not date_map[dt].get("sleep_stages"):
+                        deep_sec = dto.get("deepSleepSeconds")
+                        rem_sec = dto.get("remSleepSeconds")
+                        light_sec = dto.get("lightSleepSeconds")
+                        awake_sec = dto.get("awakeSleepSeconds")
+                        if any(x is not None for x in [deep_sec, rem_sec, light_sec, awake_sec]):
+                            date_map[dt]["sleep_stages"] = {
+                                "deep": deep_sec or 0,
+                                "rem": rem_sec or 0,
+                                "light": light_sec or 0,
+                                "awake": awake_sec or 0
+                            }
         except Exception:
             pass
 
@@ -560,6 +581,16 @@ class AnalyticsService:
         sleep_trend = []
         stress_trend = []
         training_load_trend = []
+        vo2_max_trend = []
+        body_battery_trend = []
+        sleep_stage_trend = []
+        spo2_trend = []
+        respiration_trend = []
+
+        latest_training_status = None
+        latest_vo2_max = None
+        latest_fitness_age = None
+        latest_acute_load = None
 
         for date_str in sorted(date_map.keys()):
             d = date_map[date_str]
@@ -584,6 +615,45 @@ class AnalyticsService:
             tload = AnalyticsService._extract_val(d.get('training_load') or d.get('load'))
             if tload > 0:
                 training_load_trend.append({"date": date_str, "val": tload})
+
+            vo2 = AnalyticsService._extract_val(d.get('vo2_max'))
+            if vo2 > 0:
+                vo2_max_trend.append({"date": date_str, "val": vo2})
+                latest_vo2_max = vo2
+
+            bb = AnalyticsService._extract_val(d.get('body_battery'))
+            if bb > 0:
+                body_battery_trend.append({"date": date_str, "val": bb})
+
+            stages = d.get('sleep_stages')
+            if isinstance(stages, dict):
+                sleep_stage_trend.append({
+                    "date": date_str,
+                    "deep": stages.get("deep", 0),
+                    "rem": stages.get("rem", 0),
+                    "light": stages.get("light", 0),
+                    "awake": stages.get("awake", 0)
+                })
+
+            spo2 = AnalyticsService._extract_val(d.get('spo2'))
+            if spo2 > 0:
+                spo2_trend.append({"date": date_str, "val": spo2})
+
+            resp = AnalyticsService._extract_val(d.get('respiration'))
+            if resp > 0:
+                respiration_trend.append({"date": date_str, "val": resp})
+
+            ts = d.get('training_status')
+            if ts:
+                latest_training_status = ts
+
+            fa = AnalyticsService._extract_val(d.get('fitness_age'))
+            if fa > 0:
+                latest_fitness_age = fa
+
+            al = AnalyticsService._extract_val(d.get('acute_load'))
+            if al > 0:
+                latest_acute_load = al
 
         # If training_load_trend is empty from daily records, derive from activities
         if not training_load_trend:
@@ -618,6 +688,16 @@ class AnalyticsService:
             "sleep_trend": sleep_trend,
             "stress_trend": stress_trend,
             "training_load_trend": training_load_trend,
+            "vo2_max_trend": vo2_max_trend,
+            "body_battery_trend": body_battery_trend,
+            "sleep_stage_trend": sleep_stage_trend,
+            "spo2_trend": spo2_trend,
+            "respiration_trend": respiration_trend,
+            "training_status_summary": latest_training_status or "NO_DATA",
+            "vo2_max": latest_vo2_max,
+            "fitness_age": latest_fitness_age,
+            "training_status": latest_training_status,
+            "acute_load": latest_acute_load,
             "primary_source": primary_src
         }
 

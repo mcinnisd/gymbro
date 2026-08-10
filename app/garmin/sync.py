@@ -40,6 +40,21 @@ def robust_api_call(func, *args, retries=3, **kwargs):
         raise last_exception
 
 
+def safe_garmin_call(api, method_name, *args):
+    """
+    Safely invokes a GarminConnect method if available, handling missing methods or exceptions gracefully.
+    """
+    if not hasattr(api, method_name):
+        return None
+    try:
+        method = getattr(api, method_name)
+        return robust_api_call(method, *args)
+    except Exception as e:
+        logger.debug(f"Garmin API call {method_name} failed: {e}")
+        return None
+
+
+
 def init_garmin_api_for_user(user_id: str, encryption_key: str = None):
     """
     Initializes Garmin API session for a specific user by decrypting stored credentials.
@@ -412,9 +427,14 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
                 except:
                     pass
 
-                # Normalize Sleep Score & Hours
+                # Normalize Sleep Score, Hours, and Stages
                 sleep_score = None
                 sleep_hours = None
+                sleep_stages = None
+                deep_sleep_sec = None
+                rem_sleep_sec = None
+                light_sleep_sec = None
+                awake_sleep_sec = None
                 try:
                     if isinstance(sleep, dict):
                         daily_dto = sleep.get('dailySleepDTO') or {}
@@ -428,8 +448,83 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
                         sleep_sec = daily_dto.get('sleepTimeSeconds') or sleep.get('totalSleepSeconds') or 0
                         if sleep_sec > 0:
                             sleep_hours = round(sleep_sec / 3600.0, 1)
+
+                        deep_sleep_sec = daily_dto.get('deepSleepSeconds')
+                        rem_sleep_sec = daily_dto.get('remSleepSeconds')
+                        light_sleep_sec = daily_dto.get('lightSleepSeconds')
+                        awake_sleep_sec = daily_dto.get('awakeSleepSeconds')
+                        if any(x is not None for x in [deep_sleep_sec, rem_sleep_sec, light_sleep_sec, awake_sleep_sec]):
+                            sleep_stages = {
+                                "deep": deep_sleep_sec or 0,
+                                "rem": rem_sleep_sec or 0,
+                                "light": light_sleep_sec or 0,
+                                "awake": awake_sleep_sec or 0
+                            }
                 except:
                     pass
+
+                # Deep telemetry extraction: VO2 Max, Fitness Age, Body Battery, Training Status, SpO2, Respiration
+                vo2_max_val = None
+                fitness_age_val = None
+                body_battery_val = None
+                training_status_val = None
+                acute_load_val = None
+                spo2_val = None
+                respiration_val = None
+
+                max_m = safe_garmin_call(garmin_api, "get_max_metrics", day_str)
+                if isinstance(max_m, list) and max_m:
+                    max_m = max_m[0]
+                if isinstance(max_m, dict):
+                    generic = max_m.get("generic") or {}
+                    if isinstance(generic, dict):
+                        vo2_max_val = generic.get("vo2MaxValue") or generic.get("vo2MaxPrecision")
+                    if not vo2_max_val:
+                        vo2_max_val = max_m.get("vo2Max") or max_m.get("vo2MaxRunning") or max_m.get("vo2MaxValue")
+                    fitness_age_val = max_m.get("fitnessAge")
+
+                ts_raw = safe_garmin_call(garmin_api, "get_training_status", day_str)
+                if isinstance(ts_raw, dict):
+                    training_status_val = (
+                        ts_raw.get("trainingStatusKey") or 
+                        ts_raw.get("trainingStatus") or 
+                        ts_raw.get("userTrainingStatus", {}).get("trainingStatusKey")
+                    )
+                    acute_load_val = ts_raw.get("acuteTrainingLoad") or ts_raw.get("acuteLoad")
+                    if not vo2_max_val:
+                        most_recent_vo2 = ts_raw.get("mostRecentVO2Max", {})
+                        if isinstance(most_recent_vo2, dict):
+                            vo2_max_val = most_recent_vo2.get("generic", {}).get("vo2MaxValue") or most_recent_vo2.get("vo2Max")
+
+                bb_raw = safe_garmin_call(garmin_api, "get_body_battery", day_str)
+                if isinstance(bb_raw, list) and bb_raw:
+                    item = bb_raw[0]
+                    if isinstance(item, dict):
+                        body_battery_val = item.get("charged") or item.get("highestBodyBattery") or item.get("value")
+                        if body_battery_val is None and "bodyBatteryValuesArray" in item:
+                            vals = [v[1] for v in item.get("bodyBatteryValuesArray", []) if isinstance(v, (list, tuple)) and len(v) > 1 and v[1] is not None]
+                            if vals:
+                                body_battery_val = max(vals)
+                elif isinstance(bb_raw, dict):
+                    body_battery_val = bb_raw.get("charged") or bb_raw.get("highestBodyBattery") or bb_raw.get("value")
+                elif isinstance(bb_raw, (int, float)):
+                    body_battery_val = int(bb_raw)
+
+                spo2_raw = safe_garmin_call(garmin_api, "get_spo2_data", day_str)
+                if isinstance(spo2_raw, dict):
+                    spo2_val = spo2_raw.get("averageSpO2") or spo2_raw.get("latestSpO2") or spo2_raw.get("avgSpO2")
+                elif isinstance(spo2_raw, (int, float)):
+                    spo2_val = spo2_raw
+
+                resp_raw = safe_garmin_call(garmin_api, "get_respiration_data", day_str)
+                if isinstance(resp_raw, dict):
+                    respiration_val = (
+                        resp_raw.get("avgWakingRespirationValue") or 
+                        resp_raw.get("avgSleepRespirationValue") or 
+                        resp_raw.get("averageRespirationValue")
+                    )
+                elif isinstance(resp_raw, (int, float)):
+                    respiration_val = resp_raw
 
                 # Normalize HRV
                 hrv_val = None
@@ -462,7 +557,18 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 7, encryption_k
                     "hrv": hrv_val,
                     "sleep_score": sleep_score,
                     "sleep_hours": sleep_hours,
+                    "deep_sleep_hours": round(deep_sleep_sec / 3600.0, 2) if deep_sleep_sec else None,
+                    "rem_sleep_hours": round(rem_sleep_sec / 3600.0, 2) if rem_sleep_sec else None,
+                    "light_sleep_hours": round(light_sleep_sec / 3600.0, 2) if light_sleep_sec else None,
+                    "sleep_stages": sleep_stages,
                     "stress_level": stress_val,
+                    "body_battery": body_battery_val,
+                    "vo2_max": vo2_max_val,
+                    "fitness_age": fitness_age_val,
+                    "training_status": training_status_val,
+                    "acute_load": acute_load_val,
+                    "spo2": spo2_val,
+                    "respiration": respiration_val,
                     "source": "garmin",
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
