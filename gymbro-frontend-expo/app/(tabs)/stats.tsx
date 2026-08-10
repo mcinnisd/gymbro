@@ -471,6 +471,28 @@ export default function StatsScreen() {
           Real-time record stream loaded from Garmin Watch, Apple HealthKit & Strava.
         </Text>
 
+        {/* Unified Single Source of Truth Biometrics Row */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+          <View style={{ flex: 1, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
+            <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>LATEST HRV</Text>
+            <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#059669', marginTop: 2 }}>
+              {realWellness?.hrv_trend?.length ? `${realWellness.hrv_trend[realWellness.hrv_trend.length - 1].val} ms` : 'Synced'}
+            </Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
+            <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>SLEEP SCORE</Text>
+            <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginTop: 2 }}>
+              {realWellness?.sleep_trend?.length ? `${realWellness.sleep_trend[realWellness.sleep_trend.length - 1].val}/100` : 'Synced'}
+            </Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
+            <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>RESTING HR</Text>
+            <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#DC2626', marginTop: 2 }}>
+              {realWellness?.rhr_trend?.length ? `${realWellness.rhr_trend[realWellness.rhr_trend.length - 1].val} bpm` : 'Synced'}
+            </Text>
+          </View>
+        </View>
+
         {liveActivities.length > 0 ? (
           liveActivities.slice(0, 4).map((act, idx) => (
             <View key={idx} style={styles.liveActivityRow}>
