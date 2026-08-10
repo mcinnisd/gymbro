@@ -17,6 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import { GarminModal } from '../../components/GarminModal';
+import WidgetCustomizeModal, {
+  getWidgetPreferences,
+  WidgetPreferences,
+  DEFAULT_WIDGET_PREFS,
+} from '../../components/WidgetCustomizeModal';
 
 interface ProfileData {
   age: number | null;
@@ -34,6 +39,8 @@ export default function StatsScreen() {
   const [saving, setSaving] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [showGarminModal, setShowGarminModal] = useState(false);
+  const [showWidgetModal, setShowWidgetModal] = useState(false);
+  const [widgetPrefs, setWidgetPrefs] = useState<WidgetPreferences>(DEFAULT_WIDGET_PREFS);
   const [liveActivities, setLiveActivities] = useState<any[]>([]);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
 
@@ -158,6 +165,7 @@ export default function StatsScreen() {
   }, [realWellness]);
 
   useEffect(() => {
+    getWidgetPreferences().then(setWidgetPrefs);
     if (authToken) {
       fetchProfile();
     }
@@ -396,13 +404,19 @@ export default function StatsScreen() {
             <Ionicons name="hardware-chip-outline" size={22} color={Colors.light.primary} style={{ marginRight: 8 }} />
             <Text style={styles.cardTitle}>Connected Devices & Integrations</Text>
           </View>
-          <TouchableOpacity style={styles.resyncBtn} onPress={handleForceReSyncAll} disabled={syncingAll}>
-            {syncingAll ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.resyncBtnText}>🔄 Re-Sync All</Text>
-            )}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity style={styles.outlineBtn} onPress={() => setShowWidgetModal(true)}>
+              <Ionicons name="options-outline" size={14} color={Colors.light.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.outlineBtnText}>Widgets</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.resyncBtn} onPress={handleForceReSyncAll} disabled={syncingAll}>
+              {syncingAll ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.resyncBtnText}>🔄 Re-Sync All</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Garmin Account Connection */}
@@ -454,6 +468,13 @@ export default function StatsScreen() {
         visible={showGarminModal}
         onClose={() => setShowGarminModal(false)}
         onSuccess={() => fetchProfile()}
+      />
+
+      {/* Widget Customization Modal */}
+      <WidgetCustomizeModal
+        visible={showWidgetModal}
+        onClose={() => setShowWidgetModal(false)}
+        onPreferencesChange={(newPrefs) => setWidgetPrefs(newPrefs)}
       />
 
       {/* Live Device Pass-Through Inspector Card */}

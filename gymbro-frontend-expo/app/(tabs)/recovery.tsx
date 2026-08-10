@@ -16,6 +16,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import RecoveryChart, { RecoveryDataPoint } from '../../components/RecoveryChart';
 import { GarminModal } from '../../components/GarminModal';
+import WidgetCustomizeModal, {
+  getWidgetPreferences,
+  WidgetPreferences,
+  DEFAULT_WIDGET_PREFS,
+} from '../../components/WidgetCustomizeModal';
 
 export default function RecoveryScreen() {
   const router = useRouter();
@@ -23,6 +28,8 @@ export default function RecoveryScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showGarminModal, setShowGarminModal] = useState(false);
+  const [showWidgetModal, setShowWidgetModal] = useState(false);
+  const [widgetPrefs, setWidgetPrefs] = useState<WidgetPreferences>(DEFAULT_WIDGET_PREFS);
 
   // Journal Form State
   const [energyLevel, setEnergyLevel] = useState<number>(7);
@@ -43,6 +50,7 @@ export default function RecoveryScreen() {
   const [recoveryDataPoints, setRecoveryDataPoints] = useState<RecoveryDataPoint[]>([]);
 
   useEffect(() => {
+    getWidgetPreferences().then(setWidgetPrefs);
     if (authToken) {
       fetchTodayJournal();
       fetchFlaggedBiomarkers();
@@ -443,6 +451,15 @@ export default function RecoveryScreen() {
               {wearableConnected ? 'Re-Sync' : 'Connect Garmin'}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.deviceSyncBarBtn, { marginLeft: 8, backgroundColor: '#F1F5F9' }]}
+            onPress={() => setShowWidgetModal(true)}
+          >
+            <Ionicons name="options-outline" size={14} color="#2563EB" style={{ marginRight: 4 }} />
+            <Text style={[styles.deviceSyncBarBtnText, { color: '#2563EB' }]}>
+              Widgets
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Garmin Connection Modal */}
@@ -450,6 +467,13 @@ export default function RecoveryScreen() {
           visible={showGarminModal}
           onClose={() => setShowGarminModal(false)}
           onSuccess={() => fetchAnalyticsData()}
+        />
+
+        {/* Widget Customization Modal */}
+        <WidgetCustomizeModal
+          visible={showWidgetModal}
+          onClose={() => setShowWidgetModal(false)}
+          onPreferencesChange={(newPrefs) => setWidgetPrefs(newPrefs)}
         />
 
         {/* Interactive Layered Trends Analytics Component */}
