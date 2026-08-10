@@ -31,6 +31,9 @@ export default function RecoveryScreen() {
   const [showWidgetModal, setShowWidgetModal] = useState(false);
   const [widgetPrefs, setWidgetPrefs] = useState<WidgetPreferences>(DEFAULT_WIDGET_PREFS);
 
+  // Range filter state (7, 30, 90, 180, 365 days)
+  const [rangeDays, setRangeDays] = useState<number>(7);
+
   // Journal Form State
   const [energyLevel, setEnergyLevel] = useState<number>(7);
   const [feltSore, setFeltSore] = useState<boolean>(false);
@@ -45,6 +48,15 @@ export default function RecoveryScreen() {
   const [flaggedBiomarkers, setFlaggedBiomarkers] = useState<any[]>([]);
   const [wearableConnected, setWearableConnected] = useState<boolean>(false);
   const [biometricsSource, setBiometricsSource] = useState<string>('garmin');
+
+  // Deep Telemetry Metrics States
+  const [bodyBattery, setBodyBattery] = useState<number | null>(null);
+  const [stressLevel, setStressLevel] = useState<number | null>(null);
+  const [spo2Val, setSpo2Val] = useState<number | null>(null);
+  const [respirationVal, setRespirationVal] = useState<number | null>(null);
+  const [sleepStages, setSleepStages] = useState<{ deep: number; rem: number; light: number; awake: number } | null>(null);
+  const [hrvVal, setHrvVal] = useState<number | null>(null);
+  const [rhrVal, setRhrVal] = useState<number | null>(null);
   
   // Layered Trends Data Points State
   const [recoveryDataPoints, setRecoveryDataPoints] = useState<RecoveryDataPoint[]>([]);
@@ -54,39 +66,46 @@ export default function RecoveryScreen() {
     if (authToken) {
       fetchTodayJournal();
       fetchFlaggedBiomarkers();
-      fetchAnalyticsData();
+      fetchAnalyticsData(rangeDays);
     } else {
-      // Fallback sample data points for initial demo/offline view
-      generateSampleRecoveryData();
+      generateSampleRecoveryData(rangeDays);
     }
   }, [authToken]);
 
-  const generateSampleRecoveryData = () => {
+  const generateSampleRecoveryData = (daysCount: number = rangeDays) => {
     const now = new Date();
-    const samplePoints: RecoveryDataPoint[] = Array.from({ length: 7 }, (_, i) => {
+    const count = Math.min(daysCount, 30);
+    const samplePoints: RecoveryDataPoint[] = Array.from({ length: count }, (_, i) => {
       const d = new Date(now);
-      d.setDate(d.getDate() - (6 - i));
+      d.setDate(d.getDate() - ((count - 1) - i));
       const dateStr = d.toISOString().split('T')[0];
       return {
         date: dateStr,
-        dayLabel: i === 6 ? 'Today' : `D-${6 - i}`,
-        sleep: [78, 85, 64, 90, 82, 75, 88][i],
-        sleepHours: [7.2, 8.0, 6.1, 8.5, 7.8, 7.0, 8.2][i],
-        hrv: [62, 68, 48, 74, 69, 58, 71][i],
-        rhr: [54, 52, 58, 51, 53, 55, 52][i],
-        load: [210, 340, 180, 410, 290, 150, 310][i],
+        dayLabel: i === (count - 1) ? 'Today' : `D-${(count - 1) - i}`,
+        sleep: [78, 85, 64, 90, 82, 75, 88][i % 7],
+        sleepHours: [7.2, 8.0, 6.1, 8.5, 7.8, 7.0, 8.2][i % 7],
+        hrv: [62, 68, 48, 74, 69, 58, 71][i % 7],
+        rhr: [54, 52, 58, 51, 53, 55, 52][i % 7],
+        load: [210, 340, 180, 410, 290, 150, 310][i % 7],
       };
     });
     setRecoveryDataPoints(samplePoints);
     setSleepScore(88);
     setSleepHours('8.2h');
     setRhrHistory([54, 52, 58, 51, 53, 55, 52]);
+    setHrvVal(71);
+    setRhrVal(52);
+    setBodyBattery(82);
+    setStressLevel(24);
+    setSpo2Val(98);
+    setRespirationVal(14);
+    setSleepStages({ deep: 6480, rem: 7560, light: 14400, awake: 1080 });
     setWearableConnected(true);
   };
 
-  const fetchAnalyticsData = async () => {
+  const fetchAnalyticsData = async (days: number = rangeDays) => {
     try {
-      const res = await fetch(`${apiUrl}/analytics/summary`, {
+      const res = await fetch(`${apiUrl}/analytics/summary?days=${days}`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (res.ok) {
@@ -96,8 +115,13 @@ export default function RecoveryScreen() {
           setBiometricsSource(wellness.primary_source);
         }
         if (wellness.rhr_trend && wellness.rhr_trend.length > 0) {
-          setRhrHistory(wellness.rhr_trend.map((d: any) => d.val));
+          const rhrs = wellness.rhr_trend.map((d: any) => d.val);
+          setRhrHistory(rhrs);
+          setRhrVal(rhrs[rhrs.length - 1]);
           setWearableConnected(true);
+        }
+        if (wellness.hrv_trend && wellness.hrv_trend.length > 0) {
+          setHrvVal(wellness.hrv_trend[wellness.hrv_trend.length - 1].val);
         }
         if (wellness.sleep_trend && wellness.sleep_trend.length > 0) {
           const lastSleep = wellness.sleep_trend[wellness.sleep_trend.length - 1];
@@ -105,6 +129,27 @@ export default function RecoveryScreen() {
           if (lastSleep.hours) {
             setSleepHours(`${lastSleep.hours}h`);
           }
+        }
+        if (wellness.body_battery_trend && wellness.body_battery_trend.length > 0) {
+          setBodyBattery(wellness.body_battery_trend[wellness.body_battery_trend.length - 1].val);
+        }
+        if (wellness.stress_trend && wellness.stress_trend.length > 0) {
+          setStressLevel(wellness.stress_trend[wellness.stress_trend.length - 1].val);
+        }
+        if (wellness.spo2_trend && wellness.spo2_trend.length > 0) {
+          setSpo2Val(wellness.spo2_trend[wellness.spo2_trend.length - 1].val);
+        }
+        if (wellness.respiration_trend && wellness.respiration_trend.length > 0) {
+          setRespirationVal(wellness.respiration_trend[wellness.respiration_trend.length - 1].val);
+        }
+        if (wellness.sleep_stage_trend && wellness.sleep_stage_trend.length > 0) {
+          const lastStage = wellness.sleep_stage_trend[wellness.sleep_stage_trend.length - 1];
+          setSleepStages({
+            deep: lastStage.deep || 0,
+            rem: lastStage.rem || 0,
+            light: lastStage.light || 0,
+            awake: lastStage.awake || 0,
+          });
         }
 
         // Parse trends into RecoveryDataPoints
@@ -148,17 +193,26 @@ export default function RecoveryScreen() {
           dayLabel: idx === sortedDates.length - 1 ? 'Today' : `D-${sortedDates.length - 1 - idx}`,
         }));
 
-        if (points.length < 5) {
-          generateSampleRecoveryData();
+        if (points.length < 3) {
+          generateSampleRecoveryData(days);
         } else {
           setRecoveryDataPoints(points);
         }
       } else {
-        generateSampleRecoveryData();
+        generateSampleRecoveryData(days);
       }
     } catch (e) {
       console.error('Analytics load error:', e);
-      generateSampleRecoveryData();
+      generateSampleRecoveryData(days);
+    }
+  };
+
+  const handleRangeSelect = (days: number) => {
+    setRangeDays(days);
+    if (authToken) {
+      fetchAnalyticsData(days);
+    } else {
+      generateSampleRecoveryData(days);
     }
   };
 
@@ -285,10 +339,81 @@ export default function RecoveryScreen() {
     });
   };
 
+  // Readiness calculation & formatting
+  const currentReadiness = (() => {
+    const s = sleepScore !== null ? sleepScore : 88;
+    const bb = bodyBattery !== null ? bodyBattery : 82;
+    const hrv = hrvVal !== null ? hrvVal : 71;
+    const rhr = rhrVal !== null ? rhrVal : 52;
+
+    const sPart = s * 0.35;
+    const bbPart = bb * 0.35;
+    const hrvPart = Math.min(100, (hrv / 70) * 100) * 0.15;
+    const rhrPart = Math.max(0, Math.min(100, 100 - (rhr - 45) * 2)) * 0.15;
+
+    const score = Math.min(100, Math.max(0, Math.round(sPart + bbPart + hrvPart + rhrPart)));
+    let status = 'Optimal Readiness';
+    let color = '#059669';
+    let sub = 'High strain & max intensity training ready today!';
+    if (score < 65) {
+      status = 'Low Readiness';
+      color = '#D97706';
+      sub = 'Sub-optimal recovery. Focus on light active recovery or rest.';
+    } else if (score < 80) {
+      status = 'Moderate Readiness';
+      color = '#2563EB';
+      sub = 'Good baseline recovery. Standard workout volume recommended.';
+    }
+    return { score, status, color, sub, s, bb, hrv, rhr };
+  })();
+
+  // Sleep Stages calculation & formatting
+  const sleepStageStats = (() => {
+    const stages = sleepStages || { deep: 6480, rem: 7560, light: 14400, awake: 1080 };
+    const getH = (v: number) => (v > 100 ? v / 3600 : v);
+    const deepH = getH(stages.deep);
+    const remH = getH(stages.rem);
+    const lightH = getH(stages.light);
+    const awakeH = getH(stages.awake);
+    const totalH = deepH + remH + lightH + awakeH;
+
+    const deepPct = totalH > 0 ? Math.round((deepH / totalH) * 100) : 22;
+    const remPct = totalH > 0 ? Math.round((remH / totalH) * 100) : 26;
+    const lightPct = totalH > 0 ? Math.round((lightH / totalH) * 100) : 49;
+    const awakePct = Math.max(0, 100 - deepPct - remPct - lightPct);
+
+    return { deepH, remH, lightH, awakeH, totalH, deepPct, remPct, lightPct, awakePct };
+  })();
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
+        {/* 1-Year Range Filter Pills Bar */}
+        <View style={styles.rangeFilterRow}>
+          <Text style={styles.rangeFilterTitle}>Range:</Text>
+          {[
+            { label: '7D', days: 7 },
+            { label: '30D', days: 30 },
+            { label: '90D', days: 90 },
+            { label: '6M', days: 180 },
+            { label: '1Y', days: 365 },
+          ].map((r) => {
+            const isSelected = rangeDays === r.days;
+            return (
+              <TouchableOpacity
+                key={r.label}
+                style={[styles.rangePill, isSelected && styles.rangePillActive]}
+                onPress={() => handleRangeSelect(r.days)}
+              >
+                <Text style={[styles.rangePillText, isSelected && styles.rangePillTextActive]}>
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Health Hub & Lab Biomarkers Card */}
         <View style={styles.biomarkersCard}>
           <LinearGradient
@@ -338,6 +463,225 @@ export default function RecoveryScreen() {
             )}
           </LinearGradient>
         </View>
+
+        {/* 1. Daily Readiness Meter Card */}
+        {widgetPrefs.hrv && (
+          <View style={styles.cardContainer}>
+            <LinearGradient
+              colors={['rgba(5, 150, 105, 0.08)', 'rgba(37, 99, 235, 0.04)']}
+              style={styles.cardGradientPadding}
+            >
+              <View style={styles.cardHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="speedometer" size={18} color={currentReadiness.color} />
+                  <Text style={styles.sectionTitle}>Daily Readiness Meter</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: `${currentReadiness.color}15`, borderColor: `${currentReadiness.color}30` }]}>
+                  <Text style={[styles.statusBadgeText, { color: currentReadiness.color }]}>
+                    {currentReadiness.status}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.readinessScoreRow}>
+                <View style={styles.readinessBigScoreBox}>
+                  <Text style={[styles.readinessBigScore, { color: currentReadiness.color }]}>
+                    {currentReadiness.score}
+                  </Text>
+                  <Text style={styles.readinessMaxText}>/ 100</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 16 }}>
+                  <Text style={styles.readinessSubText}>{currentReadiness.sub}</Text>
+                  <View style={styles.readinessBarBg}>
+                    <View
+                      style={[
+                        styles.readinessBarFill,
+                        { width: `${currentReadiness.score}%`, backgroundColor: currentReadiness.color },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.readinessPillsRow}>
+                <View style={styles.readinessMiniPill}>
+                  <Ionicons name="battery-charging" size={12} color="#D97706" />
+                  <Text style={styles.readinessMiniPillLabel}>Body Bat: {currentReadiness.bb}</Text>
+                </View>
+                <View style={styles.readinessMiniPill}>
+                  <Ionicons name="pulse" size={12} color="#059669" />
+                  <Text style={styles.readinessMiniPillLabel}>HRV: {currentReadiness.hrv}ms</Text>
+                </View>
+                <View style={styles.readinessMiniPill}>
+                  <Ionicons name="moon" size={12} color="#2563EB" />
+                  <Text style={styles.readinessMiniPillLabel}>Sleep: {currentReadiness.s}</Text>
+                </View>
+                <View style={styles.readinessMiniPill}>
+                  <Ionicons name="heart" size={12} color="#DC2626" />
+                  <Text style={styles.readinessMiniPillLabel}>RHR: {currentReadiness.rhr}bpm</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
+        {/* 2. Sleep Architecture Stacked Bar Widget */}
+        {widgetPrefs.sleep_stages && (
+          <View style={styles.cardContainer}>
+            <LinearGradient
+              colors={['rgba(37, 99, 235, 0.08)', 'rgba(79, 70, 229, 0.04)']}
+              style={styles.cardGradientPadding}
+            >
+              <View style={styles.cardHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="moon-outline" size={18} color="#2563EB" />
+                  <Text style={styles.sectionTitle}>Sleep Architecture</Text>
+                </View>
+                <Text style={styles.headerRightValue}>
+                  {sleepScore !== null ? `${sleepScore}/100 Score` : '88/100 Score'}
+                </Text>
+              </View>
+
+              <Text style={styles.cardSubHeader}>
+                Total Sleep: {sleepStageStats.totalH.toFixed(1)}h • Deep, REM, Light & Awake stages
+              </Text>
+
+              <View style={styles.sleepStackedBar}>
+                {sleepStageStats.deepPct > 0 && (
+                  <View style={[styles.sleepSegment, { width: `${sleepStageStats.deepPct}%`, backgroundColor: '#4F46E5' }]} />
+                )}
+                {sleepStageStats.remPct > 0 && (
+                  <View style={[styles.sleepSegment, { width: `${sleepStageStats.remPct}%`, backgroundColor: '#0EA5E9' }]} />
+                )}
+                {sleepStageStats.lightPct > 0 && (
+                  <View style={[styles.sleepSegment, { width: `${sleepStageStats.lightPct}%`, backgroundColor: '#818CF8' }]} />
+                )}
+                {sleepStageStats.awakePct > 0 && (
+                  <View style={[styles.sleepSegment, { width: `${sleepStageStats.awakePct}%`, backgroundColor: '#F43F5E' }]} />
+                )}
+              </View>
+
+              <View style={styles.sleepLegendGrid}>
+                <View style={styles.sleepLegendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#4F46E5' }]} />
+                  <Text style={styles.legendLabel}>Deep: {sleepStageStats.deepH.toFixed(1)}h ({sleepStageStats.deepPct}%)</Text>
+                </View>
+                <View style={styles.sleepLegendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#0EA5E9' }]} />
+                  <Text style={styles.legendLabel}>REM: {sleepStageStats.remH.toFixed(1)}h ({sleepStageStats.remPct}%)</Text>
+                </View>
+                <View style={styles.sleepLegendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#818CF8' }]} />
+                  <Text style={styles.legendLabel}>Light: {sleepStageStats.lightH.toFixed(1)}h ({sleepStageStats.lightPct}%)</Text>
+                </View>
+                <View style={styles.sleepLegendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#F43F5E' }]} />
+                  <Text style={styles.legendLabel}>Awake: {sleepStageStats.awakeH.toFixed(1)}h ({sleepStageStats.awakePct}%)</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
+        {/* 3. Body Battery & Stress Charge Meter Card */}
+        {widgetPrefs.body_battery && (
+          <View style={styles.cardContainer}>
+            <LinearGradient
+              colors={['rgba(217, 119, 6, 0.08)', 'rgba(245, 158, 11, 0.04)']}
+              style={styles.cardGradientPadding}
+            >
+              <View style={styles.cardHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="battery-charging-outline" size={18} color="#D97706" />
+                  <Text style={styles.sectionTitle}>Body Battery & Stress</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: 'rgba(217, 119, 6, 0.1)', borderColor: 'rgba(217, 119, 6, 0.2)' }]}>
+                  <Text style={[styles.statusBadgeText, { color: '#D97706' }]}>
+                    {bodyBattery !== null ? `${bodyBattery}/100` : '82/100'} Energy
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={styles.cardSubHeader}>Body Battery Level</Text>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#0F172A' }}>
+                    {bodyBattery !== null ? `${bodyBattery}%` : '82%'}
+                  </Text>
+                </View>
+                <View style={styles.batteryBarBg}>
+                  <View
+                    style={[
+                      styles.batteryBarFill,
+                      { width: `${bodyBattery !== null ? bodyBattery : 82}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.stressRow}>
+                <View style={styles.stressItem}>
+                  <Ionicons name="pulse" size={14} color="#0891B2" style={{ marginRight: 6 }} />
+                  <Text style={styles.stressLabel}>Stress Level:</Text>
+                  <Text style={styles.stressValue}>
+                    {stressLevel !== null ? `${stressLevel} (${stressLevel < 25 ? 'Resting' : stressLevel < 50 ? 'Low' : 'Moderate'})` : '24 (Resting)'}
+                  </Text>
+                </View>
+                <View style={styles.stressItem}>
+                  <Ionicons name="flash-outline" size={14} color="#D97706" style={{ marginRight: 6 }} />
+                  <Text style={styles.stressLabel}>Net Charge:</Text>
+                  <Text style={[styles.stressValue, { color: '#059669' }]}>+58 pts sleep</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
+
+        {/* 4. SpO2 & Respiration Card */}
+        {widgetPrefs.spo2 && (
+          <View style={styles.cardContainer}>
+            <LinearGradient
+              colors={['rgba(8, 145, 178, 0.08)', 'rgba(6, 182, 212, 0.04)']}
+              style={styles.cardGradientPadding}
+            >
+              <View style={styles.cardHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="water-outline" size={18} color="#0891B2" />
+                  <Text style={styles.sectionTitle}>SpO2 & Respiration</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: 'rgba(8, 145, 178, 0.1)', borderColor: 'rgba(8, 145, 178, 0.2)' }]}>
+                  <Text style={[styles.statusBadgeText, { color: '#0891B2' }]}>
+                    Pulse Oximetry
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.spo2Grid}>
+                <View style={styles.spo2Box}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="water" size={14} color="#0891B2" style={{ marginRight: 4 }} />
+                    <Text style={styles.spo2Label}>SpO2 Oxygen</Text>
+                  </View>
+                  <Text style={styles.spo2Value}>
+                    {spo2Val !== null ? `${spo2Val}%` : '98%'}
+                  </Text>
+                  <Text style={styles.spo2Sub}>Optimal Saturation</Text>
+                </View>
+
+                <View style={styles.spo2Box}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="leaf-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
+                    <Text style={styles.spo2Label}>Respiration Rate</Text>
+                  </View>
+                  <Text style={styles.spo2Value}>
+                    {respirationVal !== null ? `${respirationVal}` : '14'} <Text style={{ fontSize: 12, color: '#64748B' }}>brpm</Text>
+                  </Text>
+                  <Text style={styles.spo2Sub}>Normal Resting Breathing</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
 
         {/* Recovery Summary Cards */}
         {wearableConnected && sleepScore !== null ? (
@@ -466,7 +810,7 @@ export default function RecoveryScreen() {
         <GarminModal
           visible={showGarminModal}
           onClose={() => setShowGarminModal(false)}
-          onSuccess={() => fetchAnalyticsData()}
+          onSuccess={() => fetchAnalyticsData(rangeDays)}
         />
 
         {/* Widget Customization Modal */}
@@ -576,6 +920,232 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingBottom: 90,
+  },
+  rangeFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  rangeFilterTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    marginRight: 4,
+  },
+  rangePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  rangePillActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  rangePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  rangePillTextActive: {
+    color: '#FFFFFF',
+  },
+  cardContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  cardGradientPadding: {
+    padding: 16,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#0F172A',
+    marginLeft: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  readinessScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  readinessBigScoreBox: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  readinessBigScore: {
+    fontSize: 36,
+    fontWeight: '900',
+  },
+  readinessMaxText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontWeight: 'bold',
+    marginLeft: 2,
+  },
+  readinessSubText: {
+    fontSize: 12,
+    color: '#475569',
+    marginBottom: 6,
+    fontWeight: '500',
+  },
+  readinessBarBg: {
+    height: 8,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  readinessBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  readinessPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  readinessMiniPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  readinessMiniPillLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#475569',
+    marginLeft: 4,
+  },
+  headerRightValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2563EB',
+  },
+  cardSubHeader: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: 10,
+  },
+  sleepStackedBar: {
+    height: 16,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 8,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  sleepSegment: {
+    height: '100%',
+  },
+  sleepLegendGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sleepLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: '45%',
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  legendLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  batteryBarBg: {
+    height: 10,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  batteryBarFill: {
+    height: '100%',
+    backgroundColor: '#D97706',
+    borderRadius: 5,
+  },
+  stressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  stressItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stressLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    marginRight: 4,
+  },
+  stressValue: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
+  spo2Grid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  spo2Box: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  spo2Label: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#475569',
+  },
+  spo2Value: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginVertical: 2,
+  },
+  spo2Sub: {
+    fontSize: 10,
+    color: '#64748B',
   },
   row: {
     flexDirection: 'row',
