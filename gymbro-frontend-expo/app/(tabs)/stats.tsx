@@ -52,9 +52,9 @@ export default function StatsScreen() {
   const [stravaConnected, setStravaConnected] = useState(false);
   const [healthkitConnected, setHealthkitConnected] = useState(false);
 
-  // Graph Metric & Range Selectors
+  // Graph Metric & Range Selectors (7D, 30D, 90D, 6M, 1Y)
   const [selectedMetric, setSelectedMetric] = useState<'pace' | 'distance' | 'heart_rate' | 'cadence'>('pace');
-  const [periodDays, setPeriodDays] = useState<7 | 30 | 90>(30);
+  const [periodDays, setPeriodDays] = useState<number>(30);
 
   // Edit Profile Modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -76,10 +76,11 @@ export default function StatsScreen() {
   // Real Database Data Calculations
   const rawActivities = analyticsData?.raw_activities || [];
   const weeklyVolObj = analyticsData?.weekly_volume || {};
+  const realWellness = analyticsData?.wellness || {};
 
   const dynamicActivityBars = React.useMemo(() => {
     if (!rawActivities || rawActivities.length === 0) return [];
-    return rawActivities.slice(0, 6).map((act: any) => {
+    return rawActivities.slice(0, 8).map((act: any) => {
       let val = 50;
       let detail = `${act.distance_km} km`;
       if (selectedMetric === 'pace') {
@@ -105,7 +106,7 @@ export default function StatsScreen() {
 
   const dynamicEfficiencyBars = React.useMemo(() => {
     if (!rawActivities || rawActivities.length === 0) return [];
-    return rawActivities.slice(0, 6).map((act: any) => {
+    return rawActivities.slice(0, 8).map((act: any) => {
       const hr = act.avg_hr || 145;
       const paceStr = act.pace_min_km > 0 ? `${act.pace_min_km} m/km` : `${act.distance_km} km`;
       const effVal = act.pace_min_km > 0 ? Math.min(100, Math.max(25, Math.round((6.5 / act.pace_min_km) * 60))) : 50;
@@ -122,7 +123,7 @@ export default function StatsScreen() {
     if (keys.length === 0) return [];
     const sortedKeys = keys.sort();
     const maxDist = Math.max(...sortedKeys.map((k) => (weeklyVolObj[k].distance || 0) / 1000.0), 10);
-    return sortedKeys.slice(-6).map((k) => {
+    return sortedKeys.slice(-8).map((k) => {
       const distKm = Math.round(((weeklyVolObj[k].distance || 0) / 1000.0) * 10) / 10;
       const pct = Math.min(100, Math.max(10, Math.round((distKm / maxDist) * 100)));
       return {
@@ -132,12 +133,11 @@ export default function StatsScreen() {
       };
     });
   }, [weeklyVolObj]);
-  const realWellness = analyticsData?.wellness || {};
 
   const dynamicSleepBars = React.useMemo(() => {
     const sleepTrend = realWellness.sleep_trend || [];
     if (sleepTrend.length === 0) return [];
-    return sleepTrend.slice(-10).map((d: any) => ({
+    return sleepTrend.slice(-12).map((d: any) => ({
       label: d.date ? d.date.slice(5) : 'Day',
       val: Math.min(100, Math.max(15, d.val || 70)),
       detail: d.hours ? `${d.hours}h (${d.val}/100)` : `${d.val} pts`,
@@ -147,31 +147,76 @@ export default function StatsScreen() {
   const dynamicHrvBars = React.useMemo(() => {
     const hrvTrend = realWellness.hrv_trend || [];
     if (hrvTrend.length === 0) return [];
-    return hrvTrend.slice(-10).map((d: any) => ({
+    return hrvTrend.slice(-12).map((d: any) => ({
       label: d.date ? d.date.slice(5) : 'Day',
       val: Math.min(100, Math.max(20, Math.round(((d.val - 30) / 70) * 100))),
       detail: `${d.val} ms`,
     }));
   }, [realWellness]);
 
-  const dynamicRhrBars = React.useMemo(() => {
-    const rhrTrend = realWellness.rhr_trend || [];
-    if (rhrTrend.length === 0) return [];
-    return rhrTrend.slice(-10).map((d: any) => ({
-      label: d.date ? d.date.slice(5) : 'Day',
-      val: Math.min(100, Math.max(20, Math.round(((85 - d.val) / 40) * 100))),
-      detail: `${d.val} bpm`,
-    }));
+  const trainingStatusInfo = React.useMemo(() => {
+    const statusRaw = (realWellness?.training_status || realWellness?.training_status_summary || 'PRODUCTIVE').toString().toUpperCase();
+    const acuteLoadVal = realWellness?.acute_load !== undefined && realWellness?.acute_load !== null ? realWellness.acute_load : 485;
+
+    let label = 'Productive';
+    let color = '#059669';
+    let bg = 'rgba(5, 150, 105, 0.1)';
+    let desc = 'Optimal training volume & fitness gains. Load is balanced.';
+    let icon: keyof typeof Ionicons.glyphMap = 'trending-up-outline';
+
+    if (statusRaw.includes('RECOVERY')) {
+      label = 'Recovery';
+      color = '#2563EB';
+      bg = 'rgba(37, 99, 235, 0.1)';
+      desc = 'Lower workload allowing body to adapt & restore energy.';
+      icon = 'refresh-outline';
+    } else if (statusRaw.includes('MAINTAINING')) {
+      label = 'Maintaining';
+      color = '#D97706';
+      bg = 'rgba(217, 119, 6, 0.1)';
+      desc = 'Current load is maintaining fitness baseline.';
+      icon = 'remove-outline';
+    } else if (statusRaw.includes('OVERREACHING')) {
+      label = 'Overreaching';
+      color = '#DC2626';
+      bg = 'rgba(220, 38, 38, 0.1)';
+      desc = 'High load strain! Increased risk of burnout or injury.';
+      icon = 'warning-outline';
+    } else if (statusRaw.includes('UNPRODUCTIVE')) {
+      label = 'Unproductive';
+      color = '#EA580C';
+      bg = 'rgba(234, 88, 12, 0.1)';
+      desc = 'Workload is adequate but health factors limit adaptation.';
+      icon = 'alert-circle-outline';
+    } else if (statusRaw.includes('DETRAINING')) {
+      label = 'Detraining';
+      color = '#64748B';
+      bg = 'rgba(100, 116, 139, 0.1)';
+      desc = 'Training load decreased significantly over past week.';
+      icon = 'trending-down-outline';
+    }
+
+    return { label, color, bg, desc, icon, acuteLoadVal };
   }, [realWellness]);
+
+  const vo2MaxVal = realWellness?.vo2_max || 54;
+  const fitnessAgeVal = realWellness?.fitness_age || (profile?.age ? Math.max(18, profile.age - 4) : 24);
 
   useEffect(() => {
     getWidgetPreferences().then(setWidgetPrefs);
     if (authToken) {
-      fetchProfile();
+      fetchProfile(periodDays);
     }
-  }, [authToken, periodDays]);
+  }, [authToken]);
 
-  const fetchProfile = async () => {
+  const handleRangeSelect = (days: number) => {
+    setPeriodDays(days);
+    if (authToken) {
+      fetchProfile(days);
+    }
+  };
+
+  const fetchProfile = async (days: number = periodDays) => {
     setLoading(true);
     try {
       const response = await fetch(`${apiUrl}/auth/profile`, {
@@ -213,7 +258,7 @@ export default function StatsScreen() {
       }
 
       // Fetch Aggregated Analytics Summary with Days Range
-      const summaryRes = await fetch(`${apiUrl}/analytics/summary?days=${periodDays}`, {
+      const summaryRes = await fetch(`${apiUrl}/analytics/summary?days=${days}`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${authToken}` },
       });
@@ -245,7 +290,7 @@ export default function StatsScreen() {
       if (response.ok) {
         setGarminConnected(true);
         Alert.alert('Garmin Connected!', 'Garmin sync has been initiated. Your workout & wellness history is now syncing.');
-        fetchProfile();
+        fetchProfile(periodDays);
       } else {
         const err = await response.json();
         Alert.alert('Garmin Error', err.error || 'Failed to connect Garmin account.');
@@ -296,7 +341,7 @@ export default function StatsScreen() {
         fetch(`${apiUrl}/strava/sync`, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } }).catch(() => {}),
       ]);
       Alert.alert('Re-Sync Complete', 'All connected device data has been updated!');
-      fetchProfile();
+      fetchProfile(periodDays);
     } catch (err) {
       console.error('Error re-syncing device data:', err);
     }
@@ -328,7 +373,7 @@ export default function StatsScreen() {
       if (response.ok) {
         Alert.alert('Success', 'Athlete profile updated.');
         setShowEditModal(false);
-        fetchProfile();
+        fetchProfile(periodDays);
       } else {
         Alert.alert('Error', 'Failed to update profile.');
       }
@@ -366,7 +411,7 @@ export default function StatsScreen() {
       if (response.ok) {
         Alert.alert('Success', 'Personal Records updated!');
         setShowPRModal(false);
-        fetchProfile();
+        fetchProfile(periodDays);
       } else {
         Alert.alert('Error', 'Failed to save PRs.');
       }
@@ -388,23 +433,48 @@ export default function StatsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* Header Banner */}
       <View style={styles.headerBanner}>
-        <View>
+        <View style={{ flex: 1, marginRight: 10 }}>
           <Text style={styles.headerTitle}>Athlete Performance & Stats</Text>
-          <Text style={styles.headerSubtitle}>Personal Records, Garmin/Strava Sync & Performance Graphs</Text>
+          <Text style={styles.headerSubtitle}>Personal Records, Garmin/Strava Sync & Dynamic Graphs</Text>
         </View>
         <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
           <Ionicons name="log-out-outline" size={18} color="#DC2626" />
         </TouchableOpacity>
       </View>
 
+      {/* 1-Year Range Filter Pills Bar */}
+      <View style={styles.rangeFilterRow}>
+        <Text style={styles.rangeFilterTitle}>Range:</Text>
+        {[
+          { label: '7D', days: 7 },
+          { label: '30D', days: 30 },
+          { label: '90D', days: 90 },
+          { label: '6M', days: 180 },
+          { label: '1Y', days: 365 },
+        ].map((r) => {
+          const isSelected = periodDays === r.days;
+          return (
+            <TouchableOpacity
+              key={r.label}
+              style={[styles.rangePill, isSelected && styles.rangePillActive]}
+              onPress={() => handleRangeSelect(r.days)}
+            >
+              <Text style={[styles.rangePillText, isSelected && styles.rangePillTextActive]}>
+                {r.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {/* Connected Devices & Integration Settings */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="hardware-chip-outline" size={22} color={Colors.light.primary} style={{ marginRight: 8 }} />
-            <Text style={styles.cardTitle}>Connected Devices & Integrations</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+            <Ionicons name="hardware-chip-outline" size={20} color={Colors.light.primary} style={{ marginRight: 8 }} />
+            <Text style={styles.cardTitle}>Connected Devices</Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             <TouchableOpacity style={styles.outlineBtn} onPress={() => setShowWidgetModal(true)}>
               <Ionicons name="options-outline" size={14} color={Colors.light.primary} style={{ marginRight: 4 }} />
               <Text style={styles.outlineBtnText}>Widgets</Text>
@@ -423,7 +493,7 @@ export default function StatsScreen() {
         <View style={styles.deviceRow}>
           <View style={styles.deviceInfo}>
             <Ionicons name="watch-outline" size={22} color={garminConnected ? Colors.light.secondary : Colors.light.subtext} />
-            <View style={{ marginLeft: 10 }}>
+            <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={styles.deviceName}>Garmin Connect</Text>
               <Text style={styles.deviceSub}>
                 {garminConnected ? 'Status: Connected & Auto-Syncing' : 'Status: Disconnected'}
@@ -439,7 +509,7 @@ export default function StatsScreen() {
         <View style={styles.deviceRow}>
           <View style={styles.deviceInfo}>
             <Ionicons name="flame-outline" size={22} color={stravaConnected ? '#FC4C02' : Colors.light.subtext} />
-            <View style={{ marginLeft: 10 }}>
+            <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={styles.deviceName}>Strava OAuth</Text>
               <Text style={styles.deviceSub}>{stravaConnected ? 'Status: Connected' : 'Status: Disconnected'}</Text>
             </View>
@@ -452,7 +522,7 @@ export default function StatsScreen() {
         <View style={[styles.deviceRow, { borderBottomWidth: 0 }]}>
           <View style={styles.deviceInfo}>
             <Ionicons name="heart-outline" size={22} color={healthkitConnected ? '#EF4444' : Colors.light.subtext} />
-            <View style={{ marginLeft: 10 }}>
+            <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={styles.deviceName}>Apple Health (iOS)</Text>
               <Text style={styles.deviceSub}>{healthkitConnected ? 'Status: Connected' : 'Status: Offline'}</Text>
             </View>
@@ -463,11 +533,61 @@ export default function StatsScreen() {
         </View>
       </View>
 
+      {/* Garmin Training Status & Acute Load Widget (Conditional on widgetPrefs.training_status) */}
+      {widgetPrefs.training_status && (
+        <View style={styles.card}>
+          <LinearGradient
+            colors={['rgba(220, 38, 38, 0.06)', 'rgba(239, 68, 68, 0.02)']}
+            style={styles.cardGradientPadding}
+          >
+            <View style={styles.cardHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+                <Ionicons name="fitness-outline" size={20} color={trainingStatusInfo.color} style={{ marginRight: 8 }} />
+                <Text style={styles.cardTitle}>Garmin Training Status & Load</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: trainingStatusInfo.bg, borderColor: `${trainingStatusInfo.color}30` }]}>
+                <Ionicons name={trainingStatusInfo.icon} size={12} color={trainingStatusInfo.color} style={{ marginRight: 4 }} />
+                <Text style={[styles.statusBadgeText, { color: trainingStatusInfo.color }]}>
+                  {trainingStatusInfo.label}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.trainingStatusDesc}>{trainingStatusInfo.desc}</Text>
+
+            <View style={styles.acuteLoadBox}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={styles.acuteLoadLabel}>Acute Training Load Score</Text>
+                <Text style={[styles.acuteLoadValText, { color: trainingStatusInfo.color }]}>
+                  {trainingStatusInfo.acuteLoadVal} <Text style={{ fontSize: 11, color: Colors.light.subtext }}>/ 1000</Text>
+                </Text>
+              </View>
+              <View style={styles.loadMeterBg}>
+                <View
+                  style={[
+                    styles.loadMeterFill,
+                    {
+                      width: `${Math.min(100, Math.max(10, Math.round((trainingStatusInfo.acuteLoadVal / 1000) * 100)))}%`,
+                      backgroundColor: trainingStatusInfo.color,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ fontSize: 10, color: Colors.light.subtext }}>Low (0-300)</Text>
+                <Text style={{ fontSize: 10, color: Colors.light.subtext }}>Optimal (350-700)</Text>
+                <Text style={{ fontSize: 10, color: Colors.light.subtext }}>High (750+)</Text>
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+      )}
+
       {/* Standalone Garmin Modal */}
       <GarminModal
         visible={showGarminModal}
         onClose={() => setShowGarminModal(false)}
-        onSuccess={() => fetchProfile()}
+        onSuccess={() => fetchProfile(periodDays)}
       />
 
       {/* Widget Customization Modal */}
@@ -480,12 +600,12 @@ export default function StatsScreen() {
       {/* Live Device Pass-Through Inspector Card */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
             <Ionicons name="pulse" size={18} color={Colors.light.primary} style={{ marginRight: 6 }} />
             <Text style={styles.cardTitle}>Live Synced Devices Pass-Through</Text>
           </View>
-          <TouchableOpacity style={styles.outlineBtn} onPress={fetchProfile}>
-            <Text style={styles.outlineBtnText}>Refresh Data</Text>
+          <TouchableOpacity style={styles.outlineBtn} onPress={() => fetchProfile(periodDays)}>
+            <Text style={styles.outlineBtnText}>Refresh</Text>
           </TouchableOpacity>
         </View>
         <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
@@ -493,20 +613,24 @@ export default function StatsScreen() {
         </Text>
 
         {/* Unified Single Source of Truth Biometrics Row */}
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-          <View style={{ flex: 1, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
-            <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>LATEST HRV</Text>
-            <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#059669', marginTop: 2 }}>
-              {realWellness?.hrv_trend?.length ? `${realWellness.hrv_trend[realWellness.hrv_trend.length - 1].val} ms` : 'Synced'}
-            </Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
-            <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>SLEEP SCORE</Text>
-            <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginTop: 2 }}>
-              {realWellness?.sleep_trend?.length ? `${realWellness.sleep_trend[realWellness.sleep_trend.length - 1].val}/100` : 'Synced'}
-            </Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          {widgetPrefs.hrv && (
+            <View style={{ flex: 1, minWidth: 100, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>LATEST HRV</Text>
+              <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#059669', marginTop: 2 }}>
+                {realWellness?.hrv_trend?.length ? `${realWellness.hrv_trend[realWellness.hrv_trend.length - 1].val} ms` : 'Synced'}
+              </Text>
+            </View>
+          )}
+          {widgetPrefs.sleep_stages && (
+            <View style={{ flex: 1, minWidth: 100, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
+              <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>SLEEP SCORE</Text>
+              <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginTop: 2 }}>
+                {realWellness?.sleep_trend?.length ? `${realWellness.sleep_trend[realWellness.sleep_trend.length - 1].val}/100` : 'Synced'}
+              </Text>
+            </View>
+          )}
+          <View style={{ flex: 1, minWidth: 100, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
             <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>RESTING HR</Text>
             <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#DC2626', marginTop: 2 }}>
               {realWellness?.rhr_trend?.length ? `${realWellness.rhr_trend[realWellness.rhr_trend.length - 1].val} bpm` : 'Synced'}
@@ -541,13 +665,19 @@ export default function StatsScreen() {
         <View style={styles.cardHeaderRow}>
           <Text style={styles.cardTitle}>1. Activity & Performance Trends</Text>
           <View style={styles.periodSelector}>
-            {([7, 30, 90] as const).map((d) => (
+            {[
+              { label: '7D', days: 7 },
+              { label: '30D', days: 30 },
+              { label: '90D', days: 90 },
+              { label: '6M', days: 180 },
+              { label: '1Y', days: 365 },
+            ].map((r) => (
               <TouchableOpacity
-                key={d}
-                style={[styles.periodChip, periodDays === d && styles.periodChipActive]}
-                onPress={() => setPeriodDays(d)}
+                key={r.label}
+                style={[styles.periodChip, periodDays === r.days && styles.periodChipActive]}
+                onPress={() => handleRangeSelect(r.days)}
               >
-                <Text style={[styles.periodText, periodDays === d && styles.periodTextActive]}>{d}D</Text>
+                <Text style={[styles.periodText, periodDays === r.days && styles.periodTextActive]}>{r.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -580,7 +710,7 @@ export default function StatsScreen() {
 
         <View style={styles.graphContainer}>
           <View style={styles.graphHeader}>
-            <Text style={styles.graphMetricTitle}>{selectedMetric.toUpperCase()} ({periodDays}-Day View)</Text>
+            <Text style={styles.graphMetricTitle}>{selectedMetric.toUpperCase()} ({periodDays}D View)</Text>
             <Text style={styles.graphSummaryText}>Live Updated from Garmin</Text>
           </View>
 
@@ -663,75 +793,79 @@ export default function StatsScreen() {
         </View>
       </View>
 
-      {/* GRAPH 4: Sleep Score & Duration Trends (Real DB) */}
-      <View style={styles.card}>
-        <View style={styles.cardHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="moon" size={18} color="#2563EB" style={{ marginRight: 6 }} />
-            <Text style={styles.cardTitle}>4. Sleep Score & Duration History</Text>
-          </View>
-          <View style={styles.badgeSuccess}>
-            <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
-          </View>
-        </View>
-        <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
-          Tracks nightly sleep quality score (0-100) and total hours synced from Garmin or Apple Health.
-        </Text>
-        <View style={styles.graphContainer}>
-          {dynamicSleepBars.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
-              {dynamicSleepBars.map((b: any, idx: number) => (
-                <View key={idx} style={styles.barColumn}>
-                  <Text style={styles.barDetailText}>{b.detail}</Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#2563EB' }]} />
-                  </View>
-                  <Text style={styles.barLabel}>{b.label}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
-              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database sleep logs found yet. Connect Garmin or Apple Health to load sleep history.</Text>
+      {/* GRAPH 4: Sleep Score & Duration Trends (Real DB) (Conditional on widgetPrefs.sleep_stages) */}
+      {widgetPrefs.sleep_stages && (
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+              <Ionicons name="moon" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+              <Text style={styles.cardTitle}>4. Sleep Score & Duration History</Text>
             </View>
-          )}
+            <View style={styles.badgeSuccess}>
+              <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
+            Tracks nightly sleep quality score (0-100) and total hours synced from Garmin or Apple Health.
+          </Text>
+          <View style={styles.graphContainer}>
+            {dynamicSleepBars.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
+                {dynamicSleepBars.map((b: any, idx: number) => (
+                  <View key={idx} style={styles.barColumn}>
+                    <Text style={styles.barDetailText}>{b.detail}</Text>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#2563EB' }]} />
+                    </View>
+                    <Text style={styles.barLabel}>{b.label}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+                <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database sleep logs found yet. Connect Garmin or Apple Health to load sleep history.</Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
-      {/* GRAPH 5: HRV & Recovery Baseline Trends (Real DB) */}
-      <View style={styles.card}>
-        <View style={styles.cardHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="pulse" size={18} color="#059669" style={{ marginRight: 6 }} />
-            <Text style={styles.cardTitle}>5. HRV (ms) & Autonomic Recovery</Text>
-          </View>
-          <View style={styles.badgeSuccess}>
-            <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
-          </View>
-        </View>
-        <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
-          Heart Rate Variability (rMSSD in ms) reflecting nervous system recovery and training adaptation.
-        </Text>
-        <View style={styles.graphContainer}>
-          {dynamicHrvBars.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
-              {dynamicHrvBars.map((b: any, idx: number) => (
-                <View key={idx} style={styles.barColumn}>
-                  <Text style={styles.barDetailText}>{b.detail}</Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#059669' }]} />
-                  </View>
-                  <Text style={styles.barLabel}>{b.label}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
-              <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database HRV records found yet. Connect your watch or Apple Health to track HRV baselines.</Text>
+      {/* GRAPH 5: HRV & Recovery Baseline Trends (Real DB) (Conditional on widgetPrefs.hrv) */}
+      {widgetPrefs.hrv && (
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+              <Ionicons name="pulse" size={18} color="#059669" style={{ marginRight: 6 }} />
+              <Text style={styles.cardTitle}>5. HRV (ms) & Autonomic Recovery</Text>
             </View>
-          )}
+            <View style={styles.badgeSuccess}>
+              <Text style={styles.badgeTextSuccess}>Real-Time DB</Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: 12, color: Colors.light.subtext, marginBottom: 12 }}>
+            Heart Rate Variability (rMSSD in ms) reflecting nervous system recovery and training adaptation.
+          </Text>
+          <View style={styles.graphContainer}>
+            {dynamicHrvBars.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollGraphContent}>
+                {dynamicHrvBars.map((b: any, idx: number) => (
+                  <View key={idx} style={styles.barColumn}>
+                    <Text style={styles.barDetailText}>{b.detail}</Text>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#059669' }]} />
+                    </View>
+                    <Text style={styles.barLabel}>{b.label}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ padding: 16, alignItems: 'center', backgroundColor: Colors.light.background, borderRadius: 10 }}>
+                <Text style={{ fontSize: 12, color: Colors.light.subtext }}>No real database HRV records found yet. Connect your watch or Apple Health to track HRV baselines.</Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Personal Records (PRs) */}
       <View style={styles.card}>
@@ -763,15 +897,43 @@ export default function StatsScreen() {
         </View>
       </View>
 
-      {/* Athlete Profile Information */}
+      {/* Athlete Profile Information & Baselines */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>Athlete Profile</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+            <Ionicons name="person-outline" size={18} color={Colors.light.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.cardTitle}>Athlete Profile & Baselines</Text>
+          </View>
           <TouchableOpacity style={styles.editBtn} onPress={() => setShowEditModal(true)}>
             <Ionicons name="create-outline" size={16} color={Colors.light.primary} />
             <Text style={styles.editBtnText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
+
+        {/* VO2 Max & Fitness Age Badges (Conditional on widgetPrefs.vo2_max) */}
+        {widgetPrefs.vo2_max && (
+          <View style={styles.vo2BadgeRow}>
+            <View style={styles.vo2Tile}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Ionicons name="speedometer-outline" size={16} color="#7C3AED" style={{ marginRight: 6 }} />
+                <Text style={styles.vo2TileLabel}>VO2 Max</Text>
+              </View>
+              <Text style={styles.vo2TileValue}>{vo2MaxVal} <Text style={{ fontSize: 11, fontWeight: 'normal', color: Colors.light.subtext }}>mL/kg/min</Text></Text>
+              <Text style={styles.vo2TileSub}>Superior Aerobic Capacity</Text>
+            </View>
+
+            <View style={styles.vo2Tile}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Ionicons name="sparkles-outline" size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                <Text style={styles.vo2TileLabel}>Fitness Age</Text>
+              </View>
+              <Text style={styles.vo2TileValue}>{fitnessAgeVal} <Text style={{ fontSize: 11, fontWeight: 'normal', color: Colors.light.subtext }}>yrs</Text></Text>
+              <Text style={styles.vo2TileSub}>
+                {profile?.age ? `${Math.max(0, profile.age - fitnessAgeVal)} yrs younger than age` : 'Peak Athletic Fitness'}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.profileGrid}>
           <View style={styles.profileItem}>
@@ -798,7 +960,7 @@ export default function StatsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Edit Athlete Profile</Text>
-            
+
             <Text style={styles.inputLabel}>Age</Text>
             <TextInput style={styles.inputField} value={ageInput} onChangeText={setAgeInput} keyboardType="numeric" />
 
@@ -875,7 +1037,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   headerTitle: {
     fontSize: 24,
@@ -892,6 +1054,44 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FEE2E2',
   },
+  rangeFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: Colors.light.card,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  rangeFilterTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginRight: 4,
+  },
+  rangePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: Colors.light.background,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  rangePillActive: {
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
+  },
+  rangePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.text,
+  },
+  rangePillTextActive: {
+    color: '#FFFFFF',
+  },
   card: {
     backgroundColor: Colors.light.card,
     borderRadius: 16,
@@ -900,16 +1100,66 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
+  cardGradientPadding: {
+    borderRadius: 12,
+    padding: 14,
+  },
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: Colors.light.text,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  trainingStatusDesc: {
+    fontSize: 12,
+    color: Colors.light.subtext,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  acuteLoadBox: {
+    backgroundColor: Colors.light.background,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  acuteLoadLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  acuteLoadValText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  loadMeterBg: {
+    height: 8,
+    backgroundColor: Colors.light.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  loadMeterFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   resyncBtn: {
     backgroundColor: Colors.light.primary,
@@ -946,33 +1196,16 @@ const styles = StyleSheet.create({
     color: Colors.light.subtext,
     marginTop: 1,
   },
-  badge: {
+  badgeSuccess: {
+    backgroundColor: 'rgba(5, 150, 105, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
-  badgeSuccess: {
-    backgroundColor: 'rgba(5, 150, 105, 0.15)',
-  },
-  badgeInactive: {
-    backgroundColor: 'rgba(100, 116, 139, 0.1)',
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
   badgeTextSuccess: {
     color: Colors.light.secondary,
-  },
-  badgeTextInactive: {
-    color: Colors.light.subtext,
-  },
-  garminInputsBox: {
-    backgroundColor: Colors.light.background,
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 8,
-    marginBottom: 8,
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   inputField: {
     backgroundColor: Colors.light.card,
@@ -984,25 +1217,14 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     fontSize: 14,
   },
-  actionBtn: {
-    backgroundColor: Colors.light.primary,
-    borderRadius: 8,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
   outlineBtn: {
     borderWidth: 1,
     borderColor: Colors.light.primary,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   outlineBtnText: {
     color: Colors.light.primary,
@@ -1014,6 +1236,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.background,
     borderRadius: 8,
     padding: 2,
+    flexWrap: 'wrap',
+    gap: 2,
   },
   periodChip: {
     paddingHorizontal: 8,
@@ -1077,13 +1301,6 @@ const styles = StyleSheet.create({
     color: Colors.light.primary,
     fontWeight: '600',
   },
-  barsArea: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 130,
-    paddingTop: 16,
-  },
   scrollGraphContent: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -1121,6 +1338,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 6,
     textAlign: 'center',
+  },
+  vo2BadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  vo2Tile: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  vo2TileLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  vo2TileValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginVertical: 2,
+  },
+  vo2TileSub: {
+    fontSize: 10,
+    color: Colors.light.subtext,
   },
   prGrid: {
     flexDirection: 'row',
