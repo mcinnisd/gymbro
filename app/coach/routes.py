@@ -192,3 +192,33 @@ def organize_plan():
     except Exception as e:
         logger.error(f"Error organizing plan: {e}")
         return jsonify({"error": "Failed to organize plan."}), 500
+
+
+@coach_bp.route("/chat", methods=["POST"])
+@jwt_required()
+def coach_chat_route():
+    """
+    Handles coach chat queries and returns rich text and structured gymbro.widget/v1 payloads.
+    """
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json() or {}
+        message = data.get("message", "")
+        
+        if not message:
+            return jsonify({"error": "Message is required."}), 400
+
+        from app.coach.service import process_coach_message
+        result = process_coach_message(user_id=str(user_id), message=message)
+
+        return jsonify({
+            "reply": result.get("response", ""),
+            "message": result.get("response", ""),
+            "ui_payload": result.get("ui_payload"),
+            "plan": result.get("plan")
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in coach_chat_route: {e}")
+        return jsonify({"error": str(e)}), 500
+

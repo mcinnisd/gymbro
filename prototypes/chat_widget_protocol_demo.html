@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GYMBro — In-Chat Native Interactive Chart & Action Widget Protocol Prototype</title>
+  <style>
+    :root {
+      --bg-primary: #FBF9F5;
+      --bg-card: #FFFFFF;
+      --bg-card-subtle: #F5F2EB;
+      --text-main: #1C1917;
+      --text-muted: #78716C;
+      --text-subtle: #A8A29E;
+      --border-main: #E7E5E4;
+      --border-subtle: #F0EEE9;
+      --primary: #D97706; /* Terracotta Warm Amber */
+      --primary-light: rgba(217, 119, 6, 0.12);
+      --vitality: #059669; /* Forest Sage */
+      --vitality-light: rgba(5, 150, 105, 0.12);
+      --sleep: #4F46E5; /* Dusk Indigo */
+      --sleep-light: rgba(79, 70, 229, 0.12);
+      --cardio: #E11D48; /* Crimson */
+      --cardio-light: rgba(225, 29, 72, 0.12);
+      --shadow: 0 4px 20px -2px rgba(28, 25, 23, 0.06), 0 2px 6px -1px rgba(28, 25, 23, 0.04);
+      --shadow-lg: 0 10px 25px -3px rgba(28, 25, 23, 0.08), 0 4px 10px -2px rgba(28, 25, 23, 0.04);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Header Banner */
+    .header-banner {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 16px;
+      padding: 20px 24px;
+      box-shadow: var(--shadow);
+    }
+    .badge-protocol {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--primary);
+      background: var(--primary-light);
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 8px;
+    }
+    .header-banner h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
+    }
+    .header-banner p.question-statement {
+      margin-top: 6px;
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 900px;
+    }
+    .header-banner .question-highlight {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* 3-Column Layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 360px 420px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 1200px) {
+      .main-grid {
+        grid-template-columns: 1fr 420px;
+      }
+    }
+    @media (max-width: 860px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .panel-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: -10px;
+      margin-bottom: 16px;
+    }
+
+    /* Tabbed Walkthroughs */
+    .tab-bar {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-card-subtle);
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 7px 4px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .tab-btn.active {
+      background: var(--bg-card);
+      color: var(--text-main);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .scenario-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      background: var(--bg-card-subtle);
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      border-left: 3px solid var(--primary);
+    }
+    .scenario-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .step-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease;
+    }
+    .step-btn:hover {
+      background: var(--bg-card-subtle);
+      border-color: var(--primary);
+    }
+    .step-btn .step-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-light);
+      padding: 2px 7px;
+      border-radius: 12px;
+    }
+
+    /* Free-play Buttons */
+    .section-divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 20px 0 16px;
+    }
+    .freeplay-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .action-chip-btn {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .action-chip-btn:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Mobile Chat Frame */
+    .phone-mockup {
+      width: 100%;
+      height: 680px;
+      background: #FFFFFF;
+      border-radius: 36px;
+      border: 8px solid #292524;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .phone-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 20px;
+      background: #292524;
+      border-bottom-left-radius: 14px;
+      border-bottom-right-radius: 14px;
+      z-index: 10;
+    }
+    .phone-header {
+      background: #FFFFFF;
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 24px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .phone-header .agent-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .agent-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 17px;
+      background: linear-gradient(135deg, #D97706, #B45309);
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .agent-meta h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .agent-meta span {
+      font-size: 11px;
+      color: var(--vitality);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--vitality);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    .phone-chat-body {
+      flex: 1;
+      background: var(--bg-primary);
+      overflow-y: auto;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Message Bubbles */
+    .msg-row {
+      display: flex;
+      flex-direction: column;
+      max-width: 92%;
+    }
+    .msg-row.user {
+      align-self: flex-end;
+    }
+    .msg-row.bot {
+      align-self: flex-start;
+    }
+    .msg-bubble {
+      padding: 12px 14px;
+      border-radius: 18px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .msg-row.user .msg-bubble {
+      background: var(--primary);
+      color: #FFFFFF;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-row.bot .msg-bubble {
+      background: #FFFFFF;
+      color: var(--text-main);
+      border: 1px solid var(--border-main);
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
+    .msg-time {
+      font-size: 10px;
+      color: var(--text-subtle);
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+    .msg-row.user .msg-time {
+      align-self: flex-end;
+    }
+
+    /* Native In-Chat Widget Cards */
+    .widget-container {
+      margin-top: 10px;
+      background: #FFFFFF;
+      border: 1px solid var(--border-main);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+      transition: all 0.2s ease;
+    }
+    .widget-header {
+      padding: 12px 14px;
+      background: var(--bg-card-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .widget-title-box h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .widget-title-box p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .widget-state-pill {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+    .widget-state-pill.confirmed {
+      background: var(--vitality-light);
+      color: var(--vitality);
+    }
+
+    .widget-body {
+      padding: 12px 14px;
+    }
+
+    /* Interactive Scrubbing Chart */
+    .chart-metric-toggles {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .metric-pill {
+      border: 1px solid var(--border-main);
+      background: var(--bg-card-subtle);
+      border-radius: 14px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .metric-pill.active.hrv {
+      background: var(--vitality-light);
+      border-color: var(--vitality);
+      color: var(--vitality);
+    }
+    .metric-pill.active.sleep {
+      background: var(--sleep-light);
+      border-color: var(--sleep);
+      color: var(--sleep);
+    }
+    .chart-canvas-box {
+      position: relative;
+      height: 140px;
+      background: var(--bg-card-subtle);
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+      cursor: crosshair;
+      user-select: none;
+    }
+    canvas#chartCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .chart-inspector {
+      margin-top: 10px;
+      background: var(--bg-card-subtle);
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .inspector-date {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .inspector-vals {
+      display: flex;
+      gap: 10px;
+      font-weight: 600;
+    }
+    .val-hrv { color: var(--vitality); }
+    .val-sleep { color: var(--sleep); }
+
+    /* Macro Slider Widget */
+    .macro-stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .macro-total-kcal {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+    .macro-ratio-bar {
+      height: 8px;
+      border-radius: 4px;
+      display: flex;
+      overflow: hidden;
+      margin-bottom: 12px;
+      background: var(--border-subtle);
+    }
+    .ratio-p { background: #E11D48; }
+    .ratio-c { background: #D97706; }
+    .ratio-f { background: #059669; }
+
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .slider-label {
+      width: 80px;
+      color: var(--text-muted);
+    }
+    .slider-val {
+      width: 44px;
+      text-align: right;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .slider-input {
+      flex: 1;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .preset-chips {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .preset-chip {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 12px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .preset-chip:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Plan Proposal Widget */
+    .plan-horizon-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+    .plan-sessions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .session-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-card-subtle);
+      padding: 7px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .session-day {
+      font-weight: 700;
+      width: 32px;
+      color: var(--text-main);
+    }
+    .session-name {
+      flex: 1;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .session-tag {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #FFFFFF;
+      border: 1px solid var(--border-main);
+    }
+
+    /* Widget Action Buttons */
+    .widget-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .btn-action-primary {
+      flex: 1;
+      background: var(--primary);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: center;
+    }
+    .btn-action-primary:hover {
+      opacity: 0.92;
+    }
+    .btn-action-primary.confirmed {
+      background: var(--vitality);
+      cursor: default;
+    }
+    .btn-action-ghost {
+      background: transparent;
+      border: 1px solid var(--border-main);
+      color: var(--text-muted);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Phone Input Bar */
+    .phone-input-bar {
+      padding: 10px 12px;
+      background: #FFFFFF;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 8px;
+    }
+    .phone-input {
+      flex: 1;
+      border: 1px solid var(--border-main);
+      background: var(--bg-card-subtle);
+      border-radius: 20px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text-main);
+      outline: none;
+    }
+    .phone-send-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 17px;
+      background: var(--primary);
+      border: none;
+      color: #FFFFFF;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Right State & JSON Inspector */
+    .inspector-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .state-summary-card {
+      background: var(--bg-card-subtle);
+      border-radius: 12px;
+      padding: 14px;
+      border: 1px solid var(--border-subtle);
+    }
+    .state-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 4px 0;
+    }
+    .state-label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .state-val {
+      font-weight: 700;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+    }
+    .json-viewer {
+      background: #1C1917;
+      color: #E7E5E4;
+      border-radius: 12px;
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+      overflow-x: auto;
+      max-height: 480px;
+      border: 1px solid #292524;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header Banner -->
+  <div class="header-banner">
+    <div class="badge-protocol">⚡ Protocol Specification: gymbro.widget/v1</div>
+    <h1>In-Chat Native Interactive Chart & Action Widget Protocol</h1>
+    <p class="question-statement">
+      <span class="question-highlight">Core Question:</span> How should the Agent Engine serialize structured tool calls so that the Expo chat client renders 60fps native interactive charts (HRV, pace, sleep) and action cards (Add to Calendar, Adjust Macros) seamlessly inline?
+    </p>
+  </div>
+
+  <!-- 3-Column Prototype Grid -->
+  <div class="main-grid">
+
+    <!-- Column 1: Scenarios & Free-Play Controller -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>Guided Scenarios</span>
+        <span style="font-size: 11px; font-weight: 600; color: var(--primary);">4 Walkthroughs</span>
+      </div>
+      <div class="panel-subtitle">Click ordered steps to verify state transitions and edge cases</div>
+
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchScenario(1)">1. Chart</button>
+        <button class="tab-btn" onclick="switchScenario(2)">2. Macros</button>
+        <button class="tab-btn" onclick="switchScenario(3)">3. Plan</button>
+        <button class="tab-btn" onclick="switchScenario(4)">4. Readiness</button>
+      </div>
+
+      <div id="scenario-box">
+        <!-- Injected via JS -->
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="freeplay-title">Free-Play Widget Injector</div>
+      <div class="btn-grid">
+        <button class="action-chip-btn" onclick="injectWidget('interactive_chart')">📊 Multi-Metric Chart</button>
+        <button class="action-chip-btn" onclick="injectWidget('macro_slider')">🥩 Macro Sliders</button>
+        <button class="action-chip-btn" onclick="injectWidget('calendar_proposal')">📅 Training Plan</button>
+        <button class="action-chip-btn" onclick="injectWidget('readiness_action')">🌿 Morning Readiness</button>
+      </div>
+      <div style="margin-top: 10px;">
+        <button class="action-chip-btn" style="width: 100%;" onclick="resetDemo()">🔄 Reset All State</button>
+      </div>
+    </div>
+
+    <!-- Column 2: Mobile Phone Chat Simulator -->
+    <div>
+      <div class="phone-mockup">
+        <div class="phone-notch"></div>
+        
+        <div class="phone-header">
+          <div class="agent-info">
+            <div class="agent-avatar">⚡</div>
+            <div class="agent-meta">
+              <h3>GYMBro Agent</h3>
+              <span><div class="pulse-dot"></div> Fast Context Connected</span>
+            </div>
+          </div>
+          <span style="font-size: 11px; font-weight: 700; color: var(--primary);">Expo 60fps</span>
+        </div>
+
+        <div class="phone-chat-body" id="chatStream">
+          <!-- Messages & Widgets injected dynamically -->
+        </div>
+
+        <div class="phone-input-bar">
+          <input type="text" class="phone-input" id="chatInput" placeholder="Ask your athletic agent..." onkeypress="handleInputKey(event)" />
+          <button class="phone-send-btn" onclick="submitUserMessage()">↑</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 3: Live Protocol & JSON Inspector -->
+    <div class="panel inspector-panel">
+      <div class="panel-title">
+        <span>Protocol State Inspector</span>
+        <span class="badge-protocol" style="margin-bottom: 0;">Live Serialization</span>
+      </div>
+      <div class="panel-subtitle">Real-time gymbro.widget/v1 envelope and dispatched action payloads</div>
+
+      <div class="state-summary-card">
+        <div class="state-row">
+          <span class="state-label">Protocol Version:</span>
+          <span class="state-val">gymbro.widget/v1</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">Active Widget ID:</span>
+          <span class="state-val" id="activeWidgetId">wid_none</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">Lifecycle State:</span>
+          <span class="state-val" id="activeWidgetState">idle</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">Last Emitted Action:</span>
+          <span class="state-val" id="lastEmittedAction">none</span>
+        </div>
+      </div>
+
+      <pre class="json-viewer" id="jsonViewer">// gymbro.widget/v1 JSON payload will render here</pre>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Isolated Pure Logic & Prototype Engine Script -->
+<script>
+/**
+ * PURE MODULE: GYMBro In-Chat Widget Protocol & State Reducer
+ * Version: gymbro.widget/v1
+ */
+const WidgetProtocol = (() => {
+  
+  // Canonical sample payloads for the 4 archetypes
+  const mockWidgets = {
+    interactive_chart: {
+      protocol: "gymbro.widget/v1",
+      widget_id: "wid_chart_hrv_sleep_99",
+      widget_type: "interactive_chart",
+      title: "Overnight HRV vs Sleep Quality",
+      subtitle: "14-Day Recovery Trend & Training Load Correlation",
+      state: "proposed",
+      payload: {
+        chart_id: "rec_14d_layer",
+        time_range: "14d",
+        metrics: [
+          { key: "hrv", label: "HRV", unit: "ms", color: "#059669", y_axis: "left", chart_type: "line", min: 30, max: 100 },
+          { key: "sleep", label: "Sleep", unit: "pts", color: "#4F46E5", y_axis: "right", chart_type: "bar", min: 40, max: 100 }
+        ],
+        points: [
+          { date: "08-01", label: "Fri", values: { hrv: 74, sleep: 86 }, flag: "optimal" },
+          { date: "08-02", label: "Sat", values: { hrv: 78, sleep: 90 }, flag: "optimal" },
+          { date: "08-03", label: "Sun", values: { hrv: 69, sleep: 78 }, flag: "optimal" },
+          { date: "08-04", label: "Mon", values: { hrv: 62, sleep: 72 }, flag: "optimal" },
+          { date: "08-05", label: "Tue", values: { hrv: 80, sleep: 88 }, flag: "optimal" },
+          { date: "08-06", label: "Wed", values: { hrv: 75, sleep: 82 }, flag: "optimal" },
+          { date: "08-07", label: "Thu", values: { hrv: 71, sleep: 80 }, flag: "optimal" },
+          { date: "08-08", label: "Fri", values: { hrv: 76, sleep: 85 }, flag: "optimal" },
+          { date: "08-09", label: "Sat", values: { hrv: 79, sleep: 89 }, flag: "optimal" },
+          { date: "08-10", label: "Sun", values: { hrv: 65, sleep: 70 }, flag: "optimal" },
+          { date: "08-11", label: "Mon", values: { hrv: 58, sleep: 66 }, flag: "warning" },
+          { date: "08-12", label: "Tue", values: { hrv: 44, sleep: 58 }, annotation: "Anomaly: High fatigue & sleep dip", flag: "alert" },
+          { date: "08-13", label: "Wed", values: { hrv: 60, sleep: 74 }, flag: "optimal" },
+          { date: "08-14", label: "Thu", values: { hrv: 72, sleep: 83 }, flag: "optimal" }
+        ],
+        summary_insight: "Overnight HRV dropped to 44ms on Aug 12 following a 15km threshold run and poor sleep latency."
+      },
+      actions: [
+        {
+          id: "ask_anomaly",
+          label: "Discuss Aug 12 Dip with Agent",
+          style: "ghost",
+          action_type: "prompt_trigger",
+          prompt_text: "Why did my HRV drop to 44ms on Aug 12 despite high training volume?"
+        }
+      ],
+      emitted_at: new Date().toISOString()
+    },
+
+    macro_slider: {
+      protocol: "gymbro.widget/v1",
+      widget_id: "wid_macro_targets_01",
+      widget_type: "macro_slider",
+      title: "Daily Macronutrient Target Tuning",
+      subtitle: "Target: 75kg Athlete • Lean Muscle Recomposition",
+      state: "proposed",
+      payload: {
+        goal_type: "recomp",
+        target_weight_kg: 75,
+        protein_g: 175,
+        carbs_g: 220,
+        fats_g: 60,
+        presets: [
+          { id: "recomp", name: "High Protein Recomp", protein_g: 180, carbs_g: 200, fats_g: 60, ratio_label: "35 / 40 / 25" },
+          { id: "endurance", name: "Endurance Fueling", protein_g: 140, carbs_g: 320, fats_g: 50, ratio_label: "25 / 55 / 20" },
+          { id: "keto", name: "Keto / Low Carb", protein_g: 160, carbs_g: 40, fats_g: 120, ratio_label: "35 / 10 / 55" }
+        ]
+      },
+      actions: [
+        {
+          id: "commit_macros",
+          label: "Save Macro Targets to Profile",
+          style: "primary",
+          action_type: "api_call",
+          endpoint: "/nutrition/targets",
+          confirmation_message: "Macro targets saved: 2,120 kcal (175g P / 220g C / 60g F)"
+        }
+      ],
+      emitted_at: new Date().toISOString()
+    },
+
+    calendar_proposal: {
+      protocol: "gymbro.widget/v1",
+      widget_id: "wid_plan_meso_wk1",
+      widget_type: "calendar_proposal",
+      title: "Micro-Horizon Training Schedule",
+      subtitle: "Week 1 of 12 • Base Aerobic Volume & Lactate Clearance",
+      state: "proposed",
+      payload: {
+        horizon: "micro",
+        target_volume_km: 42.5,
+        sessions: [
+          { day_name: "Mon", title: "Easy Aerobic Run", tag: "Zone 2", duration: 45, distance: 7.5 },
+          { day_name: "Tue", title: "Lactate Threshold Intervals", tag: "Threshold", duration: 55, distance: 10.0 },
+          { day_name: "Wed", title: "Full Body Strength & Core", tag: "Strength", duration: 50, distance: 0 },
+          { day_name: "Thu", title: "Recovery Jog & Mobility", tag: "Recovery", duration: 35, distance: 5.0 },
+          { day_name: "Fri", title: "Rest & Active Recovery", tag: "Rest", duration: 0, distance: 0 },
+          { day_name: "Sat", title: "Progression Long Run", tag: "Long Run", duration: 80, distance: 15.0 },
+          { day_name: "Sun", title: "Mobility & Foam Rolling", tag: "Recovery", duration: 25, distance: 0 }
+        ]
+      },
+      actions: [
+        {
+          id: "commit_calendar",
+          label: "Commit 7 Sessions to Calendar",
+          style: "primary",
+          action_type: "api_call",
+          endpoint: "/calendar/commit",
+          confirmation_message: "7 sessions committed to your training calendar."
+        }
+      ],
+      emitted_at: new Date().toISOString()
+    },
+
+    readiness_action: {
+      protocol: "gymbro.widget/v1",
+      widget_id: "wid_readiness_anomaly_04",
+      widget_type: "readiness_action",
+      title: "Morning Recovery Readiness Alert",
+      subtitle: "Overnight HRV is 18% below your 14-day rolling baseline",
+      state: "proposed",
+      payload: {
+        readiness_score: 54,
+        hrv_anomaly_pct: -18,
+        sleep_score: 62,
+        recommendation: "Replace scheduled 5x1km threshold intervals with a 40-minute Zone 2 recovery flush.",
+        original_session: { title: "5x1km Threshold Intervals", duration: 55, intensity: "Hard" },
+        suggested_session: { title: "Zone 2 Aerobic Recovery Flush", duration: 40, intensity: "Easy" }
+      },
+      actions: [
+        {
+          id: "accept_reschedule",
+          label: "Accept Reschedule to Recovery",
+          style: "primary",
+          action_type: "api_call",
+          endpoint: "/calendar/reschedule",
+          confirmation_message: "Today's workout swapped to 40min Zone 2 Recovery Flush."
+        },
+        {
+          id: "dismiss_readiness",
+          label: "Keep Original Hard Workout",
+          style: "ghost",
+          action_type: "client_mutation",
+          confirmation_message: "Original threshold session kept on schedule."
+        }
+      ],
+      emitted_at: new Date().toISOString()
+    }
+  };
+
+  // Pure Reducer
+  function widgetReducer(widget, action) {
+    if (!widget) return null;
+    
+    switch (action.type) {
+      case "SET_STATE":
+        return { ...widget, state: action.state };
+      
+      case "UPDATE_MACROS":
+        if (widget.widget_type !== "macro_slider") return widget;
+        return {
+          ...widget,
+          payload: {
+            ...widget.payload,
+            protein_g: action.protein,
+            carbs_g: action.carbs,
+            fats_g: action.fats
+          }
+        };
+
+      case "CONFIRM_ACTION":
+        return {
+          ...widget,
+          state: "confirmed",
+          last_action_result: action.result || "Action executed successfully."
+        };
+
+      case "DISMISS":
+        return {
+          ...widget,
+          state: "dismissed"
+        };
+
+      default:
+        return widget;
+    }
+  }
+
+  return {
+    getMock: (type) => JSON.parse(JSON.stringify(mockWidgets[type] || mockWidgets.interactive_chart)),
+    reducer: widgetReducer
+  };
+})();
+
+/**
+ * UI CONTROLLER & EVENT WIRING
+ */
+let currentScenario = 1;
+let currentWidget = WidgetProtocol.getMock("interactive_chart");
+let activeMetrics = { hrv: true, sleep: true };
+let hoveredPointIndex = 11; // Aug 12 anomaly by default
+
+const scenarios = [
+  {
+    id: 1,
+    title: "1. Recovery Scrubbing",
+    desc: "Agent detects an HRV dip and emits an <strong>interactive_chart</strong>. The athlete scrubs points across 14 days at 60fps and asks the agent about the Aug 12 anomaly.",
+    steps: [
+      { label: "1. Agent emits HRV & Sleep Chart", action: () => injectWidget("interactive_chart") },
+      { label: "2. Scrub to Aug 12 Anomaly", action: () => setScrubPoint(11) },
+      { label: "3. Tap 'Discuss Dip with Agent'", action: () => triggerAction("ask_anomaly") }
+    ]
+  },
+  {
+    id: 2,
+    title: "2. Macro Target Sliders",
+    desc: "Athlete asks for daily nutrition tuning. Agent emits a <strong>macro_slider</strong> card with real-time caloric balance calculation. Athlete tests presets and saves targets.",
+    steps: [
+      { label: "1. Agent emits Macro Slider", action: () => injectWidget("macro_slider") },
+      { label: "2. Select 'High Protein Recomp'", action: () => applyPreset("recomp") },
+      { label: "3. Commit Targets to Profile", action: () => triggerAction("commit_macros") }
+    ]
+  },
+  {
+    id: 3,
+    title: "3. Training Plan Proposal",
+    desc: "Agent designs a 7-day micro-horizon schedule. Athlete inspects workouts and commits the entire block to Supabase Calendar with 1-click optimistic confirmation.",
+    steps: [
+      { label: "1. Agent emits Plan Proposal", action: () => injectWidget("calendar_proposal") },
+      { label: "2. Inspect Week 1 Sessions", action: () => highlightSessions() },
+      { label: "3. Commit to Calendar", action: () => triggerAction("commit_calendar") }
+    ]
+  },
+  {
+    id: 4,
+    title: "4. Readiness Reschedule",
+    desc: "Morning readiness drops to 54. Agent recommends swapping an interval session for Zone 2 recovery. Athlete accepts the reschedule action.",
+    steps: [
+      { label: "1. Agent emits Readiness Alert", action: () => injectWidget("readiness_action") },
+      { label: "2. Compare Scheduled vs Suggested", action: () => pulseReadiness() },
+      { label: "3. Accept Reschedule", action: () => triggerAction("accept_reschedule") }
+    ]
+  }
+];
+
+function init() {
+  renderScenarioBox();
+  renderChatStream();
+  updateInspector();
+  initCanvasChart();
+}
+
+function switchScenario(num) {
+  currentScenario = num;
+  document.querySelectorAll('.tab-btn').forEach((btn, idx) => {
+    btn.classList.toggle('active', idx + 1 === num);
+  });
+  renderScenarioBox();
+  
+  // Auto load first step
+  if (num === 1) injectWidget('interactive_chart');
+  else if (num === 2) injectWidget('macro_slider');
+  else if (num === 3) injectWidget('calendar_proposal');
+  else if (num === 4) injectWidget('readiness_action');
+}
+
+function renderScenarioBox() {
+  const sc = scenarios.find(s => s.id === currentScenario);
+  const container = document.getElementById("scenario-box");
+  container.innerHTML = `
+    <div class="scenario-desc">${sc.desc}</div>
+    <div class="scenario-steps">
+      ${sc.steps.map((st, i) => `
+        <button class="step-btn" onclick="scenarios[${currentScenario - 1}].steps[${i}].action()">
+          <span>${st.label}</span>
+          <span class="step-badge">Step ${i+1}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function injectWidget(type) {
+  currentWidget = WidgetProtocol.getMock(type);
+  if (type === 'interactive_chart') {
+    hoveredPointIndex = 11;
+  }
+  renderChatStream();
+  updateInspector();
+  if (type === 'interactive_chart') {
+    setTimeout(drawChart, 30);
+  }
+}
+
+function resetDemo() {
+  injectWidget('interactive_chart');
+  document.getElementById("chatInput").value = "";
+  document.getElementById("lastEmittedAction").innerText = "none";
+}
+
+function renderChatStream() {
+  const container = document.getElementById("chatStream");
+  
+  let widgetHtml = "";
+  if (currentWidget) {
+    if (currentWidget.widget_type === "interactive_chart") {
+      widgetHtml = renderChartWidgetHtml();
+    } else if (currentWidget.widget_type === "macro_slider") {
+      widgetHtml = renderMacroWidgetHtml();
+    } else if (currentWidget.widget_type === "calendar_proposal") {
+      widgetHtml = renderPlanWidgetHtml();
+    } else if (currentWidget.widget_type === "readiness_action") {
+      widgetHtml = renderReadinessWidgetHtml();
+    }
+  }
+
+  container.innerHTML = `
+    <div class="msg-row bot">
+      <div class="msg-bubble">
+        👋 I've synthesized your latest biometrics, Garmin telemetry, and upcoming micro-horizon goals.
+      </div>
+      <div class="msg-time">Just now</div>
+      ${widgetHtml}
+    </div>
+  `;
+}
+
+function renderChartWidgetHtml() {
+  const p = currentWidget.payload;
+  const pt = p.points[hoveredPointIndex] || p.points[p.points.length - 1];
+  const isConfirmed = currentWidget.state === 'confirmed';
+
+  return `
+    <div class="widget-container">
+      <div class="widget-header">
+        <div class="widget-title-box">
+          <h4>${currentWidget.title}</h4>
+          <p>${currentWidget.subtitle}</p>
+        </div>
+        <span class="widget-state-pill ${isConfirmed ? 'confirmed' : ''}">${currentWidget.state}</span>
+      </div>
+      <div class="widget-body">
+        <div class="chart-metric-toggles">
+          <button class="metric-pill ${activeMetrics.hrv ? 'active hrv' : ''}" onclick="toggleMetric('hrv')">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:#059669;"></span> HRV (ms)
+          </button>
+          <button class="metric-pill ${activeMetrics.sleep ? 'active sleep' : ''}" onclick="toggleMetric('sleep')">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:#4F46E5;"></span> Sleep (pts)
+          </button>
+        </div>
+
+        <div class="chart-canvas-box" id="chartBox">
+          <canvas id="chartCanvas"></canvas>
+        </div>
+
+        <div class="chart-inspector">
+          <span class="inspector-date">📅 ${pt.date} (${pt.label || ''})</span>
+          <div class="inspector-vals">
+            ${activeMetrics.hrv ? `<span class="val-hrv">HRV: ${pt.values.hrv}ms</span>` : ''}
+            ${activeMetrics.sleep ? `<span class="val-sleep">Sleep: ${pt.values.sleep}/100</span>` : ''}
+          </div>
+        </div>
+
+        ${pt.annotation ? `<div style="font-size:11px;color:#D97706;font-weight:600;margin-top:6px;background:rgba(217,119,6,0.08);padding:6px 8px;border-radius:6px;">⚠️ ${pt.annotation}</div>` : ''}
+
+        <div class="widget-actions">
+          ${currentWidget.actions.map(act => `
+            <button class="btn-action-ghost" style="width:100%;" onclick="triggerAction('${act.id}')">
+              💬 ${act.label}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMacroWidgetHtml() {
+  const p = currentWidget.payload;
+  const prot = p.protein_g;
+  const carb = p.carbs_g;
+  const fat = p.fats_g;
+  const totalKcal = (prot * 4) + (carb * 4) + (fat * 9);
+  
+  const pKcal = prot * 4;
+  const cKcal = carb * 4;
+  const fKcal = fat * 9;
+  const pPct = Math.round((pKcal / totalKcal) * 100) || 0;
+  const cPct = Math.round((cKcal / totalKcal) * 100) || 0;
+  const fPct = Math.round((fKcal / totalKcal) * 100) || 0;
+
+  const isConfirmed = currentWidget.state === 'confirmed';
+
+  return `
+    <div class="widget-container">
+      <div class="widget-header">
+        <div class="widget-title-box">
+          <h4>${currentWidget.title}</h4>
+          <p>${currentWidget.subtitle}</p>
+        </div>
+        <span class="widget-state-pill ${isConfirmed ? 'confirmed' : ''}">${currentWidget.state}</span>
+      </div>
+      <div class="widget-body">
+        <div class="macro-stat-row">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600;">Daily Caloric Target</div>
+            <div class="macro-total-kcal">${totalKcal.toLocaleString()} <span style="font-size:13px;font-weight:600;color:var(--text-muted);">kcal</span></div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-muted);">
+            ${pPct}% P / ${cPct}% C / ${fPct}% F
+          </div>
+        </div>
+
+        <div class="macro-ratio-bar">
+          <div class="ratio-p" style="width: ${pPct}%;"></div>
+          <div class="ratio-c" style="width: ${cPct}%;"></div>
+          <div class="ratio-f" style="width: ${fPct}%;"></div>
+        </div>
+
+        <div class="preset-chips">
+          ${p.presets.map(pre => `
+            <button class="preset-chip" onclick="applyPreset('${pre.id}')">${pre.name}</button>
+          `).join('')}
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label" style="color:#E11D48;">🥩 Protein</span>
+            <input type="range" class="slider-input" min="80" max="260" value="${prot}" oninput="updateMacroSlider('protein', this.value)" />
+            <span class="slider-val">${prot}g</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-label" style="color:#D97706;">🍚 Carbs</span>
+            <input type="range" class="slider-input" min="30" max="450" value="${carb}" oninput="updateMacroSlider('carbs', this.value)" />
+            <span class="slider-val">${carb}g</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-label" style="color:#059669;">🥑 Fats</span>
+            <input type="range" class="slider-input" min="20" max="150" value="${fat}" oninput="updateMacroSlider('fats', this.value)" />
+            <span class="slider-val">${fat}g</span>
+          </div>
+        </div>
+
+        <div class="widget-actions">
+          <button class="btn-action-primary ${isConfirmed ? 'confirmed' : ''}" onclick="triggerAction('commit_macros')">
+            ${isConfirmed ? '✓ Saved to Profile' : 'Save Targets to Profile'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPlanWidgetHtml() {
+  const p = currentWidget.payload;
+  const isConfirmed = currentWidget.state === 'confirmed';
+
+  return `
+    <div class="widget-container">
+      <div class="widget-header">
+        <div class="widget-title-box">
+          <span class="plan-horizon-tag">${p.horizon} horizon</span>
+          <h4>${currentWidget.title}</h4>
+          <p>${currentWidget.subtitle}</p>
+        </div>
+        <span class="widget-state-pill ${isConfirmed ? 'confirmed' : ''}">${currentWidget.state}</span>
+      </div>
+      <div class="widget-body">
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text-muted);">
+          <span>Target Volume: ${p.target_volume_km} km</span>
+          <span>7 Planned Sessions</span>
+        </div>
+
+        <div class="plan-sessions-list" id="planSessionsList">
+          ${p.sessions.map(s => `
+            <div class="session-item">
+              <span class="session-day">${s.day_name}</span>
+              <span class="session-name">${s.title}</span>
+              <span class="session-tag">${s.tag}</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="widget-actions">
+          <button class="btn-action-primary ${isConfirmed ? 'confirmed' : ''}" onclick="triggerAction('commit_calendar')">
+            ${isConfirmed ? '✓ Committed to Calendar' : 'Commit 7 Sessions to Calendar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReadinessWidgetHtml() {
+  const p = currentWidget.payload;
+  const isConfirmed = currentWidget.state === 'confirmed';
+
+  return `
+    <div class="widget-container">
+      <div class="widget-header">
+        <div class="widget-title-box">
+          <h4>${currentWidget.title}</h4>
+          <p>${currentWidget.subtitle}</p>
+        </div>
+        <span class="widget-state-pill ${isConfirmed ? 'confirmed' : ''}">${currentWidget.state}</span>
+      </div>
+      <div class="widget-body">
+        <div style="display:flex;gap:12px;align-items:center;background:var(--bg-card-subtle);padding:10px;border-radius:10px;margin-bottom:10px;">
+          <div style="width:46px;height:46px;border-radius:23px;background:#F59E0B;color:#FFF;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;">
+            ${p.readiness_score}
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:12px;font-weight:700;color:var(--text-main);">Daily Readiness Dip (${p.hrv_anomaly_pct}%)</div>
+            <div style="font-size:11px;color:var(--text-muted);">${p.recommendation}</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin-bottom:10px;">
+          <div style="background:var(--bg-card-subtle);padding:8px;border-radius:8px;border-left:3px solid var(--border-main);">
+            <div style="color:var(--text-muted);font-weight:600;">Original</div>
+            <div style="font-weight:700;color:var(--text-main);">${p.original_session.title}</div>
+            <div style="color:var(--text-muted);">${p.original_session.duration} min • ${p.original_session.intensity}</div>
+          </div>
+          <div style="background:var(--vitality-light);padding:8px;border-radius:8px;border-left:3px solid var(--vitality);">
+            <div style="color:var(--vitality);font-weight:700;">Suggested</div>
+            <div style="font-weight:700;color:var(--text-main);">${p.suggested_session.title}</div>
+            <div style="color:var(--text-muted);">${p.suggested_session.duration} min • ${p.suggested_session.intensity}</div>
+          </div>
+        </div>
+
+        <div class="widget-actions">
+          <button class="btn-action-primary ${isConfirmed ? 'confirmed' : ''}" onclick="triggerAction('accept_reschedule')">
+            ${isConfirmed ? '✓ Swapped on Calendar' : 'Accept Reschedule'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function updateMacroSlider(key, val) {
+  const num = parseInt(val, 10);
+  const p = currentWidget.payload;
+  const updated = {
+    protein: key === 'protein' ? num : p.protein_g,
+    carbs: key === 'carbs' ? num : p.carbs_g,
+    fats: key === 'fats' ? num : p.fats_g
+  };
+  currentWidget = WidgetProtocol.reducer(currentWidget, { type: 'UPDATE_MACROS', ...updated });
+  renderChatStream();
+  updateInspector();
+}
+
+function applyPreset(presetId) {
+  const p = currentWidget.payload;
+  const found = p.presets.find(x => x.id === presetId);
+  if (found) {
+    currentWidget = WidgetProtocol.reducer(currentWidget, {
+      type: 'UPDATE_MACROS',
+      protein: found.protein_g,
+      carbs: found.carbs_g,
+      fats: found.fats_g
+    });
+    renderChatStream();
+    updateInspector();
+  }
+}
+
+function toggleMetric(mKey) {
+  activeMetrics[mKey] = !activeMetrics[mKey];
+  renderChatStream();
+  setTimeout(drawChart, 30);
+}
+
+function setScrubPoint(idx) {
+  hoveredPointIndex = idx;
+  renderChatStream();
+  setTimeout(drawChart, 30);
+  updateInspector();
+}
+
+function highlightSessions() {
+  const el = document.getElementById("planSessionsList");
+  if (el) {
+    el.style.border = "2px solid #D97706";
+    setTimeout(() => { el.style.border = "none"; }, 800);
+  }
+}
+
+function pulseReadiness() {
+  renderChatStream();
+}
+
+function triggerAction(actionId) {
+  document.getElementById("lastEmittedAction").innerText = actionId;
+  
+  if (actionId === 'ask_anomaly') {
+    const act = currentWidget.actions.find(a => a.id === actionId);
+    if (act && act.prompt_text) {
+      document.getElementById("chatInput").value = act.prompt_text;
+      submitUserMessage();
+    }
+    return;
+  }
+
+  currentWidget = WidgetProtocol.reducer(currentWidget, {
+    type: 'CONFIRM_ACTION',
+    result: `Action ${actionId} confirmed at ${new Date().toLocaleTimeString()}`
+  });
+
+  renderChatStream();
+  updateInspector();
+}
+
+function handleInputKey(e) {
+  if (e.key === 'Enter') submitUserMessage();
+}
+
+function submitUserMessage() {
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+
+  const container = document.getElementById("chatStream");
+  const userMsgHtml = `
+    <div class="msg-row user">
+      <div class="msg-bubble">${text}</div>
+      <div class="msg-time">Just now</div>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', userMsgHtml);
+  input.value = "";
+  container.scrollTop = container.scrollHeight;
+
+  // Simulate Agent thinking & emitting follow-up
+  setTimeout(() => {
+    const replyMsgHtml = `
+      <div class="msg-row bot">
+        <div class="msg-bubble">
+          🤖 <strong>Agent Intelligence:</strong> I've updated your training load constraints and registered this event in your recovery log.
+        </div>
+        <div class="msg-time">Just now</div>
+      </div>
+    `;
+    container.insertAdjacentHTML('beforeend', replyMsgHtml);
+    container.scrollTop = container.scrollHeight;
+  }, 600);
+}
+
+function updateInspector() {
+  if (!currentWidget) return;
+  document.getElementById("activeWidgetId").innerText = currentWidget.widget_id;
+  document.getElementById("activeWidgetState").innerText = currentWidget.state;
+  document.getElementById("jsonViewer").innerText = JSON.stringify(currentWidget, null, 2);
+}
+
+/**
+ * 60fps Native Canvas Chart Engine with Touch/Pointer Scrubbing
+ */
+function initCanvasChart() {
+  const box = document.getElementById("chartBox");
+  if (!box) return;
+
+  box.addEventListener("pointermove", (e) => {
+    if (!currentWidget || currentWidget.widget_type !== "interactive_chart") return;
+    const rect = box.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const points = currentWidget.payload.points;
+    const colWidth = rect.width / points.length;
+    const idx = Math.min(points.length - 1, Math.max(0, Math.floor(x / colWidth)));
+    if (idx !== hoveredPointIndex) {
+      hoveredPointIndex = idx;
+      renderChatStream();
+      drawChart();
+      updateInspector();
+    }
+  });
+
+  drawChart();
+}
+
+function drawChart() {
+  const canvas = document.getElementById("chartCanvas");
+  if (!canvas || !currentWidget || currentWidget.widget_type !== "interactive_chart") return;
+  const ctx = canvas.getContext("2d");
+  const box = canvas.parentElement;
+  
+  const dpr = window.devicePixelRatio || 1;
+  const w = box.clientWidth;
+  const h = box.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+
+  ctx.clearRect(0, 0, w, h);
+
+  const points = currentWidget.payload.points;
+  const numPts = points.length;
+  const colWidth = w / numPts;
+
+  // Background Grid Lines
+  ctx.strokeStyle = "#F0EEE9";
+  ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75].forEach(pct => {
+    ctx.beginPath();
+    ctx.moveTo(0, h * pct);
+    ctx.lineTo(w, h * pct);
+    ctx.stroke();
+  });
+
+  // 1. Draw Sleep Bars (Right Axis)
+  if (activeMetrics.sleep) {
+    points.forEach((pt, i) => {
+      const sleepVal = pt.values.sleep || 0;
+      const normH = ((sleepVal - 40) / 60) * (h - 24);
+      const bx = i * colWidth + (colWidth * 0.2);
+      const bw = colWidth * 0.6;
+      const by = h - normH - 6;
+
+      ctx.fillStyle = i === hoveredPointIndex ? "rgba(79, 70, 229, 0.85)" : "rgba(79, 70, 229, 0.25)";
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, normH, [3, 3, 0, 0]);
+      ctx.fill();
+    });
+  }
+
+  // 2. Draw HRV Line (Left Axis)
+  if (activeMetrics.hrv) {
+    ctx.beginPath();
+    ctx.strokeStyle = "#059669";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+
+    points.forEach((pt, i) => {
+      const hrvVal = pt.values.hrv || 0;
+      const normH = ((hrvVal - 30) / 70) * (h - 32);
+      const px = i * colWidth + (colWidth / 2);
+      const py = h - normH - 12;
+
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    // Data dots
+    points.forEach((pt, i) => {
+      const hrvVal = pt.values.hrv || 0;
+      const normH = ((hrvVal - 30) / 70) * (h - 32);
+      const px = i * colWidth + (colWidth / 2);
+      const py = h - normH - 12;
+
+      ctx.fillStyle = i === hoveredPointIndex ? "#059669" : "#FFFFFF";
+      ctx.strokeStyle = "#059669";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, i === hoveredPointIndex ? 4.5 : 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  // 3. Draw Active Scrubbing Cursor
+  if (hoveredPointIndex >= 0 && hoveredPointIndex < numPts) {
+    const cx = hoveredPointIndex * colWidth + (colWidth / 2);
+    ctx.strokeStyle = "rgba(217, 119, 6, 0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(cx, h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+window.addEventListener("load", init);
+window.addEventListener("resize", () => { setTimeout(drawChart, 50); });
+</script>
+
+</body>
+</html>
