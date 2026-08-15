@@ -1,0 +1,17 @@
+{
+  "name": "gymbro",
+  "version": "1.0.0",
+  "description": "GYMBro - Elite Athletic Coaching & Telemetry Platform",
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "dev:tunnel": "./scripts/dev.sh --tunnel",
+    "dev:clean": "./scripts/dev.sh --clean",
+    "dev:tunnel:clean": "./scripts/dev.sh --tunnel --clean",
+    "backend": "PYTHONPATH=. venv/bin/python app/main.py",
+    "frontend": "cd gymbro-frontend-expo && npx expo start",
+    "frontend:tunnel": "cd gymbro-frontend-expo && npx expo start --tunnel"
+  },
+  "keywords": ["fitness", "coaching", "garmin", "expo", "react-native", "ai-coach"],
+  "author": "David McInnis",
+  "license": "ISC"
+}
