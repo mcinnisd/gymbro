@@ -4,8 +4,19 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ScrollView,
+  PanResponder,
+  GestureResponderEvent,
+  LayoutChangeEvent,
 } from 'react-native';
+import Svg, {
+  Path,
+  Defs,
+  LinearGradient as SvgGradient,
+  Stop,
+  Circle,
+  Line as SvgLine,
+  Rect,
+} from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { ChatWidgetEnvelope, InteractiveChartPayload } from '../../services/widgetProtocol';
@@ -21,7 +32,7 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
   onTriggerPrompt,
   onExecuteAction,
 }) => {
-  const { title, subtitle, payload, actions, state } = widget;
+  const { title, subtitle, payload, actions } = widget;
   const { metrics, points, summary_insight } = payload;
 
   const [activeMetricKeys, setActiveMetricKeys] = useState<Record<string, boolean>>(() => {
@@ -36,6 +47,13 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
     points.length > 0 ? points.length - 1 : 0
   );
 
+  const [chartWidth, setChartWidth] = useState<number>(320);
+  const chartHeight = 130;
+  const padLeft = 24;
+  const padRight = 24;
+  const padTop = 14;
+  const padBottom = 22;
+
   const toggleMetric = (key: string) => {
     setActiveMetricKeys((prev) => {
       const next = { ...prev, [key]: !prev[key] };
@@ -44,7 +62,88 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
     });
   };
 
+  const handleLayout = (e: LayoutChangeEvent) => {
+    const { width } = e.nativeEvent.layout;
+    if (width > 0) {
+      setChartWidth(width);
+    }
+  };
+
+  const updateScrubIndex = (touchX: number) => {
+    if (points.length <= 1) return;
+    const innerW = chartWidth - padLeft - padRight;
+    const relX = Math.max(0, Math.min(innerW, touchX - padLeft));
+    const step = innerW / (points.length - 1);
+    const newIdx = Math.round(relX / step);
+    const clamped = Math.max(0, Math.min(points.length - 1, newIdx));
+    setSelectedIndex(clamped);
+  };
+
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt: GestureResponderEvent) => {
+      updateScrubIndex(evt.nativeEvent.locationX);
+    },
+    onPanResponderMove: (evt: GestureResponderEvent) => {
+      updateScrubIndex(evt.nativeEvent.locationX);
+    },
+  });
+
   const selectedPoint = points[selectedIndex] || points[points.length - 1];
+
+  // Helper to compute coordinates for metric
+  const computeMetricCoordinates = (mKey: string, minOverride?: number, maxOverride?: number) => {
+    if (points.length === 0) return [];
+    
+    // Find min and max across all points
+    const vals = points.map((p) => Number(p.values[mKey] ?? 0));
+    let minV = minOverride ?? Math.min(...vals);
+    let maxV = maxOverride ?? Math.max(...vals);
+    if (minV === maxV) {
+      minV = minV - 5;
+      maxV = maxV + 5;
+    }
+
+    const innerW = chartWidth - padLeft - padRight;
+    const innerH = chartHeight - padTop - padBottom;
+    const step = points.length > 1 ? innerW / (points.length - 1) : innerW;
+
+    return points.map((pt, i) => {
+      const val = Number(pt.values[mKey] ?? minV);
+      const normY = (val - minV) / (maxV - minV);
+      const x = padLeft + i * step;
+      const y = chartHeight - padBottom - normY * innerH;
+      return { x, y, val };
+    });
+  };
+
+  // Build SVG smooth bezier path
+  const buildSmoothPath = (coords: { x: number; y: number }[]): string => {
+    if (coords.length === 0) return '';
+    if (coords.length === 1) return `M ${coords[0].x} ${coords[0].y}`;
+
+    let d = `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p0 = coords[i === 0 ? 0 : i - 1];
+      const p1 = coords[i];
+      const p2 = coords[i + 1];
+      const p3 = coords[i + 2 >= coords.length ? coords.length - 1 : i + 2];
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+    return d;
+  };
+
+  const selectedX =
+    points.length > 1
+      ? padLeft + (selectedIndex * (chartWidth - padLeft - padRight)) / (points.length - 1)
+      : chartWidth / 2;
 
   return (
     <View style={styles.container}>
@@ -61,7 +160,7 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
         </View>
         <View style={styles.stateBadge}>
           <Text style={styles.stateBadgeText}>
-            {payload.time_range ? `${payload.time_range.toUpperCase()} TREND` : 'METRICS'}
+            {payload.time_range ? `${payload.time_range.toUpperCase()} TREND` : 'TREND'}
           </Text>
         </View>
       </View>
@@ -94,58 +193,126 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
         })}
       </View>
 
-      {/* Scrubbing Column Chart Box */}
-      <View style={styles.chartBox}>
-        {/* Grid lines */}
-        <View style={styles.gridLinesContainer}>
-          <View style={styles.gridLine} />
-          <View style={styles.gridLine} />
-          <View style={styles.gridLine} />
-        </View>
+      {/* SVG Interactive Line Chart Box */}
+      <View
+        style={styles.chartBox}
+        onLayout={handleLayout}
+        {...panResponder.panHandlers}
+      >
+        <Svg width="100%" height={chartHeight}>
+          <Defs>
+            {metrics.map((m) => (
+              <SvgGradient key={m.key} id={`grad_${m.key}`} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={m.color} stopOpacity="0.25" />
+                <Stop offset="100%" stopColor={m.color} stopOpacity="0.0" />
+              </SvgGradient>
+            ))}
+          </Defs>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chartScrollContent}
-        >
-          {points.map((pt, idx) => {
-            const isSelected = selectedIndex === idx;
+          {/* Horizontal Grid lines */}
+          <SvgLine
+            x1={padLeft}
+            y1={padTop}
+            x2={chartWidth - padRight}
+            y2={padTop}
+            stroke={Colors.light.borderSubtle}
+            strokeWidth={1}
+            strokeDasharray="2 2"
+          />
+          <SvgLine
+            x1={padLeft}
+            y1={(padTop + chartHeight - padBottom) / 2}
+            x2={chartWidth - padRight}
+            y2={(padTop + chartHeight - padBottom) / 2}
+            stroke={Colors.light.borderSubtle}
+            strokeWidth={1}
+            strokeDasharray="2 2"
+          />
+          <SvgLine
+            x1={padLeft}
+            y1={chartHeight - padBottom}
+            x2={chartWidth - padRight}
+            y2={chartHeight - padBottom}
+            stroke={Colors.light.borderSubtle}
+            strokeWidth={1}
+          />
+
+          {/* Continuous Line & Area Paths for active metrics */}
+          {metrics.map((m) => {
+            if (!activeMetricKeys[m.key]) return null;
+            const coords = computeMetricCoordinates(m.key, m.min, m.max);
+            if (coords.length === 0) return null;
+
+            const lineD = buildSmoothPath(coords);
+            const lastX = coords[coords.length - 1].x;
+            const firstX = coords[0].x;
+            const areaD = `${lineD} L ${lastX.toFixed(1)} ${(chartHeight - padBottom).toFixed(1)} L ${firstX.toFixed(1)} ${(chartHeight - padBottom).toFixed(1)} Z`;
+
+            return (
+              <React.Fragment key={m.key}>
+                {/* Gradient Area Fill */}
+                <Path d={areaD} fill={`url(#grad_${m.key})`} />
+                {/* Main Curve Line */}
+                <Path
+                  d={lineD}
+                  stroke={m.color}
+                  strokeWidth={2.5}
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              </React.Fragment>
+            );
+          })}
+
+          {/* Vertical Crosshair Guideline */}
+          {points.length > 0 && (
+            <SvgLine
+              x1={selectedX}
+              y1={padTop}
+              x2={selectedX}
+              y2={chartHeight - padBottom}
+              stroke={Colors.light.primary}
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+            />
+          )}
+
+          {/* Crosshair Dots at active metrics */}
+          {metrics.map((m) => {
+            if (!activeMetricKeys[m.key]) return null;
+            const coords = computeMetricCoordinates(m.key, m.min, m.max);
+            const pt = coords[selectedIndex];
+            if (!pt) return null;
+
+            return (
+              <React.Fragment key={m.key}>
+                <Circle cx={pt.x} cy={pt.y} r={6} fill={m.color} opacity={0.3} />
+                <Circle cx={pt.x} cy={pt.y} r={3.5} fill={m.color} />
+                <Circle cx={pt.x} cy={pt.y} r={1.5} fill="#FFFFFF" />
+              </React.Fragment>
+            );
+          })}
+        </Svg>
+
+        {/* Date Labels under SVG */}
+        <View style={[styles.datesRow, { paddingHorizontal: padLeft }]}>
+          {points.map((p, idx) => {
+            const isSel = idx === selectedIndex;
+            // Only show every other label if many points
+            if (points.length > 8 && idx % 2 !== 0 && idx !== points.length - 1) return null;
             return (
               <TouchableOpacity
                 key={idx}
-                style={[styles.colContainer, isSelected && styles.colSelected]}
                 onPress={() => setSelectedIndex(idx)}
-                activeOpacity={0.8}
+                hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
               >
-                <View style={styles.barsGroup}>
-                  {metrics.map((m) => {
-                    if (!activeMetricKeys[m.key]) return null;
-                    const val = pt.values[m.key] ?? 0;
-                    const min = m.min ?? 0;
-                    const max = m.max ?? 100;
-                    const normH = Math.max(12, Math.min(95, ((val - min) / (max - min)) * 75 + 15));
-                    return (
-                      <View
-                        key={m.key}
-                        style={[
-                          styles.metricBar,
-                          {
-                            height: `${normH}%`,
-                            backgroundColor: m.color,
-                            opacity: isSelected ? 1 : 0.75,
-                          },
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-                <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
-                  {pt.label || pt.date.slice(5)}
+                <Text style={[styles.dateText, isSel && styles.dateTextSelected]}>
+                  {p.label || p.date.slice(5)}
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
 
       {/* Selected Point Inspector */}
@@ -159,7 +326,7 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
                 const val = selectedPoint.values[m.key];
                 return (
                   <Text key={m.key} style={[styles.inspectorValText, { color: m.color }]}>
-                    {m.label}: {val ?? '--'}{m.unit}
+                    {m.label}: {val ?? '--'} {m.unit}
                   </Text>
                 );
               })}
@@ -180,11 +347,11 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
         <Text style={styles.summaryInsightText}>💡 {summary_insight}</Text>
       ) : null}
 
-      {/* Action Buttons (excluding redundant discuss with agent) */}
-      {actions.filter(a => !a.label.toLowerCase().includes('discuss')).length > 0 && (
+      {/* Action Buttons */}
+      {actions.filter((a) => !a.label.toLowerCase().includes('discuss')).length > 0 && (
         <View style={styles.actionsContainer}>
           {actions
-            .filter(a => !a.label.toLowerCase().includes('discuss'))
+            .filter((a) => !a.label.toLowerCase().includes('discuss'))
             .map((act) => (
               <TouchableOpacity
                 key={act.id}
@@ -203,7 +370,6 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
             ))}
         </View>
       )}
-
     </View>
   );
 };
@@ -258,17 +424,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: Colors.light.primaryLight,
   },
-  stateBadgeConfirmed: {
-    backgroundColor: 'rgba(5, 150, 105, 0.12)',
-  },
   stateBadgeText: {
     fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',
     color: Colors.light.primary,
-  },
-  stateBadgeTextConfirmed: {
-    color: Colors.light.vitality,
   },
   metricChipsRow: {
     flexDirection: 'row',
@@ -299,61 +459,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chartBox: {
-    height: 120,
     backgroundColor: Colors.light.cardSubtle,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.light.borderSubtle,
+    paddingVertical: 8,
     position: 'relative',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
   },
-  gridLinesContainer: {
-    ...StyleSheet.absoluteFillObject,
+  datesRow: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    marginTop: 4,
   },
-  gridLine: {
-    height: 1,
-    backgroundColor: Colors.light.borderSubtle,
-    width: '100%',
-  },
-  chartScrollContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 8,
-    gap: 10,
-  },
-  colContainer: {
-    alignItems: 'center',
-    width: 32,
-    height: '100%',
-    justifyContent: 'flex-end',
-    paddingBottom: 4,
-    borderRadius: 6,
-  },
-  colSelected: {
-    backgroundColor: 'rgba(217, 119, 6, 0.10)',
-  },
-  barsGroup: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 80,
-    gap: 2,
-  },
-  metricBar: {
-    width: 5,
-    borderRadius: 2.5,
-    minHeight: 4,
-  },
-  dayText: {
+  dateText: {
     fontSize: 9,
     fontWeight: '600',
     color: Colors.light.mutedText,
-    marginTop: 4,
   },
-  dayTextSelected: {
+  dateTextSelected: {
     color: Colors.light.primary,
     fontWeight: '700',
   },
@@ -422,3 +545,4 @@ const styles = StyleSheet.create({
     color: Colors.light.primary,
   },
 });
+

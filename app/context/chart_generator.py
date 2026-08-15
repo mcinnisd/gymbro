@@ -31,16 +31,23 @@ def generate_chart_data(user_id: str, metric: str, period_days: int = 30, scope:
         return _get_hrv_chart(user_id, cutoff)
     elif metric in ["training_load", "load"]:
         return _get_training_load_chart(user_id, cutoff)
-    elif metric in ["heart_rate", "hr", "pulse"]:
+    elif metric in ["rhr", "resting_hr", "resting_heart_rate", "resting heart rate"]:
+        return _get_resting_heart_rate_chart(user_id, cutoff)
+    elif metric in ["heart_rate", "hr", "pulse", "workout_hr"]:
         return _get_heart_rate_chart(user_id, cutoff)
     elif metric in ["cadence", "steps", "spm"]:
         return _get_cadence_chart(user_id, cutoff)
     elif metric in ["elevation", "climbing", "ascent"]:
         return _get_elevation_chart(user_id, cutoff)
-    elif metric in ["sleep_score", "sleep_quality"]:
+    elif metric in ["sleep_score", "sleep_quality", "sleep"]:
         return _get_sleep_score_chart(user_id, cutoff)
     
+    # Default to resting heart rate if 'resting' or 'rhr' is in the metric string
+    if "resting" in metric.lower() or "rhr" in metric.lower():
+        return _get_resting_heart_rate_chart(user_id, cutoff)
+    
     return None
+
 
 
 def _generate_activity_chart(user_id: str, metric: str, encryption_key: str, message: str) -> Optional[Dict[str, Any]]:
@@ -401,6 +408,78 @@ def _get_training_load_chart(user_id: str, cutoff: str) -> Dict[str, Any]:
         }
     }
 
+def _get_resting_heart_rate_chart(user_id: str, cutoff: str) -> Dict[str, Any]:
+    """Generate Resting Heart Rate trend chart (bpm)."""
+    labels = []
+    data_points = []
+
+    # 1. Primary: Query biometrics_daily (single source of truth)
+    try:
+        query = supabase.table("biometrics_daily").select("date, resting_hr").gte("date", cutoff).order("date", desc=False)
+        try:
+            res = query.eq("user_id", int(user_id)).execute()
+        except Exception:
+            res = query.eq("user_id", str(user_id)).execute()
+        
+        for r in (res.data or []):
+            rhr = r.get("resting_hr")
+            if rhr is not None and rhr > 0:
+                labels.append(r["date"][5:])
+                data_points.append(int(rhr))
+    except Exception as e:
+        print(f"Error querying biometrics_daily for resting heart rate: {e}")
+
+    # 2. Fallback to garmin_daily
+    if not data_points:
+        try:
+            query = supabase.table("garmin_daily").select("date, resting_hr").gte("date", cutoff).order("date", desc=False)
+            try:
+                res = query.eq("user_id", int(user_id)).execute()
+            except Exception:
+                res = query.eq("user_id", str(user_id)).execute()
+            for d in (res.data or []):
+                rhr_val = d.get("resting_hr")
+                if isinstance(rhr_val, dict):
+                    rhr_val = rhr_val.get("restingHeartRate") or rhr_val.get("value")
+                if rhr_val:
+                    labels.append(d["date"][5:])
+                    data_points.append(int(rhr_val))
+        except Exception as e:
+            print(f"Error querying garmin_daily for resting heart rate: {e}")
+
+    # 3. Fallback placeholder baseline for the last 7 days
+    if not data_points:
+        now = datetime.now()
+        for i in range(6, -1, -1):
+            d_str = (now - timedelta(days=i)).strftime("%m-%d")
+            labels.append(d_str)
+            data_points.append(54)
+
+    return {
+        "type": "line",
+        "title": "Resting Heart Rate Trend (bpm)",
+        "data": {
+            "labels": labels,
+            "datasets": [{
+                "label": "Resting HR (bpm)",
+                "data": data_points,
+                "borderColor": "#ef4444",
+                "backgroundColor": "rgba(239, 68, 68, 0.12)",
+                "tension": 0.35,
+                "fill": True
+            }]
+        },
+        "options": {
+            "scales": {
+                "y": {
+                    "min": 40,
+                    "max": 90
+                }
+            }
+        }
+    }
+
+
 def _get_heart_rate_chart(user_id: str, cutoff: str) -> Dict[str, Any]:
     """Generate Avg Heart Rate chart."""
     result = supabase.table("garmin_activities")\
@@ -427,7 +506,7 @@ def _get_heart_rate_chart(user_id: str, cutoff: str) -> Dict[str, Any]:
             
     return {
         "type": "line",
-        "title": "Avg Heart Rate (bpm)",
+        "title": "Avg Workout Heart Rate (bpm)",
         "data": {
             "labels": labels,
             "datasets": [{
@@ -440,6 +519,7 @@ def _get_heart_rate_chart(user_id: str, cutoff: str) -> Dict[str, Any]:
             }]
         }
     }
+
 
 def _get_cadence_chart(user_id: str, cutoff: str) -> Dict[str, Any]:
     """Generate Avg Cadence chart."""

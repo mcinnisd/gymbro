@@ -163,3 +163,16 @@ def test_process_coach_message_triggers_widgets():
     res_readiness = process_coach_message("user_test", "I feel fatigued and sore, should I reschedule?")
     assert res_readiness["ui_payload"] is not None
     assert res_readiness["ui_payload"]["widget_type"] == WIDGET_TYPE_READINESS_ACTION
+
+    # Resting Heart Rate plot trigger
+    res_rhr = process_coach_message("user_test", "can you give me a plot of my resting heart rate?")
+    assert res_rhr["ui_payload"] is not None
+    assert res_rhr["ui_payload"]["widget_type"] == WIDGET_TYPE_INTERACTIVE_CHART
+    assert "heart" in res_rhr["ui_payload"]["title"].lower() or "rhr" in res_rhr["ui_payload"]["title"].lower()
+    assert not res_rhr["response"].startswith("I've analyzed your telemetry and updated your fast context")
+
+    # HRV plot trigger
+    res_hrv = process_coach_message("user_test", "Show me my hrv trend")
+    assert res_hrv["ui_payload"] is not None
+    assert res_hrv["ui_payload"]["widget_type"] == WIDGET_TYPE_INTERACTIVE_CHART
+
