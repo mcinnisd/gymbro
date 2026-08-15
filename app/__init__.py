@@ -55,6 +55,9 @@ def create_app():
     from app.biomarkers.routes import biomarkers_bp
     app.register_blueprint(biomarkers_bp)
 
+    from app.telemetry.routes import telemetry_bp
+    app.register_blueprint(telemetry_bp, url_prefix="/telemetry")
+
     # Set up logging if not in debug mode
     if not app.debug:
         handler = RotatingFileHandler('error.log', maxBytes=100000, backupCount=3)

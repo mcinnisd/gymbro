@@ -9,18 +9,28 @@ class MockSupabaseClient:
                     "id": "test1111", 
                     "username": "test1111", 
                     "password": "scrypt:32768:8:1$oDnQYjcKzdRegzNQ$10944e6fb485ecc53e47b5da73433bac65cdc29298c3d39f5acf068e89321a5c7bd0a5e6cc0710a0e68dd840f033718e10a3d9aa3b97ccbfec954dc2808fc57f",
-                    "goals": {"llm_model": "gemini"}
+                    "goals": {"llm_model": "gemini"},
+                    "coach_name": "AI Coach",
+                    "coach_status": "initial",
+                    "interview_step": 1
                 }
             ],
             "chats": [],
             "training_events": [],
             "garmin_activities": [],
-            "biometrics_daily": [],
+            "strava_activities": [],
             "activities": [],
+            "biometrics_daily": [],
+            "garmin_daily": [],
+            "garmin_sleep": [],
+            "garmin_maxmetrics": [],
+            "user_baselines": [],
+            "daily_journals": [],
             "lab_panels": [],
             "biomarkers": [],
             "meals": [],
             "athlete_memories": [],
+            "user_intelligence": [],
             "health_graph": []
         }
         self.current_table = None
@@ -81,7 +91,6 @@ class MockSupabaseClient:
         return self
 
     def update(self, data):
-        # Store update data to apply in execute
         self.update_data = data
         return self
 
@@ -93,26 +102,53 @@ class MockSupabaseClient:
         self.query_filters.append(lambda row: str(row.get(column)) == str(value))
         return self
 
+    def gt(self, column, value):
+        self.query_filters.append(lambda row: row.get(column) is not None and row.get(column) > value)
+        return self
+
     def gte(self, column, value):
-        self.query_filters.append(lambda row: row.get(column) >= value)
+        self.query_filters.append(lambda row: row.get(column) is not None and row.get(column) >= value)
         return self
 
     def lte(self, column, value):
-        self.query_filters.append(lambda row: row.get(column) <= value)
+        self.query_filters.append(lambda row: row.get(column) is not None and row.get(column) <= value)
         return self
     
     def lt(self, column, value):
-        self.query_filters.append(lambda row: row.get(column) < value)
+        self.query_filters.append(lambda row: row.get(column) is not None and row.get(column) < value)
         return self
 
     def ilike(self, column, pattern):
-        # Simple containment check for mock
         clean_pattern = pattern.replace("%", "").lower()
         self.query_filters.append(lambda row: clean_pattern in str(row.get(column, "")).lower())
         return self
 
+    @property
+    def not_(self):
+        class NotFilter:
+            def __init__(self, parent):
+                self.parent = parent
+            def is_(self, column, value):
+                if value == "null" or value is None:
+                    self.parent.query_filters.append(lambda row: row.get(column) is not None and row.get(column) != "")
+                else:
+                    self.parent.query_filters.append(lambda row: str(row.get(column)) != str(value))
+                return self.parent
+            def eq(self, column, value):
+                self.parent.query_filters.append(lambda row: str(row.get(column)) != str(value))
+                return self.parent
+        return NotFilter(self)
+
+    def is_(self, column, value):
+        if value == "null" or value is None:
+            self.query_filters.append(lambda row: row.get(column) is None or row.get(column) == "")
+        else:
+            self.query_filters.append(lambda row: str(row.get(column)) == str(value))
+        return self
+
     def order(self, column, desc=False):
-        # Store order to apply in execute (simplified: ignore for now or implement sort)
+        self.order_column = column
+        self.order_desc = desc
         return self
 
     def limit(self, count):
@@ -136,9 +172,12 @@ class MockSupabaseClient:
             del self.rpc_params
             if fn == "match_intelligence":
                 match_uid = params.get("match_user_id")
+                filter_cats = params.get("filter_categories")
                 rows = self.data.get("user_intelligence", [])
                 if match_uid is not None:
                     rows = [r for r in rows if str(r.get("user_id")) == str(match_uid)]
+                if filter_cats:
+                    rows = [r for r in rows if r.get("category") in filter_cats]
                 return MockResponse(rows)
             return MockResponse([])
 
@@ -164,10 +203,21 @@ class MockSupabaseClient:
             
         # Apply deletes
         if hasattr(self, 'delete_mode'):
-            # Remove rows from main data
             self.data[self.current_table] = [r for r in self.data[self.current_table] if r not in rows]
             del self.delete_mode
-            return MockResponse(None) # Delete returns null data usually
+            return MockResponse(None)
+
+        # Apply order
+        if hasattr(self, 'order_column'):
+            col = self.order_column
+            desc = getattr(self, 'order_desc', False)
+            try:
+                rows = sorted(rows, key=lambda x: str(x.get(col, '')), reverse=desc)
+            except Exception:
+                pass
+            del self.order_column
+            if hasattr(self, 'order_desc'):
+                del self.order_desc
 
         # Apply limit
         if hasattr(self, 'limit_count'):
