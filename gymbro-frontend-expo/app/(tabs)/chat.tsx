@@ -11,16 +11,16 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { AuthContext } from '../context/AuthContext';
+import { AuthContext } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MarkdownText } from '../components/MarkdownText';
+import { MarkdownText } from '../../components/MarkdownText';
 import Colors from '../../constants/Colors';
-import { isGymbroWidget, ChatWidgetEnvelope } from '../services/widgetProtocol';
-import { InteractiveChartWidget } from '../components/chat/InteractiveChartWidget';
-import { PlanProposalWidget } from '../components/chat/PlanProposalWidget';
-import { MacroSliderWidget } from '../components/chat/MacroSliderWidget';
-import { ReadinessActionWidget } from '../components/chat/ReadinessActionWidget';
+import { isGymbroWidget, ChatWidgetEnvelope } from '../../services/widgetProtocol';
+import { InteractiveChartWidget } from '../../components/chat/InteractiveChartWidget';
+import { PlanProposalWidget } from '../../components/chat/PlanProposalWidget';
+import { MacroSliderWidget } from '../../components/chat/MacroSliderWidget';
+import { ReadinessActionWidget } from '../../components/chat/ReadinessActionWidget';
 
 interface Message {
   sender: 'user' | 'bot' | 'system';

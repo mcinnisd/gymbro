@@ -1,6 +1,7 @@
 ---
 name: requesting-code-review
-description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements
+description: Requesting code review (superpowers). User-invoked.
+disable-model-invocation: true
 ---
 
 # Requesting Code Review

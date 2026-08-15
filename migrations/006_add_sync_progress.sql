@@ -1,1 +1,0 @@
-ALTER TABLE users ADD COLUMN IF NOT EXISTS garmin_sync_progress INTEGER DEFAULT 0;

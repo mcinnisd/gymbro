@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { Colors } from '../constants/Colors';
 
 export type MetricType = 'sleep' | 'hrv' | 'rhr' | 'load';
 
@@ -45,7 +46,6 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
   const toggleMetric = (metric: MetricType) => {
     setActiveMetrics((prev) => {
       const updated = { ...prev, [metric]: !prev[metric] };
-      // Ensure at least one metric remains active
       if (!Object.values(updated).some(Boolean)) {
         return prev;
       }
@@ -73,8 +73,8 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
     sleep: {
       label: 'Sleep',
       unit: 'pts',
-      color: '#2563EB',
-      bgColor: 'rgba(37, 99, 235, 0.12)',
+      color: Colors.light.sleepDusk,
+      bgColor: 'rgba(79, 70, 229, 0.10)',
       icon: 'moon',
       min: 40,
       max: 100,
@@ -82,8 +82,8 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
     hrv: {
       label: 'HRV',
       unit: 'ms',
-      color: '#059669',
-      bgColor: 'rgba(5, 150, 105, 0.12)',
+      color: Colors.light.vitality,
+      bgColor: 'rgba(5, 150, 105, 0.10)',
       icon: 'pulse',
       min: 30,
       max: 110,
@@ -91,8 +91,8 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
     rhr: {
       label: 'Resting HR',
       unit: 'bpm',
-      color: '#DC2626',
-      bgColor: 'rgba(220, 38, 38, 0.12)',
+      color: Colors.light.cardio,
+      bgColor: 'rgba(225, 29, 72, 0.10)',
       icon: 'heart',
       min: 45,
       max: 85,
@@ -100,8 +100,8 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
     load: {
       label: 'Training Load',
       unit: 'AU',
-      color: '#D97706',
-      bgColor: 'rgba(217, 119, 6, 0.12)',
+      color: Colors.light.primary,
+      bgColor: 'rgba(217, 119, 6, 0.10)',
       icon: 'flash',
       min: 0,
       max: 500,
@@ -116,7 +116,7 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
 
   const handleConsultCoachPress = () => {
     if (!selectedPoint) return;
-    const summary = `Hey Coach Bro! Checking out my recovery trends for ${selectedPoint.date}: Sleep ${selectedPoint.sleep ?? 'N/A'}/100, HRV ${selectedPoint.hrv ?? 'N/A'}ms, Resting HR ${selectedPoint.rhr ?? 'N/A'}bpm, Training Load ${selectedPoint.load ?? 'N/A'}. How should I adjust today's training?`;
+    const summary = `Reviewing my recovery biometrics for ${selectedPoint.date}: Sleep ${selectedPoint.sleep ?? 'N/A'}/100, HRV ${selectedPoint.hrv ?? 'N/A'}ms, Resting HR ${selectedPoint.rhr ?? 'N/A'}bpm, Training Load ${selectedPoint.load ?? 'N/A'}. How should this shape today's training?`;
     if (onConsultCoach) {
       onConsultCoach(summary);
     } else {
@@ -133,11 +133,11 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>Layered Recovery Trends</Text>
-          <Text style={styles.subtitle}>Toggle metrics to correlate sleep, HRV & training load</Text>
+          <Text style={styles.subtitle}>Correlate sleep, HRV, resting heart rate & load</Text>
         </View>
         <TouchableOpacity style={styles.coachBadge} onPress={handleConsultCoachPress}>
-          <Ionicons name="chatbubbles-outline" size={14} color="#2563EB" />
-          <Text style={styles.coachBadgeText}>Ask Coach</Text>
+          <Ionicons name="sparkles" size={13} color={Colors.light.primary} />
+          <Text style={styles.coachBadgeText}>Ask Agent</Text>
         </TouchableOpacity>
       </View>
 
@@ -156,8 +156,8 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
               onPress={() => toggleMetric(key)}
               activeOpacity={0.7}
             >
-              <Ionicons name={cfg.icon} size={14} color={isActive ? cfg.color : '#94A3B8'} style={{ marginRight: 4 }} />
-              <Text style={[styles.toggleBtnText, { color: isActive ? cfg.color : '#64748B' }]}>
+              <Ionicons name={cfg.icon} size={14} color={isActive ? cfg.color : Colors.light.mutedText} style={{ marginRight: 5 }} />
+              <Text style={[styles.toggleBtnText, { color: isActive ? cfg.color : Colors.light.secondaryText }]}>
                 {cfg.label}
               </Text>
             </TouchableOpacity>
@@ -199,7 +199,7 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
                           {
                             height: `${normH}%`,
                             backgroundColor: cfg.color,
-                            opacity: isSelected ? 1 : 0.8,
+                            opacity: isSelected ? 1 : 0.85,
                           },
                         ]}
                       />
@@ -221,8 +221,8 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
           <View style={styles.inspectorHeader}>
             <Text style={styles.inspectorDate}>📅 {selectedPoint.date}</Text>
             <TouchableOpacity style={styles.consultBtnInline} onPress={handleConsultCoachPress}>
-              <Ionicons name="sparkles" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.consultBtnInlineText}>Consult Coach Bro</Text>
+              <Ionicons name="sparkles" size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+              <Text style={styles.consultBtnInlineText}>Discuss with Agent</Text>
             </TouchableOpacity>
           </View>
 
@@ -230,10 +230,10 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
             {activeMetrics.sleep && (
               <View style={styles.inspectorItem}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="moon" size={14} color="#2563EB" style={{ marginRight: 4 }} />
-                  <Text style={styles.inspectorLabel}>Sleep</Text>
+                  <Ionicons name="moon" size={13} color={Colors.light.sleepDusk} style={{ marginRight: 4 }} />
+                  <Text style={styles.inspectorLabel}>Sleep Score</Text>
                 </View>
-                <Text style={[styles.inspectorVal, { color: '#2563EB' }]}>
+                <Text style={[styles.inspectorVal, { color: Colors.light.sleepDusk }]}>
                   {selectedPoint.sleep ?? '--'} <Text style={styles.inspectorUnit}>/ 100</Text>
                 </Text>
               </View>
@@ -242,10 +242,10 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
             {activeMetrics.hrv && (
               <View style={styles.inspectorItem}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="pulse" size={14} color="#059669" style={{ marginRight: 4 }} />
+                  <Ionicons name="pulse" size={13} color={Colors.light.vitality} style={{ marginRight: 4 }} />
                   <Text style={styles.inspectorLabel}>HRV</Text>
                 </View>
-                <Text style={[styles.inspectorVal, { color: '#059669' }]}>
+                <Text style={[styles.inspectorVal, { color: Colors.light.vitality }]}>
                   {selectedPoint.hrv ?? '--'} <Text style={styles.inspectorUnit}>ms</Text>
                 </Text>
               </View>
@@ -254,10 +254,10 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
             {activeMetrics.rhr && (
               <View style={styles.inspectorItem}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="heart" size={14} color="#DC2626" style={{ marginRight: 4 }} />
+                  <Ionicons name="heart" size={13} color={Colors.light.cardio} style={{ marginRight: 4 }} />
                   <Text style={styles.inspectorLabel}>Resting HR</Text>
                 </View>
-                <Text style={[styles.inspectorVal, { color: '#DC2626' }]}>
+                <Text style={[styles.inspectorVal, { color: Colors.light.cardio }]}>
                   {selectedPoint.rhr ?? '--'} <Text style={styles.inspectorUnit}>bpm</Text>
                 </Text>
               </View>
@@ -266,10 +266,10 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
             {activeMetrics.load && (
               <View style={styles.inspectorItem}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="flash" size={14} color="#D97706" style={{ marginRight: 4 }} />
+                  <Ionicons name="flash" size={13} color={Colors.light.primary} style={{ marginRight: 4 }} />
                   <Text style={styles.inspectorLabel}>Training Load</Text>
                 </View>
-                <Text style={[styles.inspectorVal, { color: '#D97706' }]}>
+                <Text style={[styles.inspectorVal, { color: Colors.light.primary }]}>
                   {selectedPoint.load ?? '--'} <Text style={styles.inspectorUnit}>AU</Text>
                 </Text>
               </View>
@@ -283,17 +283,16 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: Colors.light.card,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.light.border,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowColor: Colors.light.shadowColor,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
   },
   headerRow: {
     flexDirection: 'row',
@@ -304,19 +303,20 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    color: Colors.light.text,
+    letterSpacing: -0.2,
   },
   subtitle: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: Colors.light.secondaryText,
     marginTop: 2,
   },
   coachBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    backgroundColor: Colors.light.cardSubtle,
     borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.2)',
+    borderColor: Colors.light.border,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   coachBadgeText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#2563EB',
+    color: Colors.light.primary,
     marginLeft: 4,
   },
   toggleRow: {
@@ -336,14 +336,14 @@ const styles = StyleSheet.create({
   toggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
   },
   toggleBtnInactive: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#E2E8F0',
+    backgroundColor: Colors.light.cardSubtle,
+    borderColor: Colors.light.borderSubtle,
   },
   toggleBtnText: {
     fontSize: 11,
@@ -351,10 +351,10 @@ const styles = StyleSheet.create({
   },
   chartBox: {
     height: 140,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    backgroundColor: Colors.light.cardSubtle,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.light.borderSubtle,
     paddingTop: 10,
     paddingBottom: 4,
     justifyContent: 'flex-end',
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
   },
   gridLine: {
     height: 1,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: Colors.light.borderSubtle,
     width: '100%',
   },
   scrollGraphContent: {
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   colSelected: {
-    backgroundColor: 'rgba(37, 99, 235, 0.06)',
+    backgroundColor: 'rgba(217, 119, 6, 0.08)',
   },
   barsGroup: {
     flexDirection: 'row',
@@ -401,21 +401,21 @@ const styles = StyleSheet.create({
     minHeight: 4,
   },
   dayText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
     marginTop: 4,
   },
   dayTextSelected: {
-    color: '#2563EB',
+    color: Colors.light.primary,
     fontWeight: '700',
   },
   inspectorCard: {
     marginTop: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    backgroundColor: Colors.light.cardSubtle,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.light.border,
     padding: 12,
   },
   inspectorHeader: {
@@ -427,19 +427,19 @@ const styles = StyleSheet.create({
   inspectorDate: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
+    color: Colors.light.text,
   },
   consultBtnInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: Colors.light.primary,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   consultBtnInlineText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
   },
   inspectorGrid: {
@@ -450,25 +450,25 @@ const styles = StyleSheet.create({
   inspectorItem: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    backgroundColor: Colors.light.card,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 8,
+    borderColor: Colors.light.borderSubtle,
+    padding: 10,
   },
   inspectorLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#64748B',
+    color: Colors.light.secondaryText,
   },
   inspectorVal: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     marginTop: 2,
   },
   inspectorUnit: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '400',
-    color: '#94A3B8',
+    color: Colors.light.mutedText,
   },
 });

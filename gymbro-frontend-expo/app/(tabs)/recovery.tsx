@@ -9,11 +9,12 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { AuthContext } from '../context/AuthContext';
+import { AuthContext } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
+import Colors from '../../constants/Colors';
 import RecoveryChart, { RecoveryDataPoint } from '../../components/RecoveryChart';
 import { GarminModal } from '../../components/GarminModal';
 import WidgetCustomizeModal, {
@@ -361,7 +362,7 @@ export default function RecoveryScreen() {
       sub = 'Sub-optimal recovery. Focus on light active recovery or rest.';
     } else if (score < 80) {
       status = 'Moderate Readiness';
-      color = '#2563EB';
+      color = Colors.light.vitality;
       sub = 'Good baseline recovery. Standard workout volume recommended.';
     }
     return { score, status, color, sub, s, bb, hrv, rhr };
@@ -513,7 +514,7 @@ export default function RecoveryScreen() {
                   <Text style={styles.readinessMiniPillLabel}>HRV: {currentReadiness.hrv}ms</Text>
                 </View>
                 <View style={styles.readinessMiniPill}>
-                  <Ionicons name="moon" size={12} color="#2563EB" />
+                  <Ionicons name="moon" size={12} color={Colors.light.sleepDusk} />
                   <Text style={styles.readinessMiniPillLabel}>Sleep: {currentReadiness.s}</Text>
                 </View>
                 <View style={styles.readinessMiniPill}>
@@ -529,12 +530,12 @@ export default function RecoveryScreen() {
         {widgetPrefs.sleep_stages && (
           <View style={styles.cardContainer}>
             <LinearGradient
-              colors={['rgba(37, 99, 235, 0.08)', 'rgba(79, 70, 229, 0.04)']}
+              colors={['rgba(79, 70, 229, 0.06)', 'rgba(217, 119, 6, 0.03)']}
               style={styles.cardGradientPadding}
             >
               <View style={styles.cardHeaderRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="moon-outline" size={18} color="#2563EB" />
+                  <Ionicons name="moon-outline" size={18} color={Colors.light.sleepDusk} />
                   <Text style={styles.sectionTitle}>Sleep Architecture</Text>
                 </View>
                 <Text style={styles.headerRightValue}>
@@ -689,16 +690,16 @@ export default function RecoveryScreen() {
             {/* Sleep Score Card */}
             <View style={styles.statCard}>
               <LinearGradient
-                colors={['rgba(37, 99, 235, 0.06)', 'rgba(255,255,255,0)']}
+                colors={['rgba(79, 70, 229, 0.05)', 'rgba(255,255,255,0)']}
                 style={styles.cardGradient}
               >
                 <View style={[styles.cardHeader, { justifyContent: 'space-between' }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="moon" size={16} color="#2563EB" />
+                    <Ionicons name="moon" size={16} color={Colors.light.sleepDusk} />
                     <Text style={styles.cardLabel}>Sleep Score</Text>
                   </View>
-                  <View style={[styles.syncBadge, { backgroundColor: biometricsSource === 'apple_health' ? 'rgba(220, 38, 38, 0.1)' : 'rgba(37, 99, 235, 0.1)', borderColor: biometricsSource === 'apple_health' ? 'rgba(220, 38, 38, 0.2)' : 'rgba(37, 99, 235, 0.2)' }]}>
-                    <Text style={[styles.syncBadgeText, { color: biometricsSource === 'apple_health' ? '#DC2626' : '#2563EB' }]}>
+                  <View style={[styles.syncBadge, { backgroundColor: biometricsSource === 'apple_health' ? 'rgba(220, 38, 38, 0.08)' : 'rgba(79, 70, 229, 0.08)', borderColor: biometricsSource === 'apple_health' ? 'rgba(220, 38, 38, 0.15)' : 'rgba(79, 70, 229, 0.15)' }]}>
+                    <Text style={[styles.syncBadgeText, { color: biometricsSource === 'apple_health' ? Colors.light.cardio : Colors.light.sleepDusk }]}>
                       {biometricsSource === 'apple_health' ? '🍎 Apple' : '⌚ Garmin'}
                     </Text>
                   </View>
@@ -737,20 +738,20 @@ export default function RecoveryScreen() {
         ) : (
           <View style={styles.emptyWearableCard}>
             <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
-              <View style={[styles.syncBadge, { backgroundColor: 'rgba(37, 99, 235, 0.1)' }]}>
-                <Text style={[styles.syncBadgeText, { color: '#2563EB' }]}>⌚ Garmin (Primary)</Text>
+              <View style={[styles.syncBadge, { backgroundColor: 'rgba(217, 119, 6, 0.1)' }]}>
+                <Text style={[styles.syncBadgeText, { color: Colors.light.primary }]}>⌚ Garmin (Primary)</Text>
               </View>
-              <View style={[styles.syncBadge, { backgroundColor: 'rgba(220, 38, 38, 0.1)' }]}>
-                <Text style={[styles.syncBadgeText, { color: '#DC2626' }]}>🍎 Apple Health</Text>
+              <View style={[styles.syncBadge, { backgroundColor: 'rgba(225, 29, 72, 0.1)' }]}>
+                <Text style={[styles.syncBadgeText, { color: Colors.light.cardio }]}>🍎 Apple Health</Text>
               </View>
             </View>
-            <Ionicons name="watch-outline" size={24} color="#2563EB" style={{ marginBottom: 6 }} />
-            <Text style={{ color: '#0F172A', fontWeight: 'bold', fontSize: 14 }}>No Wearable Connected</Text>
-            <Text style={{ color: '#64748B', fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
-              Connect Apple Health, Garmin, or Strava to automatically stream Resting HR, HRV, and Sleep scores.
+            <Ionicons name="watch-outline" size={24} color={Colors.light.primary} style={{ marginBottom: 6 }} />
+            <Text style={{ color: Colors.light.text, fontWeight: 'bold', fontSize: 14 }}>No Wearable Connected</Text>
+            <Text style={{ color: Colors.light.secondaryText, fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
+              Connect Apple Health or Garmin to automatically stream Resting HR, HRV, and Sleep scores.
             </Text>
             <TouchableOpacity style={styles.emptyActionBtn} onPress={() => router.push('/(tabs)/chat')}>
-              <Text style={styles.emptyActionBtnText}>⌚ Sync Device in Coach Chat</Text>
+              <Text style={styles.emptyActionBtnText}>⌚ Sync Device in Agent Chat</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -782,7 +783,7 @@ export default function RecoveryScreen() {
         {/* Device Sync & Garmin Login Modal Trigger */}
         <View style={styles.deviceSyncBar}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-            <Ionicons name="watch-outline" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+            <Ionicons name="watch-outline" size={18} color={Colors.light.primary} style={{ marginRight: 6 }} />
             <Text style={styles.deviceSyncBarText}>
               {wearableConnected ? 'Garmin Watch Connected & Synced' : 'Connect Garmin Watch to Auto-Sync Biometrics'}
             </Text>
@@ -796,11 +797,11 @@ export default function RecoveryScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.deviceSyncBarBtn, { marginLeft: 8, backgroundColor: '#F1F5F9' }]}
+            style={[styles.deviceSyncBarBtn, { marginLeft: 8, backgroundColor: Colors.light.cardSubtle }]}
             onPress={() => setShowWidgetModal(true)}
           >
-            <Ionicons name="options-outline" size={14} color="#2563EB" style={{ marginRight: 4 }} />
-            <Text style={[styles.deviceSyncBarBtnText, { color: '#2563EB' }]}>
+            <Ionicons name="options-outline" size={14} color={Colors.light.primary} style={{ marginRight: 4 }} />
+            <Text style={[styles.deviceSyncBarBtnText, { color: Colors.light.primary }]}>
               Widgets
             </Text>
           </TouchableOpacity>
@@ -829,10 +830,10 @@ export default function RecoveryScreen() {
         {/* Daily Recovery Journal Card */}
         <View style={styles.journalCard}>
           <Text style={styles.journalHeader}>📝 Daily Journal & Check-In</Text>
-          <Text style={styles.journalSubHeader}>How did your body feel today, bro?</Text>
+          <Text style={styles.journalSubHeader}>How did your body feel today?</Text>
           
           {loading ? (
-            <ActivityIndicator size="small" color="#2563EB" style={{ marginVertical: 20 }} />
+            <ActivityIndicator size="small" color={Colors.light.primary} style={{ marginVertical: 20 }} />
           ) : (
             <View style={styles.journalForm}>
               {/* Energy Levels */}
@@ -948,8 +949,8 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   rangePillActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
   },
   rangePillText: {
     fontSize: 11,
@@ -1272,12 +1273,12 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   ratingButtonSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
   },
   ratingText: {
     fontSize: 11,
-    color: '#64748B',
+    color: Colors.light.secondaryText,
     fontWeight: 'bold',
   },
   ratingTextSelected: {
@@ -1294,26 +1295,26 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.cardSubtle,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   checkboxSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
   },
   checkboxLabel: {
-    color: '#0F172A',
+    color: Colors.light.text,
     fontSize: 13,
   },
   journalInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.light.background,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.light.border,
     borderRadius: 8,
-    color: '#0F172A',
+    color: Colors.light.text,
     padding: 12,
     fontSize: 14,
     textAlignVertical: 'top',
@@ -1322,7 +1323,7 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     height: 44,
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.light.primary,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1420,24 +1421,24 @@ const styles = StyleSheet.create({
   emptyActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.light.cardSubtle,
     borderWidth: 1,
-    borderColor: '#2563EB',
+    borderColor: Colors.light.border,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 10,
     marginTop: 4,
   },
   emptyActionBtnText: {
-    color: '#2563EB',
+    color: Colors.light.primary,
     fontSize: 12,
     fontWeight: 'bold',
   },
   emptyWearableCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: Colors.light.card,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.light.border,
     padding: 16,
     marginBottom: 16,
     alignItems: 'center',
@@ -1446,25 +1447,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: Colors.light.card,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.light.border,
     padding: 12,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowColor: Colors.light.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
     elevation: 1,
   },
   deviceSyncBarText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#0F172A',
+    color: Colors.light.text,
   },
   deviceSyncBarBtn: {
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.light.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,

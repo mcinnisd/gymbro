@@ -21,22 +21,17 @@ def register():
     if not username or not password:
         return jsonify({"error": "Username/email and password are required."}), 400
 
-    # Check existing by username or email
-    exists_resp = supabase.table("users").select("*").eq("username", username).execute()
-    if not exists_resp.data:
-        exists_resp = supabase.table("users").select("*").eq("email", username).execute()
-        
+    # Check existing by username
+    exists_resp = supabase.table("users").select("id").eq("username", username).execute()
     if exists_resp.data:
         return jsonify({"error": "An account with this email/username already exists."}), 400
 
     hashed_password = generate_password_hash(password)
     user_doc = {
         "username": username,
-        "email": username,
-        "name": name or username.split("@")[0],
         "password": hashed_password,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "goals": {}
+        "goals": {"name": name} if name else {}
     }
 
     try:
@@ -48,7 +43,15 @@ def register():
                 "message": "User registered successfully.",
                 "user_id": user_id,
                 "token": access_token,
-                "access_token": access_token
+                "access_token": access_token,
+                "user": {
+                    "id": user_id,
+                    "email": username,
+                    "username": username,
+                    "coach_status": "not_started",
+                    "interview_chat_id": None,
+                    "goals": user_doc["goals"]
+                }
             }), 201
         else:
             return jsonify({"error": "Registration failed: Could not insert user record."}), 500

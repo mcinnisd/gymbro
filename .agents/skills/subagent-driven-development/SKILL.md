@@ -1,6 +1,7 @@
 ---
 name: subagent-driven-development
-description: Use when executing implementation plans with independent tasks in the current session
+description: Subagent-driven development (superpowers). User-invoked.
+disable-model-invocation: true
 ---
 
 # Subagent-Driven Development

@@ -1,6 +1,7 @@
 ---
 name: writing-skills
-description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
+description: Writing skills (superpowers). User-invoked.
+disable-model-invocation: true
 ---
 
 # Writing Skills

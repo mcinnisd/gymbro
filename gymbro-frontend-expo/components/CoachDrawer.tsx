@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../app/context/AuthContext';
+import { AuthContext } from '../context/AuthContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DRAWER_PEEK_HEIGHT = 60;

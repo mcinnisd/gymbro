@@ -117,7 +117,7 @@ const WIDGET_ITEMS: WidgetItemConfig[] = [
     title: 'Sleep Stages Architecture',
     description: 'Deep, REM, Light, and Awake sleep breakdown stats',
     icon: 'moon-outline',
-    iconColor: '#2563EB',
+    iconColor: Colors.light.sleepDusk,
   },
   {
     key: 'body_battery',

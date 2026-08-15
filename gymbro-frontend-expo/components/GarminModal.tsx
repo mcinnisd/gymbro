@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../app/context/AuthContext';
+import { AuthContext } from '../context/AuthContext';
 import Colors from '../constants/Colors';
 
 interface GarminModalProps {

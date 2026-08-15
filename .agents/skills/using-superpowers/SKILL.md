@@ -1,6 +1,7 @@
 ---
 name: using-superpowers
-description: Guidance on using superpowers skills as optional, flexible tools when helpful or requested by the user
+description: Guidance on superpowers skills. User-invoked.
+disable-model-invocation: true
 ---
 
 <SUBAGENT-STOP>

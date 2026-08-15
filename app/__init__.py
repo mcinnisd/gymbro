@@ -18,10 +18,13 @@ def create_app():
         app.config.from_object(DevelopmentConfig)
 
     # Initialize CORS
-    # Allow configured origins to support credentials
-    cors_origins_str = app.config.get("CORS_ORIGIN") or "http://localhost:3000"
-    cors_origins = [orig.strip() for orig in cors_origins_str.split(",") if orig.strip()]
-    cors.init_app(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
+    if app.debug or env == 'development':
+        # In development, allow requests from any origin (Expo web on port 8081/8082, Expo tunnels, localhost, LAN IPs)
+        cors.init_app(app, resources={r"/*": {"origins": r"https?://.*"}}, supports_credentials=True)
+    else:
+        cors_origins_str = app.config.get("CORS_ORIGIN") or "http://localhost:3000,http://localhost:8081"
+        cors_origins = [orig.strip() for orig in cors_origins_str.split(",") if orig.strip()]
+        cors.init_app(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
     # Initialize JWT and rate limiter
     jwt.init_app(app)

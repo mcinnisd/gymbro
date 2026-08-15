@@ -12,7 +12,7 @@ import {
   Platform,
   Linking,
 } from 'react-native';
-import { AuthContext } from '../context/AuthContext';
+import { AuthContext } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
@@ -166,8 +166,8 @@ export default function StatsScreen() {
 
     if (statusRaw.includes('RECOVERY')) {
       label = 'Recovery';
-      color = '#2563EB';
-      bg = 'rgba(37, 99, 235, 0.1)';
+      color = Colors.light.vitality;
+      bg = 'rgba(5, 150, 105, 0.1)';
       desc = 'Lower workload allowing body to adapt & restore energy.';
       icon = 'refresh-outline';
     } else if (statusRaw.includes('MAINTAINING')) {
@@ -322,7 +322,7 @@ export default function StatsScreen() {
 
   const handleSyncAppleHealthKit = async () => {
     try {
-      const { syncAppleHealthKitData } = await import('../services/healthkit');
+      const { syncAppleHealthKitData } = await import('../../services/healthkit');
       const data = await syncAppleHealthKitData();
       if (data) {
         setHealthkitConnected(true);
@@ -625,7 +625,7 @@ export default function StatsScreen() {
           {widgetPrefs.sleep_stages && (
             <View style={{ flex: 1, minWidth: 100, backgroundColor: Colors.light.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: Colors.light.border }}>
               <Text style={{ fontSize: 10, fontWeight: 'bold', color: Colors.light.subtext }}>SLEEP SCORE</Text>
-              <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginTop: 2 }}>
+              <Text style={{ fontSize: 15, fontWeight: 'bold', color: Colors.light.sleepDusk, marginTop: 2 }}>
                 {realWellness?.sleep_trend?.length ? `${realWellness.sleep_trend[realWellness.sleep_trend.length - 1].val}/100` : 'Synced'}
               </Text>
             </View>
@@ -798,7 +798,7 @@ export default function StatsScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
-              <Ionicons name="moon" size={18} color="#2563EB" style={{ marginRight: 6 }} />
+              <Ionicons name="moon" size={18} color={Colors.light.sleepDusk} style={{ marginRight: 6 }} />
               <Text style={styles.cardTitle}>4. Sleep Score & Duration History</Text>
             </View>
             <View style={styles.badgeSuccess}>
@@ -815,7 +815,7 @@ export default function StatsScreen() {
                   <View key={idx} style={styles.barColumn}>
                     <Text style={styles.barDetailText}>{b.detail}</Text>
                     <View style={styles.barTrack}>
-                      <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: '#2563EB' }]} />
+                      <View style={[styles.barFill, { height: `${b.val}%`, backgroundColor: Colors.light.sleepDusk }]} />
                     </View>
                     <Text style={styles.barLabel}>{b.label}</Text>
                   </View>
@@ -924,7 +924,7 @@ export default function StatsScreen() {
 
             <View style={styles.vo2Tile}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                <Ionicons name="sparkles-outline" size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                <Ionicons name="sparkles-outline" size={16} color={Colors.light.primary} style={{ marginRight: 6 }} />
                 <Text style={styles.vo2TileLabel}>Fitness Age</Text>
               </View>
               <Text style={styles.vo2TileValue}>{fitnessAgeVal} <Text style={{ fontSize: 11, fontWeight: 'normal', color: Colors.light.subtext }}>yrs</Text></Text>
