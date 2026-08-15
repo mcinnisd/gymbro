@@ -6,3 +6,5 @@
 2026-08-14T17:26:48.168179 - Garmin session not available for user 1, skipping.
 2026-08-14T17:31:59.515361 - Starting unified sync for user 1 (Force Resync: False)
 2026-08-14T17:31:59.526198 - CRITICAL SYNC ERROR: [Errno 8] nodename nor servname provided, or not known
+2026-08-14T18:40:41.571894 - Starting unified sync for user 1 (Force Resync: False)
+2026-08-14T18:40:41.582570 - CRITICAL SYNC ERROR: [Errno 8] nodename nor servname provided, or not known

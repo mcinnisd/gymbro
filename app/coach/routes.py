@@ -199,26 +199,61 @@ def organize_plan():
 def coach_chat_route():
     """
     Handles coach chat queries and returns rich text and structured gymbro.widget/v1 payloads.
+    Persists user and bot messages with ui_payload to chats table if chat_id is provided.
     """
     try:
         user_id = get_jwt_identity()
         data = request.get_json() or {}
         message = data.get("message", "")
+        chat_id = data.get("chat_id")
+        mode = data.get("mode", "fast")
         
         if not message:
             return jsonify({"error": "Message is required."}), 400
 
         from app.coach.service import process_coach_message
-        result = process_coach_message(user_id=str(user_id), message=message)
+        result = process_coach_message(user_id=str(user_id), message=message, mode=mode)
+
+        reply_text = result.get("response", "")
+        ui_payload = result.get("ui_payload")
+
+        # Persist messages to chat history if chat_id is provided
+        if chat_id:
+            try:
+                chat_res = supabase.table("chats").select("messages").eq("id", chat_id).execute()
+                if chat_res.data and len(chat_res.data) > 0:
+                    messages_list = chat_res.data[0].get("messages") or []
+                    now_str = datetime.now(timezone.utc).isoformat()
+                    messages_list.append({
+                        "sender": "user",
+                        "content": message,
+                        "timestamp": now_str
+                    })
+                    bot_msg = {
+                        "sender": "bot",
+                        "content": reply_text,
+                        "timestamp": now_str
+                    }
+                    if ui_payload:
+                        bot_msg["ui_payload"] = ui_payload
+                    messages_list.append(bot_msg)
+                    supabase.table("chats").update({
+                        "messages": messages_list,
+                        "updated_at": now_str
+                    }).eq("id", chat_id).execute()
+            except Exception as e:
+                logger.warning(f"Could not persist chat message to DB for chat_id {chat_id}: {e}")
 
         return jsonify({
-            "reply": result.get("response", ""),
-            "message": result.get("response", ""),
-            "ui_payload": result.get("ui_payload"),
+            "reply": reply_text,
+            "message": reply_text,
+            "ui_payload": ui_payload,
+            "mode": result.get("mode", mode),
             "plan": result.get("plan")
         }), 200
 
     except Exception as e:
         logger.error(f"Error in coach_chat_route: {e}")
         return jsonify({"error": str(e)}), 500
+
 

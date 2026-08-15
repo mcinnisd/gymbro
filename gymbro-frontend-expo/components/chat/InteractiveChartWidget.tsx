@@ -59,14 +59,9 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
             {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
         </View>
-        <View style={[styles.stateBadge, state === 'confirmed' && styles.stateBadgeConfirmed]}>
-          <Text
-            style={[
-              styles.stateBadgeText,
-              state === 'confirmed' && styles.stateBadgeTextConfirmed,
-            ]}
-          >
-            {state}
+        <View style={styles.stateBadge}>
+          <Text style={styles.stateBadgeText}>
+            {payload.time_range ? `${payload.time_range.toUpperCase()} TREND` : 'METRICS'}
           </Text>
         </View>
       </View>
@@ -185,27 +180,30 @@ export const InteractiveChartWidget: React.FC<InteractiveChartWidgetProps> = ({
         <Text style={styles.summaryInsightText}>💡 {summary_insight}</Text>
       ) : null}
 
-      {/* Action Buttons */}
-      {actions.length > 0 && (
+      {/* Action Buttons (excluding redundant discuss with agent) */}
+      {actions.filter(a => !a.label.toLowerCase().includes('discuss')).length > 0 && (
         <View style={styles.actionsContainer}>
-          {actions.map((act) => (
-            <TouchableOpacity
-              key={act.id}
-              style={styles.actionBtnGhost}
-              onPress={() => {
-                if (act.action_type === 'prompt_trigger' && act.prompt_text && onTriggerPrompt) {
-                  onTriggerPrompt(act.prompt_text);
-                } else if (onExecuteAction) {
-                  onExecuteAction(widget.widget_id, act.id);
-                }
-              }}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={14} color={Colors.light.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.actionBtnGhostText}>{act.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {actions
+            .filter(a => !a.label.toLowerCase().includes('discuss'))
+            .map((act) => (
+              <TouchableOpacity
+                key={act.id}
+                style={styles.actionBtnGhost}
+                onPress={() => {
+                  if (act.action_type === 'prompt_trigger' && act.prompt_text && onTriggerPrompt) {
+                    onTriggerPrompt(act.prompt_text);
+                  } else if (onExecuteAction) {
+                    onExecuteAction(widget.widget_id, act.id);
+                  }
+                }}
+              >
+                <Ionicons name="analytics-outline" size={14} color={Colors.light.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.actionBtnGhostText}>{act.label}</Text>
+              </TouchableOpacity>
+            ))}
         </View>
       )}
+
     </View>
   );
 };

@@ -66,25 +66,6 @@ def retrieve_vector_notes(user_id: str, query: str, limit: int = 5) -> List[Dict
             except Exception as e:
                 logger.warning(f"Error fetching daily journals for RAG: {e}")
 
-        # 3. Query athlete_memories table
-        for uid in user_ids:
-            try:
-                mem_res = supabase.table("athlete_memories")\
-                    .select("*")\
-                    .eq("user_id", uid)\
-                    .limit(limit)\
-                    .execute()
-                if mem_res and hasattr(mem_res, "data") and mem_res.data:
-                    for m in mem_res.data:
-                        notes.append({
-                            "source": "athlete_memory",
-                            "category": m.get("category", "memory"),
-                            "content": m.get("content_text", "")
-                        })
-                    break
-            except Exception as e:
-                logger.warning(f"Error fetching athlete memories: {e}")
-
     return notes
 
 
@@ -108,31 +89,64 @@ def retrieve_relational_metrics(user_id: str, days: int = 60, date_bounds: Optio
     if not supabase:
         return metrics
 
-    # 1. Garmin sleep & HRV
+    # 1. Biometrics daily & Garmin sleep
     for uid in user_ids:
         try:
-            sleep_res = supabase.table("garmin_sleep")\
+            bio_res = supabase.table("biometrics_daily")\
                 .select("*")\
                 .eq("user_id", uid)\
                 .order("date", desc=True)\
                 .limit(30)\
                 .execute()
-            if sleep_res and hasattr(sleep_res, "data") and sleep_res.data:
-                for s in sleep_res.data:
-                    sd = s.get("sleep_data") or {}
-                    hours = sd.get("sleepTimeSeconds", 0) / 3600 if sd.get("sleepTimeSeconds") else s.get("sleep_hours", 0)
-                    hrv = sd.get("avgOvernightHrv") or s.get("hrv")
-                    metrics["sleep"].append({
-                        "date": s.get("date"),
-                        "sleep_hours": round(hours, 1) if hours else None,
-                        "sleep_score": sd.get("sleepScores", {}).get("overall", {}).get("value") or s.get("sleep_score"),
-                        "hrv": hrv
-                    })
+            if bio_res and hasattr(bio_res, "data") and bio_res.data:
+                for b in bio_res.data:
+                    dur_s = b.get("sleep_duration_seconds")
+                    hours = (dur_s / 3600) if dur_s else b.get("sleep_hours")
+                    hrv = b.get("hrv_avg") or b.get("hrv")
+                    score = b.get("sleep_score")
+                    rhr = b.get("resting_hr")
+                    if hours or score or hrv:
+                        metrics["sleep"].append({
+                            "date": b.get("date"),
+                            "sleep_hours": round(float(hours), 1) if hours else None,
+                            "sleep_score": int(score) if score else None,
+                            "hrv": float(hrv) if hrv else None
+                        })
                     if hrv:
-                        metrics["hrv"].append({"date": s.get("date"), "hrv": hrv})
+                        metrics["hrv"].append({"date": b.get("date"), "hrv": float(hrv)})
+                    if rhr:
+                        metrics["rhr"].append({"date": b.get("date"), "resting_hr": float(rhr)})
                 break
         except Exception as e:
-            logger.warning(f"Error fetching garmin_sleep in RAG: {e}")
+            logger.warning(f"Error fetching biometrics_daily in RAG: {e}")
+
+    # Fallback to garmin_sleep if sleep metrics are still empty
+    if not metrics["sleep"]:
+        for uid in user_ids:
+            try:
+                sleep_res = supabase.table("garmin_sleep")\
+                    .select("*")\
+                    .eq("user_id", uid)\
+                    .order("date", desc=True)\
+                    .limit(30)\
+                    .execute()
+                if sleep_res and hasattr(sleep_res, "data") and sleep_res.data:
+                    for s in sleep_res.data:
+                        sd = s.get("sleep_data") or {}
+                        hours = sd.get("sleepTimeSeconds", 0) / 3600 if sd.get("sleepTimeSeconds") else s.get("sleep_hours", 0)
+                        hrv = sd.get("avgOvernightHrv") or s.get("hrv")
+                        metrics["sleep"].append({
+                            "date": s.get("date"),
+                            "sleep_hours": round(hours, 1) if hours else None,
+                            "sleep_score": sd.get("sleepScores", {}).get("overall", {}).get("value") or s.get("sleep_score"),
+                            "hrv": hrv
+                        })
+                        if hrv:
+                            metrics["hrv"].append({"date": s.get("date"), "hrv": hrv})
+                    break
+            except Exception as e:
+                logger.warning(f"Error fetching garmin_sleep in RAG: {e}")
+
 
     # 2. Daily biometrics
     for uid in user_ids:
@@ -154,31 +168,7 @@ def retrieve_relational_metrics(user_id: str, days: int = 60, date_bounds: Optio
         except Exception as e:
             logger.warning(f"Error fetching garmin_daily in RAG: {e}")
 
-    for uid in user_ids:
-        try:
-            bio_res = supabase.table("biometrics_daily")\
-                .select("*")\
-                .eq("user_id", uid)\
-                .order("date", desc=True)\
-                .limit(30)\
-                .execute()
-            if bio_res and hasattr(bio_res, "data") and bio_res.data:
-                for b in bio_res.data:
-                    if b.get("sleep_hours"):
-                        metrics["sleep"].append({
-                            "date": b.get("date"),
-                            "sleep_hours": b.get("sleep_hours"),
-                            "hrv": b.get("hrv")
-                        })
-                    if b.get("hrv"):
-                        metrics["hrv"].append({"date": b.get("date"), "hrv": b.get("hrv")})
-                    if b.get("resting_hr"):
-                        metrics["rhr"].append({"date": b.get("date"), "resting_hr": b.get("resting_hr")})
-                break
-        except Exception as e:
-            logger.warning(f"Error fetching biometrics_daily in RAG: {e}")
-
-    # 3. Garmin activities & general workouts
+    # 3. Garmin activities & Strava workouts
     for uid in user_ids:
         try:
             act_res = supabase.table("garmin_activities")\
@@ -208,27 +198,28 @@ def retrieve_relational_metrics(user_id: str, days: int = 60, date_bounds: Optio
 
     for uid in user_ids:
         try:
-            gen_act_res = supabase.table("activities")\
+            strava_res = supabase.table("strava_activities")\
                 .select("*")\
                 .eq("user_id", uid)\
+                .order("start_date", desc=True)\
                 .limit(50)\
                 .execute()
-            if gen_act_res and hasattr(gen_act_res, "data") and gen_act_res.data:
-                for a in gen_act_res.data:
+            if strava_res and hasattr(strava_res, "data") and strava_res.data:
+                for a in strava_res.data:
                     dist_km = (a.get("distance") or 0) / 1000 if (a.get("distance") or 0) > 100 else (a.get("distance") or 0)
-                    dur_min = (a.get("duration") or 0) / 60 if (a.get("duration") or 0) > 300 else (a.get("duration") or 0)
+                    dur_min = (a.get("moving_time") or a.get("elapsed_time") or 0) / 60
                     metrics["activities"].append({
-                        "name": a.get("activity_name") or a.get("name", "Activity"),
-                        "type": a.get("activity_type") or a.get("type", "workout"),
-                        "date": str(a.get("start_time_local") or a.get("created_at", ""))[:10],
+                        "name": a.get("name", "Strava Activity"),
+                        "type": a.get("type", "workout"),
+                        "date": str(a.get("start_date", ""))[:10],
                         "distance_km": round(dist_km, 2),
                         "duration_min": round(dur_min, 1),
-                        "avg_hr": a.get("average_hr"),
+                        "avg_hr": a.get("average_heartrate"),
                         "calories": a.get("calories")
                     })
                 break
-        except Exception as e:
-            logger.warning(f"Error fetching activities in RAG: {e}")
+        except Exception:
+            pass
 
     # 4. Baselines
     try:

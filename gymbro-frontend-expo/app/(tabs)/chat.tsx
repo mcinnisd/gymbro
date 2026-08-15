@@ -32,6 +32,7 @@ interface Message {
 
 export default function ChatScreen() {
   const { authToken, user, apiUrl } = useContext(AuthContext);
+  const [agentMode, setAgentMode] = useState<'fast' | 'debug' | 'rag'>('fast');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -89,11 +90,12 @@ export default function ChatScreen() {
       });
       if (response.ok) {
         const data = await response.json();
-        setActiveChatId(data.chat_id);
+        const newChat = data.chat;
+        setActiveChatId(newChat.id);
         setMessages([
           {
             sender: 'bot',
-            content: "👋 **Welcome! I'm your AI Athletic Agent.**\n\nI analyze your Garmin telemetry, overnight HRV, sleep architecture, and meal nutrition to provide personalized insights and dynamic training plans.\n\n*How are you feeling today, or what would you like to explore?*",
+            content: `👋 Hello! I am your GYMBro AI Athletic Intelligence Agent.\n\nAsk me anything about your recovery, plan a race, adjust your macros, or analyze your HRV.`,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -116,7 +118,7 @@ export default function ChatScreen() {
           setMessages([
             {
               sender: 'bot',
-              content: "👋 **Welcome! I'm your AI Athletic Agent.**\n\nI analyze your Garmin telemetry, overnight HRV, sleep architecture, and meal nutrition to provide personalized insights and dynamic training plans.\n\n*How are you feeling today, or what would you like to explore?*",
+              content: `👋 Welcome back! I have loaded your latest biometric context.\n\nHow can I help you optimize your training today?`,
               timestamp: new Date().toISOString(),
             },
           ]);
@@ -129,16 +131,18 @@ export default function ChatScreen() {
     }
   };
 
-  const handleSendMessage = () => {
-    handleSendMessageText(inputText);
-  };
-
   const handleQuickPrompt = (promptText: string) => {
+    setInputText(promptText);
     handleSendMessageText(promptText);
   };
 
+  const handleSendMessage = () => {
+    if (!inputText.trim()) return;
+    handleSendMessageText(inputText);
+  };
+
   const handleSendMessageText = async (textToSend: string) => {
-    if (!textToSend.trim()) return;
+    if (!textToSend.trim() || loading) return;
 
     let chatId = activeChatId;
     if (!chatId) {
@@ -156,7 +160,13 @@ export default function ChatScreen() {
 
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
-    setStatusMessage('Analyzing health telemetry...');
+    setStatusMessage(
+      agentMode === 'fast'
+        ? '⚡ Fast Context (<50ms)...'
+        : agentMode === 'debug'
+        ? '🔍 Analyzing Telemetry & Debug Traces...'
+        : '🧠 Multi-hop Deep RAG Search...'
+    );
 
     try {
       const response = await fetch(`${apiUrl}/coach/chat`, {
@@ -168,6 +178,7 @@ export default function ChatScreen() {
         body: JSON.stringify({
           message: textToSend,
           chat_id: chatId,
+          mode: agentMode,
         }),
       });
 
@@ -204,7 +215,6 @@ export default function ChatScreen() {
   };
 
   const handleExecuteWidgetAction = async (widgetId: string, actionId: string, actionPayload?: any) => {
-    // 1. Optimistic UI update on the widget in the message stream
     setMessages((prev) =>
       prev.map((msg) => {
         if (msg.ui_payload && (msg.ui_payload.widget_id === widgetId || msg.ui_payload.payload?.chart_id === widgetId)) {
@@ -221,7 +231,6 @@ export default function ChatScreen() {
       })
     );
 
-    // 2. Call backend if activeChatId and token exist
     if (activeChatId && authToken) {
       try {
         await fetch(`${apiUrl}/chats/${activeChatId}/actions`, {
@@ -280,16 +289,56 @@ export default function ChatScreen() {
       }
     }
 
-    // Fallback for legacy chart/plan shapes
-    if (payload.type === 'chart' || payload.labels) {
+    // Auto-convert legacy chart payloads to InteractiveChartWidget
+    if (payload.type === 'chart' || payload.type === 'CHART' || payload.labels || payload.data?.labels) {
+      const chartData = payload.data || payload;
+      const labels: string[] = chartData.labels || [];
+      const datasets: any[] = chartData.datasets || [];
+      const points = labels.map((lbl: string, idx: number) => {
+        const vals: Record<string, number> = {};
+        datasets.forEach((ds: any) => {
+          vals[ds.label || 'Metric'] = ds.data?.[idx] ?? 0;
+        });
+        return {
+          date: lbl,
+          label: lbl,
+          values: vals,
+        };
+      });
+
+      const metrics = datasets.map((ds: any) => ({
+        key: ds.label || 'Metric',
+        label: ds.label || 'Metric',
+        unit: '',
+        color: ds.borderColor || Colors.light.primary,
+        y_axis: 'left' as const,
+        chart_type: 'line' as const,
+      }));
+
+      const convertedEnvelope: ChatWidgetEnvelope = {
+        protocol: 'gymbro.widget/v1',
+        widget_id: `chart_${Date.now()}`,
+        widget_type: 'interactive_chart',
+        title: chartData.title || payload.title || 'Biometric Trend',
+        subtitle: '60fps interactive scrubbing',
+        state: 'active',
+        payload: {
+          chart_id: `chart_${Date.now()}`,
+          time_range: '7d',
+          metrics: metrics.length > 0 ? metrics : [{ key: 'Metric', label: 'Metric', unit: '', color: Colors.light.primary, y_axis: 'left', chart_type: 'line' }],
+          points: points.length > 0 ? points : [{ date: 'Today', label: 'Today', values: { Metric: 0 } }],
+          interactive_scrubbing: true,
+        },
+        actions: [],
+        emitted_at: new Date().toISOString(),
+      };
+
       return (
-        <View style={styles.payloadCard}>
-          <View style={styles.payloadHeader}>
-            <Ionicons name="stats-chart" size={16} color={Colors.light.primary} />
-            <Text style={styles.payloadTitle}>{payload.title || 'Telemetry Insight'}</Text>
-          </View>
-          <Text style={styles.payloadSubtitle}>{payload.description || 'Interactive visual trend'}</Text>
-        </View>
+        <InteractiveChartWidget
+          widget={convertedEnvelope}
+          onTriggerPrompt={handleSendMessageText}
+          onExecuteAction={handleExecuteWidgetAction}
+        />
       );
     }
 
@@ -298,12 +347,11 @@ export default function ChatScreen() {
         <View style={styles.payloadCard}>
           <View style={styles.payloadHeader}>
             <Ionicons name="calendar" size={16} color={Colors.light.vitality} />
-            <Text style={styles.payloadTitle}>Training Plan Proposal</Text>
+            <Text style={styles.payloadTitle}>{payload.name || 'Structured Plan'}</Text>
           </View>
-          <Text style={styles.payloadSubtitle}>{payload.summary || 'Tap to inspect scheduled sessions'}</Text>
-          <TouchableOpacity style={styles.actionCommitBtn}>
-            <Text style={styles.actionCommitBtnText}>Commit to Calendar</Text>
-          </TouchableOpacity>
+          <Text style={styles.payloadSubtitle}>
+            {payload.weeks_count ? `${payload.weeks_count} Weeks • ${payload.phases?.length || 0} Phases` : 'Plan Details'}
+          </Text>
         </View>
       );
     }
@@ -325,8 +373,14 @@ export default function ChatScreen() {
             <Ionicons name="sparkles" size={18} color="#FFFFFF" />
           </View>
           <View>
-            <Text style={styles.coachName}>AI Agent</Text>
-            <Text style={styles.coachStatusText}>Active • Fast Context Connected</Text>
+            <Text style={styles.coachName}>AI Coach</Text>
+            <Text style={styles.coachStatusText}>
+              {agentMode === 'fast'
+                ? '⚡ Fast Context (<50ms)'
+                : agentMode === 'debug'
+                ? '🔍 Debug Trace Mode'
+                : '🧠 Deep Context RAG'}
+            </Text>
           </View>
         </View>
 
@@ -335,7 +389,35 @@ export default function ChatScreen() {
           onPress={() => createNewChatSession('New Consultation')}
         >
           <Ionicons name="add" size={16} color={Colors.light.primary} />
-          <Text style={styles.newChatText}>New Topic</Text>
+          <Text style={styles.newChatText}>New</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Agent Mode Selector Switcher */}
+      <View style={styles.modeBar}>
+        <TouchableOpacity
+          style={[styles.modeChip, agentMode === 'fast' && styles.modeChipActive]}
+          onPress={() => setAgentMode('fast')}
+        >
+          <Text style={[styles.modeChipText, agentMode === 'fast' && styles.modeChipTextActive]}>
+            ⚡ Fast Context
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeChip, agentMode === 'debug' && styles.modeChipActive]}
+          onPress={() => setAgentMode('debug')}
+        >
+          <Text style={[styles.modeChipText, agentMode === 'debug' && styles.modeChipTextActive]}>
+            🔍 Debug
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeChip, agentMode === 'rag' && styles.modeChipActive]}
+          onPress={() => setAgentMode('rag')}
+        >
+          <Text style={[styles.modeChipText, agentMode === 'rag' && styles.modeChipTextActive]}>
+            🧠 Deep RAG
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -688,4 +770,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
+  modeBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.borderSubtle,
+    gap: 8,
+  },
+  modeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: Colors.light.cardSubtle,
+    borderWidth: 1,
+    borderColor: Colors.light.borderSubtle,
+  },
+  modeChipActive: {
+    backgroundColor: Colors.light.primaryLight,
+    borderColor: Colors.light.primary,
+  },
+  modeChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.light.secondaryText,
+  },
+  modeChipTextActive: {
+    color: Colors.light.primary,
+    fontWeight: '700',
+  },
 });
+

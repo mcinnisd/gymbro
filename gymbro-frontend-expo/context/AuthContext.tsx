@@ -47,7 +47,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [apiUrl, setApiUrl] = useState<string>(DEFAULT_API_URL);
+  const [apiUrl, setApiUrlInternal] = useState<string>(DEFAULT_API_URL.trim().replace(/\/+$/, ''));
+
+  const setApiUrl = (url: string) => {
+    setApiUrlInternal((url || '').trim().replace(/\/+$/, ''));
+  };
 
   const login = async (email: string, password: string): Promise<User | null> => {
     setLoading(true);
@@ -72,9 +76,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setLoading(false);
         return data.user;
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        console.error('[AuthContext] Login failed:', response.status, errData);
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('[AuthContext] Login network error:', error);
     }
     setLoading(false);
     return null;
@@ -95,11 +102,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         return login(email, password);
       } else {
-        const errData = await response.json();
-        console.error('Registration failed server response:', errData);
+        const errData = await response.json().catch(() => ({}));
+        console.error('[AuthContext] Registration failed server response:', errData);
       }
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error('[AuthContext] Registration network error:', error);
     }
     setLoading(false);
     return null;

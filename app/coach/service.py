@@ -22,7 +22,7 @@ from app.agent.tools import (
 logger = logging.getLogger(__name__)
 
 
-def process_coach_message(user_id: str, message: str) -> Dict[str, Any]:
+def process_coach_message(user_id: str, message: str, mode: str = "fast") -> Dict[str, Any]:
     """
     Processes an incoming message to the coach agent using RAG context building and LLM response generation,
     returning a structured response with rich text and optional `ui_payload` conforming to gymbro.widget/v1.
@@ -30,18 +30,21 @@ def process_coach_message(user_id: str, message: str) -> Dict[str, Any]:
     Args:
         user_id: The ID of the user sending the message.
         message: The user's input text message.
+        mode: Operating mode ('fast', 'debug', 'rag').
 
     Returns:
         Dict containing:
             - 'response': Rich text message from the coach.
+            - 'reply': Alias for response.
             - 'ui_payload': Structured payload dict or None.
+            - 'mode': The operational mode used.
             - 'plan': (Optional) workout plan data if plan was generated.
     """
     msg_lower = message.lower()
     ui_payload: Optional[Dict[str, Any]] = None
     plan_data = None
 
-    # 1. Build RAG context bundle (activities, sleep, HRV, baselines, notes)
+    # 1. Build context bundle (activities, sleep, HRV, baselines, notes)
     try:
         context_str = build_user_context(user_id=user_id, query=message)
     except Exception as e:
@@ -83,34 +86,53 @@ def process_coach_message(user_id: str, message: str) -> Dict[str, Any]:
             description=message
         )
 
-    # 3. Execute AnalystAgent LLM turn with context
+    # 3. Execute AnalystAgent LLM turn with context if in rag mode or no payload yet
     response_text = ""
-    try:
-        agent = AnalystAgent()
-        gen = agent.run(user_id=str(user_id), message=message, context=context_str)
-        for update in gen:
-            if "answer" in update and update["answer"]:
-                response_text = update["answer"]
-            elif "chart" in update and not ui_payload:
-                ui_payload = {"type": "CHART", "data": update["chart"]}
-    except Exception as err:
-        logger.error(f"AnalystAgent run error in coach service: {err}")
+    if mode in ["rag", "debug"] or not ui_payload:
+        try:
+            agent = AnalystAgent()
+            gen = agent.run(user_id=str(user_id), message=message, context=context_str)
+            for update in gen:
+                if "answer" in update and update["answer"]:
+                    response_text = update["answer"]
+                elif "chart" in update and not ui_payload:
+                    ui_payload = {"type": "CHART", "data": update["chart"]}
+        except Exception as err:
+            logger.error(f"AnalystAgent run error in coach service: {err}")
 
-    # Fallback to intelligent context summary if agent text is empty
+    # 4. Clean concise response text when widget is rendered
+    if ui_payload:
+        w_type = ui_payload.get("widget_type") or ui_payload.get("type", "").lower()
+        if "chart" in w_type or "interactive_chart" in w_type:
+            title = ui_payload.get("title", "Biometric Trend")
+            response_text = f"Here is your {title.lower()} based on your recorded telemetry."
+        elif "calendar" in w_type or "proposal" in w_type:
+            response_text = "I've structured a customized training proposal for you. Review the sessions below."
+        elif "macro" in w_type:
+            response_text = "Here are your updated macronutrient targets. You can adjust the sliders below."
+        elif "readiness" in w_type:
+            response_text = "I analyzed your overnight recovery metrics. Here is an adaptive session recommendation."
+        elif not response_text:
+            response_text = "Here are your latest metrics."
+
+    # Fallback to general acknowledgment if still empty
     if not response_text or response_text.strip() == "Complete":
-        if "activities" in context_str.lower():
-            response_text = f"Here is a summary of your training activities based on your recorded data:\n\n{context_str}"
-        else:
-            response_text = f"I've analyzed your telemetry and updated your fast context for: '{message}'."
+        response_text = f"I've analyzed your telemetry and updated your fast context for: '{message}'."
+
+    # 5. Append debug context trace ONLY when in debug mode
+    if mode == "debug" and context_str:
+        response_text += f"\n\n---\n**🔍 Telemetry Debug Context**:\n```\n{context_str[:800]}\n```"
 
     result = {
         "response": response_text,
         "reply": response_text,
-        "ui_payload": ui_payload
+        "ui_payload": ui_payload,
+        "mode": mode
     }
 
     if plan_data is not None:
         result["plan"] = plan_data
 
     return result
+
 
