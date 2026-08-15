@@ -162,11 +162,12 @@ export default function ChatScreen() {
     setLoading(true);
     setStatusMessage(
       agentMode === 'fast'
-        ? '⚡ Fast Context (<50ms)...'
+        ? '⚡ Fast Mode...'
         : agentMode === 'debug'
         ? '🔍 Analyzing Telemetry & Debug Traces...'
-        : '🧠 Multi-hop Deep RAG Search...'
+        : '🧠 Deep Thinking & Reasoning...'
     );
+
 
     try {
       const response = await fetch(`${apiUrl}/coach/chat`, {
@@ -376,10 +377,10 @@ export default function ChatScreen() {
             <Text style={styles.coachName}>AI Coach</Text>
             <Text style={styles.coachStatusText}>
               {agentMode === 'fast'
-                ? '⚡ Fast Context (<50ms)'
+                ? '⚡ Fast Mode'
                 : agentMode === 'debug'
-                ? '🔍 Debug Trace Mode'
-                : '🧠 Deep Context RAG'}
+                ? '🔍 Debug Mode'
+                : '🧠 Deep Think'}
             </Text>
           </View>
         </View>
@@ -400,7 +401,7 @@ export default function ChatScreen() {
           onPress={() => setAgentMode('fast')}
         >
           <Text style={[styles.modeChipText, agentMode === 'fast' && styles.modeChipTextActive]}>
-            ⚡ Fast Context
+            ⚡ Fast Mode
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -416,10 +417,11 @@ export default function ChatScreen() {
           onPress={() => setAgentMode('rag')}
         >
           <Text style={[styles.modeChipText, agentMode === 'rag' && styles.modeChipTextActive]}>
-            🧠 Deep RAG
+            🧠 Deep Think
           </Text>
         </TouchableOpacity>
       </View>
+
 
       {/* Messages List */}
       <ScrollView
