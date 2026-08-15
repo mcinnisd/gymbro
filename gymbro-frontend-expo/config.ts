@@ -9,7 +9,7 @@ export const SUPABASE_KEY = 'sb_publishable_t1FuptaCgcr_N8qSqzTRpg_feSa02cM';
 export const PUBLIC_API_TUNNEL_URL = 'https://shaky-donkeys-double.loca.lt';
 
 // Local Flask API Server Address
-// Automatically resolves host computer IP when running on Expo Go/Physical device or Web
+// Prioritizes LAN IP (192.168.10.30) for physical mobile devices running Expo Go
 const getBackendUrl = () => {
   // 1. Web environment (Desktop Browser)
   if (Platform.OS === 'web') {
@@ -20,7 +20,8 @@ const getBackendUrl = () => {
         hostname !== 'localhost' &&
         hostname !== '127.0.0.1' &&
         !hostname.includes('exp.direct') &&
-        !hostname.includes('ngrok')
+        !hostname.includes('ngrok') &&
+        !hostname.includes('loca.lt')
       ) {
         return `http://${hostname}:5001`;
       }
@@ -34,19 +35,17 @@ const getBackendUrl = () => {
   if (hostUri) {
     const host = hostUri.split(':')[0];
     
-    // If running in Expo Tunnel mode, default to the public backend tunnel URL
-    if (host.includes('exp.direct') || host.includes('ngrok') || host.includes('tunnel')) {
-      return PUBLIC_API_TUNNEL_URL;
-    }
-
-    // If running on local LAN (e.g. 192.168.x.x), use host computer IP
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+    // If running on local LAN (e.g. 192.168.x.x or 10.x.x.x), use host computer IP
+    if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.includes('exp.direct') && !host.includes('ngrok') && !host.includes('tunnel')) {
       return `http://${host}:5001`;
     }
   }
+
+  // Standard local Wi-Fi host IP for mobile devices
   return 'http://192.168.10.30:5001';
 };
 
 export const API_URL = getBackendUrl();
 console.log('[Gymbro Config] Supabase URL:', SUPABASE_URL);
 console.log('[Gymbro Config] Backend API URL:', API_URL);
+
