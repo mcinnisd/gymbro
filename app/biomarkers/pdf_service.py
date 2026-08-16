@@ -139,6 +139,37 @@ ATHLETE_TARGET_RANGES = {
 }
 
 
+def detect_mime_type(data: bytes, filename: str = "") -> str:
+    """
+    Detect document / image MIME type from binary signatures or filename extensions.
+    Supports PDF documents and screenshots/photos (PNG, JPEG, WEBP, HEIC).
+    """
+    if data.startswith(b'%PDF'):
+        return 'application/pdf'
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'image/png'
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    if data.startswith(b'RIFF') and b'WEBP' in data[:16]:
+        return 'image/webp'
+    if b'ftypheic' in data[:20] or b'ftypmif1' in data[:20]:
+        return 'image/heic'
+
+    fn = filename.lower()
+    if fn.endswith('.pdf'):
+        return 'application/pdf'
+    if fn.endswith('.png'):
+        return 'image/png'
+    if fn.endswith('.jpg') or fn.endswith('.jpeg'):
+        return 'image/jpeg'
+    if fn.endswith('.webp'):
+        return 'image/webp'
+    if fn.endswith('.heic'):
+        return 'image/heic'
+
+    return 'application/pdf'
+
+
 def parse_reference_range(range_str: str) -> tuple:
     """
     Parse varied reference range strings into numeric (min_val, max_val) floats.
@@ -179,7 +210,37 @@ def parse_reference_range(range_str: str) -> tuple:
     return (None, None)
 
 
-def normalize_analyte_name(raw_name: str) -> tuple:
+def infer_dynamic_category(raw_name: str, suggested_category: str = None) -> str:
+    """
+    Dynamic open-vocabulary biological category inference for novel or niche analytes.
+    """
+    if suggested_category and suggested_category.strip() not in ["General Health", "Unknown", "", None]:
+        return suggested_category.strip()
+
+    name_lower = raw_name.lower().strip()
+    if any(k in name_lower for k in ["omega", "epa", "dha", "fatty acid", "triglyceride", "cholesterol", "apob", "ldl", "hdl"]):
+        return "Cardiometabolic & Lipids"
+    if any(k in name_lower for k in ["lead", "mercury", "arsenic", "cadmium", "aluminum", "heavy metal", "toxin"]):
+        return "Toxicology & Heavy Metals"
+    if any(k in name_lower for k in ["t3", "t4", "tsh", "thyroid", "thyroglobulin", "peroxidase"]):
+        return "Thyroid Axis"
+    if any(k in name_lower for k in ["antibody", "ana", "igg", "igm", "iga", "autoimmune", "crp", "esr", "cytokine"]):
+        return "Inflammation & Recovery"
+    if any(k in name_lower for k in ["peptide", "ghrh", "growth factor", "bpc", "tb-500", "igf-binding", "igfbp", "binding protein"]):
+        return "Peptides & Growth Factors"
+    if any(k in name_lower for k in ["igf", "insulin", "testosterone", "estradiol", "dhea", "hormone"]):
+        return "Hormones & Endocrine"
+    if any(k in name_lower for k in ["ferritin", "iron", "transferrin", "tibc", "hemoglobin", "hematocrit"]):
+        return "Iron & Oxygen"
+    if any(k in name_lower for k in ["wbc", "rbc", "platelet", "neutrophil", "lymphocyte", "monocyte"]):
+        return "Complete Blood Count"
+    if any(k in name_lower for k in ["alt", "ast", "bilirubin", "albumin", "creatinine", "egfr", "bun"]):
+        return "Liver & Kidney Function"
+
+    return "General Health"
+
+
+def normalize_analyte_name(raw_name: str, suggested_category: str = None) -> tuple:
     """
     Normalize analyte string to canonical name and category.
     Returns (canonical_name, category).
@@ -200,8 +261,9 @@ def normalize_analyte_name(raw_name: str) -> tuple:
         if alias in cleaned or cleaned in alias:
             return (canonical, category)
 
-    # Fallback to title-cased raw name
-    return (raw_name.strip(), "General Health")
+    # Dynamic taxonomy inference for new/unseen analytes
+    inferred_cat = infer_dynamic_category(raw_name, suggested_category)
+    return (raw_name.strip(), inferred_cat)
 
 
 def evaluate_biomarker_status(value: float, min_val: float = None, max_val: float = None, marker_name: str = None) -> str:
@@ -214,6 +276,74 @@ def evaluate_biomarker_status(value: float, min_val: float = None, max_val: floa
     if max_val is not None and value > max_val:
         return 'flagged_high'
     return 'optimal'
+
+
+def adjudicate_biomarker_record(b: dict) -> dict:
+    """
+    Deterministic & biological plausibility verification adjudicator.
+    Checks for OCR range-value collisions, physiologically impossible numbers,
+    and calculates extraction confidence score + human-in-the-loop review flags.
+    """
+    flags = []
+    confidence = 1.0
+
+    try:
+        val = float(b.get("value", 0.0))
+    except (ValueError, TypeError):
+        val = 0.0
+        flags.append("Non-numeric or malformed analyte measurement value.")
+        confidence -= 0.50
+
+    rmin = b.get("ref_range_min")
+    rmax = b.get("ref_range_max")
+    name = b.get("marker_name", "")
+
+    # 1. Range bounds sanity check
+    if rmin is not None and rmax is not None and rmin > rmax:
+        flags.append(f"Inverted reference corridor: min ({rmin}) > max ({rmax}).")
+        confidence -= 0.35
+
+    # 2. OCR Value-Range Collision Defense
+    if (rmin is not None and abs(val - rmin) < 1e-6) or (rmax is not None and abs(val - rmax) < 1e-6):
+        raw_r = str(b.get("raw_reference_range", ""))
+        int_str = str(int(val)) if val == int(val) else str(val)
+        if str(val) in raw_r or int_str in raw_r:
+            flags.append("Possible OCR boundary collision: measured value matches reference threshold exactly.")
+            confidence -= 0.20
+
+    # 3. Biological plausibility guardrails
+    if val < 0 and name not in ["Base Excess"]:
+        flags.append("Physiologically implausible negative analyte value.")
+        confidence -= 0.50
+
+    if name in ["HbA1c", "a1c"] and (val < 3.0 or val > 25.0):
+        flags.append(f"HbA1c value ({val}%) is outside plausible human limits (3-25%).")
+        confidence -= 0.40
+
+    if name in ["Fasting Glucose", "Glucose"] and (val < 10.0 or val > 1500.0):
+        flags.append(f"Glucose value ({val}) is outside plausible human physiological range.")
+        confidence -= 0.40
+
+    if name in ["Ferritin"] and val > 10000.0:
+        flags.append(f"Extreme Ferritin value ({val} ng/mL); verify no OCR decimal shift.")
+        confidence -= 0.25
+
+    # 4. Missing bounds / unit
+    if rmin is None and rmax is None:
+        flags.append("No reference range corridor detected on document.")
+        confidence -= 0.15
+
+    if not b.get("unit"):
+        flags.append("Measurement unit missing or unparsed.")
+        confidence -= 0.10
+
+    confidence = round(max(0.1, min(1.0, confidence)), 2)
+    requires_review = confidence < 0.85 or len(flags) > 0
+
+    b["extraction_confidence"] = confidence
+    b["requires_review"] = requires_review
+    b["adjudication_flags"] = flags
+    return b
 
 
 def generate_sports_science_insight(marker_name: str, value: float, unit: str, status: str) -> str:
@@ -255,25 +385,25 @@ def generate_sports_science_insight(marker_name: str, value: float, unit: str, s
         return f"{normalized_name} ({value} {unit}) is within optimal reference range."
 
 
-def extract_lab_report_from_pdf(pdf_bytes: bytes) -> dict:
+def extract_lab_report_from_files(files_data: list) -> dict:
     """
-    Parse uploaded lab blood test PDF report using Gemini 2.5 Multimodal Document Parser.
-    Extracts report header metadata (provider_name, test_date, notes) and structured biomarker records.
-    Returns structured report dictionary.
+    Parse uploaded lab documents (PDFs, multi-page PDFs, or mobile screenshots PNG/JPEG/WEBP/HEIC)
+    using Gemini 2.5 Multimodal Document Parser.
+    files_data: list of (file_bytes, filename_or_mime) tuples.
     """
-    prompt = """Analyze this clinical laboratory blood test PDF document with medical precision.
+    prompt = """Analyze these clinical laboratory blood test documents/screenshots with medical precision.
 Extract:
 1. Provider/Lab name (e.g., Quest Diagnostics, LabCorp, Function Health, InsideTracker, Superpower). If unknown, estimate or use 'Clinical Lab'.
 2. Test or collection date in ISO format YYYY-MM-DD. If missing, use today's date.
 3. Any clinical summary notes.
-4. All individual biomarker / analyte records.
+4. All individual biomarker / analyte records visible across all document pages or screenshots.
 
-For each biomarker, provide:
-- marker_name: standard clinical name (e.g. Ferritin, hs-CRP, Vitamin D 25-OH, Total Testosterone, ApoB, Fasting Glucose)
-- category: one of 'Iron & Oxygen', 'Inflammation & Recovery', 'Hormones & Endocrine', 'Cardiometabolic & Lipids', 'Vitamins & Minerals', 'Liver & Kidney Function', 'Complete Blood Count', or 'General Health'
+For each biomarker:
+- marker_name: standard clinical name (e.g. Ferritin, hs-CRP, Vitamin D 25-OH, ApoB, etc.)
+- category: biological category (e.g. 'Iron & Oxygen', 'Inflammation & Recovery', 'Hormones & Endocrine', 'Cardiometabolic & Lipids', 'Vitamins & Minerals', 'Liver & Kidney Function', 'Complete Blood Count', 'Toxicology & Heavy Metals', 'Thyroid Axis', 'General Health')
 - value: numeric measurement (float)
 - unit: standard unit (e.g. ng/mL, mg/L, ng/dL, mg/dL, pg/mL, uIU/mL, U/L, %)
-- raw_reference_range: exact string printed on the lab report (e.g. '30 - 400', '< 1.0', '> 50')
+- raw_reference_range: exact string printed on the report (e.g. '30 - 400', '< 1.0', '> 50')
 - ref_range_min: parsed numeric lower bound or null
 - ref_range_max: parsed numeric upper bound or null
 - status: 'optimal', 'flagged_low', or 'flagged_high'
@@ -294,7 +424,7 @@ Return ONLY valid JSON matching this structure:
       "ref_range_min": 30.0,
       "ref_range_max": 400.0,
       "status": "flagged_low",
-      "coach_insight": "Serum ferritin is sub-optimal for endurance athletes (target 50+ ng/mL)."
+      "coach_insight": "Serum ferritin is sub-optimal for endurance athletes."
     }
   ]
 }"""
@@ -303,7 +433,7 @@ Return ONLY valid JSON matching this structure:
     try:
         from google import genai as google_genai
         from google.genai import types as google_genai_types
-        
+
         if Config.USE_VERTEX_AI:
             client = google_genai.Client(
                 vertexai=True,
@@ -314,24 +444,24 @@ Return ONLY valid JSON matching this structure:
         else:
             client = google_genai.Client(api_key=Config.GEMINI_API_KEY)
             model_name = "gemini-2.0-flash-exp"
-            
+
+        contents = [prompt]
+        for f_bytes, f_name in files_data:
+            mime = detect_mime_type(f_bytes, f_name)
+            contents.append(google_genai_types.Part.from_bytes(data=f_bytes, mime_type=mime))
+
         response = client.models.generate_content(
             model=model_name,
-            contents=[
-                prompt,
-                google_genai_types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
-            ]
+            contents=contents
         )
         raw_text = response.text.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
         parsed = json.loads(raw_text)
 
         if isinstance(parsed, dict) and "biomarkers" in parsed:
-            # Post-process and normalize
             for b in parsed["biomarkers"]:
-                norm_name, cat = normalize_analyte_name(b.get("marker_name", ""))
+                norm_name, cat = normalize_analyte_name(b.get("marker_name", ""), b.get("category"))
                 b["marker_name"] = norm_name
-                if not b.get("category") or b["category"] == "General Health":
-                    b["category"] = cat
+                b["category"] = cat
 
                 if b.get("ref_range_min") is None or b.get("ref_range_max") is None:
                     rmin, rmax = parse_reference_range(b.get("raw_reference_range", ""))
@@ -350,20 +480,21 @@ Return ONLY valid JSON matching this structure:
                     b["coach_insight"] = generate_sports_science_insight(
                         norm_name, float(b.get("value", 0.0)), b.get("unit", ""), b["status"]
                     )
+                # Pass through the adjudicator
+                adjudicate_biomarker_record(b)
 
-            logger.info("Successfully extracted structured bloodwork panel via Gemini Multimodal PDF Parser.")
+            logger.info(f"Successfully extracted {len(parsed['biomarkers'])} blood test biomarkers via Gemini Multimodal Parser.")
             return parsed
 
         elif isinstance(parsed, list):
-            # Backward compatibility if Gemini returned a flat list
             biomarkers = []
             for item in parsed:
-                norm_name, cat = normalize_analyte_name(item.get("marker_name", ""))
+                norm_name, cat = normalize_analyte_name(item.get("marker_name", ""), item.get("category"))
                 rmin, rmax = parse_reference_range(item.get("reference_range", item.get("raw_reference_range", "")))
                 status = evaluate_biomarker_status(float(item.get("value", 0.0)), rmin, rmax, norm_name)
-                biomarkers.append({
+                b_obj = {
                     "marker_name": norm_name,
-                    "category": item.get("category", cat),
+                    "category": cat,
                     "value": float(item.get("value", 0.0)),
                     "unit": item.get("unit", ""),
                     "raw_reference_range": item.get("reference_range", item.get("raw_reference_range", "")),
@@ -371,16 +502,19 @@ Return ONLY valid JSON matching this structure:
                     "ref_range_max": rmax,
                     "status": status,
                     "coach_insight": item.get("coach_insight") or generate_sports_science_insight(norm_name, float(item.get("value", 0.0)), item.get("unit", ""), status)
-                })
+                }
+                adjudicate_biomarker_record(b_obj)
+                biomarkers.append(b_obj)
+
             return {
                 "provider_name": "Clinical Lab Report",
                 "test_date": datetime.utcnow().strftime("%Y-%m-%d"),
-                "notes": "Multimodal PDF extracted bloodwork panel.",
+                "notes": "Multimodal extracted bloodwork panel.",
                 "biomarkers": biomarkers
             }
 
     except Exception as e:
-        logger.warning(f"Gemini PDF document parser fallback triggered: {e}")
+        logger.warning(f"Gemini document parser fallback triggered: {e}")
 
     # High-fidelity realistic fallback lab panel
     fallback_biomarkers = [
@@ -452,12 +586,22 @@ Return ONLY valid JSON matching this structure:
         }
     ]
 
+    for b in fallback_biomarkers:
+        adjudicate_biomarker_record(b)
+
     return {
         "provider_name": "Quest Diagnostics",
         "test_date": "2026-08-08",
         "notes": "Comprehensive athlete longevity biomarker panel.",
         "biomarkers": fallback_biomarkers
     }
+
+
+def extract_lab_report_from_pdf(pdf_bytes: bytes) -> dict:
+    """
+    Convenience method for single PDF or screenshot byte payload.
+    """
+    return extract_lab_report_from_files([(pdf_bytes, "report.pdf")])
 
 
 def parse_lab_pdf_with_gemini(pdf_bytes: bytes) -> list:

@@ -44,26 +44,68 @@ def test_upload_lab_pdf_route(client, auth_headers):
     assert len(res_data['extracted_biomarkers']) > 0
 
 
+def test_upload_screenshot_images_route(client, auth_headers):
+    png_data = b"\x89PNG\r\n\x1a\n\x00\x00 mock png image"
+    data = {
+        'file': (io.BytesIO(png_data), 'quest_screenshot_1.png'),
+        'provider_name': 'Quest Portal Screenshot'
+    }
+
+    res = client.post('/biomarkers/upload-pdf', headers=auth_headers, data=data, content_type='multipart/form-data')
+    assert res.status_code == 200
+    res_data = res.get_json()
+    assert 'panel_id' in res_data
+    assert len(res_data['extracted_biomarkers']) > 0
+
+
+def test_preview_lab_extraction_route(client, auth_headers):
+    pdf_data = b"%PDF-1.4 Mock Lab Report"
+    data = {
+        'file': (io.BytesIO(pdf_data), 'report.pdf')
+    }
+
+    res = client.post('/biomarkers/preview', headers=auth_headers, data=data, content_type='multipart/form-data')
+    assert res.status_code == 200
+    preview_data = res.get_json()
+    assert 'preview' in preview_data
+    assert 'biomarkers' in preview_data['preview']
+
+
 def test_get_panels_and_panel_details_route(client, auth_headers):
-    # Upload panel
     pdf_data = b"%PDF-1.4 Mock Lab Report"
     res = client.post('/biomarkers/upload-pdf', headers=auth_headers, data={'file': (io.BytesIO(pdf_data), 'report.pdf')}, content_type='multipart/form-data')
     panel_id = res.get_json()['panel_id']
 
-    # Get panels list
     panels_res = client.get('/biomarkers/panels', headers=auth_headers)
     assert panels_res.status_code == 200
     panels_data = panels_res.get_json()
     assert 'panels' in panels_data
     assert len(panels_data['panels']) >= 1
 
-    # Get panel details
     detail_res = client.get(f'/biomarkers/panels/{panel_id}', headers=auth_headers)
     assert detail_res.status_code == 200
     detail_data = detail_res.get_json()
     assert 'panel' in detail_data
     assert detail_data['panel']['id'] == panel_id
     assert len(detail_data['panel']['biomarkers']) > 0
+
+
+def test_update_biomarker_record_route(client, auth_headers):
+    pdf_data = b"%PDF-1.4 Mock Lab Report"
+    res = client.post('/biomarkers/upload-pdf', headers=auth_headers, data={'file': (io.BytesIO(pdf_data), 'report.pdf')}, content_type='multipart/form-data')
+    marker = res.get_json()['extracted_biomarkers'][0]
+    marker_id = marker['id']
+
+    # Update value from athlete review modal
+    update_payload = {
+        "value": 95.0,
+        "unit": "ng/mL"
+    }
+    update_res = client.put(f'/biomarkers/records/{marker_id}', headers=auth_headers, json=update_payload)
+    assert update_res.status_code == 200
+    updated = update_res.get_json()['biomarker']
+    assert updated['value'] == 95.0
+    assert updated['verified_by_user'] is True
 
 
 def test_get_flagged_biomarkers_route(client, auth_headers):
@@ -87,7 +129,6 @@ def test_get_trends_route(client, auth_headers):
     assert 'trends' in data
     assert len(data['trends']) > 0
 
-    # Filter by marker
     filtered_res = client.get('/biomarkers/trends?markers=Ferritin,hs-CRP', headers=auth_headers)
     assert filtered_res.status_code == 200
     filtered_data = filtered_res.get_json()
@@ -115,6 +156,5 @@ def test_delete_panel_route(client, auth_headers):
     del_res = client.delete(f'/biomarkers/panels/{panel_id}', headers=auth_headers)
     assert del_res.status_code == 200
 
-    # Confirm it's deleted
     detail_res = client.get(f'/biomarkers/panels/{panel_id}', headers=auth_headers)
     assert detail_res.status_code == 404

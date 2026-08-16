@@ -52,6 +52,9 @@ def save_lab_panel(user_id: int, provider_name: str, test_date: str, biomarkers:
 
         status = b.get('status') or evaluate_status(val, min_val, max_val, norm_name)
         insight = b.get('coach_insight') or generate_sports_science_insight(norm_name, val, unit, status)
+        confidence = b.get('extraction_confidence', 1.0)
+        req_review = b.get('requires_review', False)
+        adj_flags = b.get('adjudication_flags', [])
 
         b_record = {
             'panel_id': panel_id,
@@ -63,7 +66,10 @@ def save_lab_panel(user_id: int, provider_name: str, test_date: str, biomarkers:
             'ref_range_min': min_val,
             'ref_range_max': max_val,
             'status': status,
-            'coach_insight': insight
+            'coach_insight': insight,
+            'extraction_confidence': confidence,
+            'requires_review': req_review,
+            'adjudication_flags': adj_flags
         }
 
         if supabase:
@@ -386,3 +392,47 @@ def delete_lab_panel(user_id: int, panel_id) -> bool:
     except Exception as e:
         logger.error(f"Error deleting lab panel: {e}")
         return False
+
+
+def update_biomarker_record(user_id: int, biomarker_id, updates: dict) -> dict | None:
+    """
+    Update a single biomarker record (e.g. user correction or adjudication override).
+    Recalculates status and sports science insight if value or ranges changed.
+    """
+    if not supabase:
+        return None
+    try:
+        # Fetch current record
+        res = supabase.table('biomarkers').select('*').eq('user_id', user_id).eq('id', biomarker_id).execute()
+        if not res or not res.data:
+            return None
+        current = res.data[0]
+
+        updated_dict = dict(current)
+        for k in ['marker_name', 'category', 'value', 'unit', 'ref_range_min', 'ref_range_max', 'status', 'coach_insight']:
+            if k in updates:
+                updated_dict[k] = updates[k]
+
+        # Re-evaluate status if value or bounds updated
+        if 'value' in updates or 'ref_range_min' in updates or 'ref_range_max' in updates:
+            updated_dict['status'] = evaluate_status(
+                float(updated_dict['value']),
+                updated_dict.get('ref_range_min'),
+                updated_dict.get('ref_range_max'),
+                updated_dict.get('marker_name')
+            )
+            updated_dict['coach_insight'] = generate_sports_science_insight(
+                updated_dict.get('marker_name', ''),
+                float(updated_dict['value']),
+                updated_dict.get('unit', ''),
+                updated_dict['status']
+            )
+
+        updated_dict['verified_by_user'] = True
+        updated_dict['requires_review'] = False
+
+        supabase.table('biomarkers').update(updated_dict).eq('user_id', user_id).eq('id', biomarker_id).execute()
+        return updated_dict
+    except Exception as e:
+        logger.error(f"Error updating biomarker record: {e}")
+        return None

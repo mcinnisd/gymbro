@@ -2,9 +2,13 @@ import pytest
 from app.biomarkers.pdf_service import (
     parse_reference_range,
     normalize_analyte_name,
+    infer_dynamic_category,
+    detect_mime_type,
     evaluate_biomarker_status,
+    adjudicate_biomarker_record,
     generate_sports_science_insight,
     extract_lab_report_from_pdf,
+    extract_lab_report_from_files,
     parse_lab_pdf_with_gemini
 )
 
@@ -28,6 +32,16 @@ def test_parse_reference_range_invalid_or_text():
     assert parse_reference_range("Negative") == (None, None)
     assert parse_reference_range("") == (None, None)
     assert parse_reference_range(None) == (None, None)
+
+def test_detect_mime_type_pdf_and_screenshots():
+    # PDF
+    assert detect_mime_type(b"%PDF-1.4 header", "results.pdf") == "application/pdf"
+    # PNG screenshot
+    assert detect_mime_type(b"\x89PNG\r\n\x1a\n\x00\x00", "screenshot.png") == "image/png"
+    # JPEG screenshot
+    assert detect_mime_type(b"\xff\xd8\xff\xe0\x00", "lab_photo.jpg") == "image/jpeg"
+    # WEBP screenshot
+    assert detect_mime_type(b"RIFF\x00\x00\x00\x00WEBPVP8", "portal.webp") == "image/webp"
 
 def test_normalize_analyte_name_and_category():
     # Iron & Oxygen
@@ -55,6 +69,61 @@ def test_normalize_analyte_name_and_category():
     assert name == "Vitamin D 25-OH"
     assert cat == "Vitamins & Minerals"
 
+def test_open_vocabulary_dynamic_category_inference():
+    # Novel / niche markers not in static dictionary
+    assert infer_dynamic_category("EPA + DHA Omega-3 Index") == "Cardiometabolic & Lipids"
+    assert infer_dynamic_category("Blood Lead Level") == "Toxicology & Heavy Metals"
+    assert infer_dynamic_category("Thyroglobulin Antibodies") == "Thyroid Axis"
+    assert infer_dynamic_category("IGF-Binding Protein 3") == "Peptides & Growth Factors"
+
+    # With LLM suggested category preserved
+    name, cat = normalize_analyte_name("Novel Longevity Peptide X", suggested_category="Cellular Bioenergetics")
+    assert name == "Novel Longevity Peptide X"
+    assert cat == "Cellular Bioenergetics"
+
+def test_adjudicate_biomarker_record_clean():
+    clean_marker = {
+        "marker_name": "Ferritin",
+        "value": 45.0,
+        "unit": "ng/mL",
+        "raw_reference_range": "30 - 400 ng/mL",
+        "ref_range_min": 30.0,
+        "ref_range_max": 400.0,
+        "status": "optimal"
+    }
+    res = adjudicate_biomarker_record(clean_marker)
+    assert res["extraction_confidence"] >= 0.90
+    assert res["requires_review"] is False
+    assert len(res["adjudication_flags"]) == 0
+
+def test_adjudicate_biomarker_record_flags_collision_and_extreme_values():
+    # 1. OCR collision (value = 400 which is the upper reference boundary)
+    collision_marker = {
+        "marker_name": "Ferritin",
+        "value": 400.0,
+        "unit": "ng/mL",
+        "raw_reference_range": "30 - 400 ng/mL",
+        "ref_range_min": 30.0,
+        "ref_range_max": 400.0,
+        "status": "optimal"
+    }
+    res_col = adjudicate_biomarker_record(collision_marker)
+    assert res_col["requires_review"] is True
+    assert any("collision" in f.lower() for f in res_col["adjudication_flags"])
+
+    # 2. Implausible value (HbA1c = 45% or negative value)
+    extreme_marker = {
+        "marker_name": "HbA1c",
+        "value": 45.0,
+        "unit": "%",
+        "ref_range_min": 4.0,
+        "ref_range_max": 5.6
+    }
+    res_ext = adjudicate_biomarker_record(extreme_marker)
+    assert res_ext["requires_review"] is True
+    assert res_ext["extraction_confidence"] < 0.85
+    assert any("plausible" in f.lower() for f in res_ext["adjudication_flags"])
+
 def test_evaluate_biomarker_status():
     assert evaluate_biomarker_status(45.0, 30.0, 100.0) == "optimal"
     assert evaluate_biomarker_status(20.0, 30.0, 100.0) == "flagged_low"
@@ -80,7 +149,7 @@ def test_extract_lab_report_from_pdf_fallback():
     assert "biomarkers" in report
     assert len(report["biomarkers"]) >= 3
 
-    # Check that individual biomarkers have structured fields
+    # Check that individual biomarkers have structured fields and confidence
     first = report["biomarkers"][0]
     assert "marker_name" in first
     assert "value" in first
@@ -88,6 +157,14 @@ def test_extract_lab_report_from_pdf_fallback():
     assert "status" in first
     assert "category" in first
     assert "coach_insight" in first
+    assert "extraction_confidence" in first
+
+def test_extract_lab_report_from_multiple_screenshots():
+    screenshot_1 = (b"\x89PNG\r\n\x1a\n\x00\x00 page1", "screenshot1.png")
+    screenshot_2 = (b"\x89PNG\r\n\x1a\n\x00\x00 page2", "screenshot2.png")
+    report = extract_lab_report_from_files([screenshot_1, screenshot_2])
+    assert isinstance(report, dict)
+    assert len(report["biomarkers"]) >= 3
 
 def test_parse_lab_pdf_with_gemini_returns_biomarkers_list():
     dummy_pdf = b"%PDF-1.4 dummy report"
