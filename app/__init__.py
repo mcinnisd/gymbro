@@ -61,6 +61,9 @@ def create_app():
     from app.telemetry.routes import telemetry_bp
     app.register_blueprint(telemetry_bp, url_prefix="/telemetry")
 
+    from app.onboarding.routes import onboarding_bp
+    app.register_blueprint(onboarding_bp, url_prefix="/onboarding")
+
     # Set up logging if not in debug mode
     if not app.debug:
         handler = RotatingFileHandler('error.log', maxBytes=100000, backupCount=3)
