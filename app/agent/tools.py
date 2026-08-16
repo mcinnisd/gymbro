@@ -203,3 +203,34 @@ def update_user_goals(user_id: str, goal_type: str, target_value: str, descripti
             "data": {"status": "error", "message": str(e)}
         }
 
+
+def log_meal_tool(
+    user_id: str,
+    meal_name: str,
+    calories: Optional[float] = None,
+    protein: Optional[float] = None,
+    carbs: Optional[float] = None,
+    fat: Optional[float] = None
+) -> Dict[str, Any]:
+    """
+    Logs a meal with automatic macro estimation or user values.
+    """
+    from app.tools.nutrition_tools import log_meal
+    return log_meal(user_id=user_id, meal_name=meal_name, calories=calories, protein=protein, carbs=carbs, fat=fat)
+
+
+def get_nutrition_history_tool(user_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Retrieves multi-day nutrition history and goal-adaptive targets.
+    """
+    from app.tools.nutrition_tools import get_nutrition_history
+    return get_nutrition_history(user_id=user_id, start_date=start_date, end_date=end_date)
+
+
+def get_adaptive_nutrition_targets_tool(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Computes goal-adaptive nutrition targets adapted to daily workout load and athlete goals.
+    """
+    from app.tools.nutrition_tools import get_adaptive_nutrition_targets
+    return get_adaptive_nutrition_targets(user_id=user_id, target_date=target_date)
+
