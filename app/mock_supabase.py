@@ -123,6 +123,11 @@ class MockSupabaseClient:
         self.query_filters.append(lambda row: clean_pattern in str(row.get(column, "")).lower())
         return self
 
+    def in_(self, column, values):
+        val_set = {str(v) for v in values}
+        self.query_filters.append(lambda row: str(row.get(column)) in val_set)
+        return self
+
     @property
     def not_(self):
         class NotFilter:

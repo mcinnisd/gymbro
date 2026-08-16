@@ -10,6 +10,7 @@ from app.tools.plan_tools import generate_training_plan
 from app.tools.nutrition_tools import log_meal
 from app.tools.workout_tools import reschedule_workout, log_manual_workout
 from app.tools.activity_tools import get_recent_activities, get_wellness_metrics
+from app.tools.biomarker_tools import get_biomarkers, get_biomarker_trends_tool
 
 TOOLS_REGISTRY = [
     {
@@ -306,6 +307,51 @@ TOOLS_REGISTRY = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_biomarkers",
+            "description": "Retrieve clinical lab bloodwork biomarkers, reference corridors, and abnormal flags for an athlete.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "marker_name": {
+                        "type": "string",
+                        "description": "Optional specific analyte name (e.g. 'Ferritin', 'hs-CRP', 'Vitamin D', 'ApoB', 'Testosterone')."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional category filter (e.g. 'Iron & Oxygen', 'Inflammation & Recovery', 'Hormones & Endocrine', 'Cardiometabolic & Lipids', 'Vitamins & Minerals')."
+                    },
+                    "flagged_only": {
+                        "type": "boolean",
+                        "description": "If true, only returns out-of-range flagged analytes.",
+                        "default": False
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_biomarker_trends",
+            "description": "Retrieve longitudinal bloodwork trends over time with delta progression, % change, and native interactive chart widget.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "marker_name": {
+                        "type": "string",
+                        "description": "Optional specific analyte name (e.g. 'Ferritin', 'hs-CRP', 'Vitamin D 25-OH')."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional category filter."
+                    }
+                }
+            }
+        }
     }
 ]
 
@@ -322,7 +368,9 @@ TOOL_IMPLEMENTATIONS = {
     "reschedule_workout": reschedule_workout,
     "log_manual_workout": log_manual_workout,
     "get_recent_activities": get_recent_activities,
-    "get_wellness_metrics": get_wellness_metrics
+    "get_wellness_metrics": get_wellness_metrics,
+    "get_biomarkers": get_biomarkers,
+    "get_biomarker_trends": get_biomarker_trends_tool
 }
 
 def get_tool_definitions():

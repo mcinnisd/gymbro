@@ -41,7 +41,11 @@ export default function WelcomeScreen() {
     }
 
     if (loggedInUser) {
-      router.replace('/(tabs)/training');
+      if (loggedInUser.coach_status === 'active') {
+        router.replace('/(tabs)/training');
+      } else {
+        router.replace('/(onboarding)');
+      }
     } else {
       setErrorMsg(
         isRegister
@@ -146,7 +150,7 @@ export default function WelcomeScreen() {
 
             <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={loading}>
               <LinearGradient
-                colors={[Colors.light.primary, '#1D4ED8']}
+                colors={[Colors.light.primary, Colors.light.primaryHover]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.gradientBtn}
@@ -247,12 +251,12 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    backgroundColor: Colors.light.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.2)',
+    borderColor: Colors.light.border,
   },
   title: {
     fontSize: 34,
