@@ -12,9 +12,19 @@ from app.nutrition.adaptive_targets import (
     calculate_adaptive_nutrition_targets,
     reevaluate_macros
 )
+from app.nutrition.barcode_service import lookup_barcode
 
 nutrition_bp = Blueprint('nutrition', __name__)
 logger = logging.getLogger(__name__)
+
+
+@nutrition_bp.route("/barcode/<barcode>", methods=["GET"], strict_slashes=False)
+def get_barcode_nutrition(barcode):
+    """
+    Looks up packaged food items by barcode / UPC.
+    """
+    result = lookup_barcode(barcode)
+    return jsonify(result), 200
 
 
 @nutrition_bp.route("/reevaluate", methods=["POST"], strict_slashes=False)

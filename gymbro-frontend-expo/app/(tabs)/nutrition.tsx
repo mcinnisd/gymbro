@@ -10,6 +10,9 @@ import {
   TextInput,
   Image,
   Alert,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,6 +82,8 @@ export default function NutritionScreen() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [estimateData, setEstimateData] = useState<EstimateResult | null>(null);
+  const [baseValues, setBaseValues] = useState<{ calories: number; protein: number; carbs: number; fat: number } | null>(null);
+  const [portionMultiplier, setPortionMultiplier] = useState<number>(1.0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
   // Custom manual logging or final modifications
@@ -89,6 +94,11 @@ export default function NutritionScreen() {
   const [carbsInput, setCarbsInput] = useState('');
   const [fatInput, setFatInput] = useState('');
   const [recalculatingLog, setRecalculatingLog] = useState(false);
+
+  // Barcode Scanner Modal
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [searchingBarcode, setSearchingBarcode] = useState(false);
 
   // Edit Existing Log Modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -210,22 +220,64 @@ export default function NutritionScreen() {
 
       if (response.ok) {
         const data = await response.json();
+        const cals = Math.round(data.calories);
+        const p = Math.round(data.protein);
+        const c = Math.round(data.carbs);
+        const f = Math.round(data.fat);
+
         if (isEdit) {
-          setEditCalories(String(Math.round(data.calories)));
-          setEditProtein(String(Math.round(data.protein)));
-          setEditCarbs(String(Math.round(data.carbs)));
-          setEditFat(String(Math.round(data.fat)));
+          setEditCalories(String(cals));
+          setEditProtein(String(p));
+          setEditCarbs(String(c));
+          setEditFat(String(f));
         } else {
-          setCaloriesInput(String(Math.round(data.calories)));
-          setProteinInput(String(Math.round(data.protein)));
-          setCarbsInput(String(Math.round(data.carbs)));
-          setFatInput(String(Math.round(data.fat)));
+          setBaseValues({ calories: cals, protein: p, carbs: c, fat: f });
+          setPortionMultiplier(1.0);
+          setCaloriesInput(String(cals));
+          setProteinInput(String(p));
+          setCarbsInput(String(c));
+          setFatInput(String(f));
         }
       }
     } catch (err) {
       console.error('Error recalculating macros:', err);
     }
     setRecalculatingLog(false);
+  };
+
+  const applyPortionMultiplier = (multiplier: number) => {
+    setPortionMultiplier(multiplier);
+    const base = baseValues || {
+      calories: Number(caloriesInput) || 500,
+      protein: Number(proteinInput) || 30,
+      carbs: Number(carbsInput) || 40,
+      fat: Number(fatInput) || 15,
+    };
+    if (!baseValues) {
+      setBaseValues(base);
+    }
+    setCaloriesInput(String(Math.round(base.calories * multiplier)));
+    setProteinInput(String(Math.round(base.protein * multiplier)));
+    setCarbsInput(String(Math.round(base.carbs * multiplier)));
+    setFatInput(String(Math.round(base.fat * multiplier)));
+  };
+
+  const bumpCalories = (deltaKcal: number) => {
+    const currentCal = Number(caloriesInput) || 0;
+    const newCal = Math.max(0, currentCal + deltaKcal);
+    const ratio = currentCal > 0 ? newCal / currentCal : 1.0;
+    setCaloriesInput(String(newCal));
+    setProteinInput(String(Math.max(0, Math.round((Number(proteinInput) || 0) * ratio))));
+    setCarbsInput(String(Math.max(0, Math.round((Number(carbsInput) || 0) * ratio))));
+    setFatInput(String(Math.max(0, Math.round((Number(fatInput) || 0) * ratio))));
+  };
+
+  const bumpPercentage = (deltaPct: number) => {
+    const factor = 1.0 + deltaPct;
+    setCaloriesInput(String(Math.max(0, Math.round((Number(caloriesInput) || 0) * factor))));
+    setProteinInput(String(Math.max(0, Math.round((Number(proteinInput) || 0) * factor))));
+    setCarbsInput(String(Math.max(0, Math.round((Number(carbsInput) || 0) * factor))));
+    setFatInput(String(Math.max(0, Math.round((Number(fatInput) || 0) * factor))));
   };
 
   const handleUpdateLog = async () => {
@@ -343,10 +395,10 @@ export default function NutritionScreen() {
       });
       if (response.ok) {
         const data = await response.json();
-        const estCal = data.estimated_calories ?? data.calories ?? 0;
-        const pG = data.protein_g ?? data.protein ?? 0;
-        const cG = data.carbs_g ?? data.carbs ?? 0;
-        const fG = data.fat_g ?? data.fat ?? 0;
+        const estCal = Math.round(data.estimated_calories ?? data.calories ?? 0);
+        const pG = Math.round(data.protein_g ?? data.protein ?? 0);
+        const cG = Math.round(data.carbs_g ?? data.carbs ?? 0);
+        const fG = Math.round(data.fat_g ?? data.fat ?? 0);
         const name = data.meal_name || 'Logged Meal';
 
         setEstimateData({
@@ -360,11 +412,13 @@ export default function NutritionScreen() {
           clarifying_questions: data.clarifying_questions || [],
         });
 
+        setBaseValues({ calories: estCal, protein: pG, carbs: cG, fat: fG });
+        setPortionMultiplier(1.0);
         setMealNameInput(name);
-        setCaloriesInput(String(Math.round(estCal)));
-        setProteinInput(String(Math.round(pG)));
-        setCarbsInput(String(Math.round(cG)));
-        setFatInput(String(Math.round(fG)));
+        setCaloriesInput(String(estCal));
+        setProteinInput(String(pG));
+        setCarbsInput(String(cG));
+        setFatInput(String(fG));
 
         setShowLogModal(true);
       } else {
@@ -376,6 +430,49 @@ export default function NutritionScreen() {
       Alert.alert('Error', 'Network error calling Gemini Nutrition Estimator.');
     }
     setEstimating(false);
+  };
+
+  const handleBarcodeLookup = async (codeToLookup: string) => {
+    const code = codeToLookup.trim();
+    if (!code) return;
+
+    setSearchingBarcode(true);
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/barcode/${code}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken || ''}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const cals = Math.round(data.calories);
+        const p = Math.round(data.protein || data.protein_g || 0);
+        const c = Math.round(data.carbs || data.carbs_g || 0);
+        const f = Math.round(data.fat || data.fat_g || 0);
+        const name = data.meal_name || data.product_name || 'Scanned Product';
+
+        setEstimateData(null);
+        setPhotoBase64(null);
+        setBaseValues({ calories: cals, protein: p, carbs: c, fat: f });
+        setPortionMultiplier(1.0);
+        setMealNameInput(name);
+        setCaloriesInput(String(cals));
+        setProteinInput(String(p));
+        setCarbsInput(String(c));
+        setFatInput(String(f));
+
+        setShowBarcodeModal(false);
+        setShowLogModal(true);
+      } else {
+        Alert.alert('Barcode Not Found', 'Could not locate product details for this barcode.');
+      }
+    } catch (err) {
+      console.error('Error in barcode lookup:', err);
+      Alert.alert('Error', 'Network error during barcode lookup.');
+    }
+    setSearchingBarcode(false);
   };
 
   const handleSelectOption = (questionId: string, option: string) => {
@@ -400,11 +497,11 @@ export default function NutritionScreen() {
         }
       });
 
-      if (estimateData) {
-        setCaloriesInput(String(Math.round(estimateData.calories * multiplier + extraCal)));
-        setProteinInput(String(Math.round(estimateData.protein * multiplier)));
-        setCarbsInput(String(Math.round(estimateData.carbs * multiplier)));
-        setFatInput(String(Math.round(estimateData.fat * multiplier + extraFat)));
+      if (baseValues) {
+        setCaloriesInput(String(Math.round(baseValues.calories * multiplier + extraCal)));
+        setProteinInput(String(Math.round(baseValues.protein * multiplier)));
+        setCarbsInput(String(Math.round(baseValues.carbs * multiplier)));
+        setFatInput(String(Math.round(baseValues.fat * multiplier + extraFat)));
       }
 
       return newAnswers;
@@ -453,6 +550,8 @@ export default function NutritionScreen() {
   const openManualLog = () => {
     setPhotoBase64(null);
     setEstimateData(null);
+    setBaseValues(null);
+    setPortionMultiplier(1.0);
     setMealNameInput('');
     setCaloriesInput('');
     setProteinInput('');
@@ -604,13 +703,18 @@ export default function NutritionScreen() {
             <TouchableOpacity style={styles.scanBtn} onPress={() => handlePickImage(true)}>
               <View style={styles.scanBtnGradient}>
                 <Ionicons name="camera" size={18} color="#FFFFFF" />
-                <Text style={styles.scanBtnText}>Scan Meal Photo</Text>
+                <Text style={styles.scanBtnText}>Photo Scan</Text>
               </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.barcodeBtn} onPress={() => setShowBarcodeModal(true)}>
+              <Ionicons name="barcode-outline" size={18} color="#2D6A4F" style={{ marginRight: 6 }} />
+              <Text style={styles.barcodeBtnText}>Barcode</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.manualBtn} onPress={openManualLog}>
               <Ionicons name="create-outline" size={18} color={Colors.light.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.manualBtnText}>Manual Log</Text>
+              <Text style={styles.manualBtnText}>Manual</Text>
             </TouchableOpacity>
           </View>
 
@@ -642,12 +746,18 @@ export default function NutritionScreen() {
               <Ionicons name="restaurant-outline" size={28} color={Colors.light.mutedText} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyMealsTitle}>No Meals Logged for this Day</Text>
               <Text style={styles.emptyMealsSubtitle}>
-                Snap a photo of your meal or manually enter items to track fuel and recovery.
+                Snap a photo of your meal, scan a barcode, or manually enter items to track fuel and recovery.
               </Text>
-              <TouchableOpacity style={styles.emptyScanBtn} onPress={() => handlePickImage(true)}>
-                <Ionicons name="camera" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.emptyScanBtnText}>📸 Scan Meal Photo</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity style={styles.emptyScanBtn} onPress={() => handlePickImage(true)}>
+                  <Ionicons name="camera" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.emptyScanBtnText}>📸 Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.emptyScanBtn, { backgroundColor: '#2D6A4F' }]} onPress={() => setShowBarcodeModal(true)}>
+                  <Ionicons name="barcode-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.emptyScanBtnText}>🔍 Barcode</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             selectedDayLogs.map((log) => (
@@ -687,16 +797,91 @@ export default function NutritionScreen() {
         </View>
       </ScrollView>
 
-      {/* Estimations & Confirmation Modal */}
+      {/* Barcode Scanner / Lookup Modal */}
+      <Modal
+        visible={showBarcodeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBarcodeModal(false)}
+      >
+        <SafeAreaView style={styles.modalOverlay}>
+          <View style={styles.barcodeModalContent}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="barcode-outline" size={22} color="#2D6A4F" style={{ marginRight: 8 }} />
+                <Text style={styles.modalTitle}>Scan / Enter Barcode</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowBarcodeModal(false)}>
+                <Ionicons name="close" size={24} color={Colors.light.mutedText} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.barcodeHelpText}>
+              Enter UPC/EAN barcode or select a common sports nutrition item:
+            </Text>
+
+            <View style={styles.barcodeInputRow}>
+              <TextInput
+                style={styles.barcodeTextInput}
+                value={barcodeInput}
+                onChangeText={setBarcodeInput}
+                placeholder="e.g. 041570054771"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+              />
+              <TouchableOpacity
+                style={styles.barcodeSearchBtn}
+                onPress={() => handleBarcodeLookup(barcodeInput)}
+                disabled={searchingBarcode || !barcodeInput.trim()}
+              >
+                {searchingBarcode ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.barcodeSearchBtnText}>Lookup</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.quickPresetsTitle}>⚡ Popular Sports Nutrition Barcodes</Text>
+            <View style={styles.barcodeChipsWrap}>
+              {[
+                { name: 'Fairlife 42g Protein Shake', code: '041570054771' },
+                { name: 'Quest Cookie Dough Bar', code: '888849000010' },
+                { name: 'ON Gold Standard Whey', code: '748927028669' },
+                { name: 'Chobani Plain Greek Yogurt', code: '894700010045' },
+                { name: "Dave's 21 Whole Grains Bread", code: '073410013506' },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.code}
+                  style={styles.barcodePresetChip}
+                  onPress={() => {
+                    setBarcodeInput(item.code);
+                    handleBarcodeLookup(item.code);
+                  }}
+                >
+                  <Ionicons name="flash-outline" size={12} color="#2D6A4F" style={{ marginRight: 4 }} />
+                  <Text style={styles.barcodePresetChipText}>{item.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Estimations & Confirmation Modal (Full Height Scrollable Sheet) */}
       <Modal
         visible={showLogModal}
         transparent
         animationType="slide"
         onRequestClose={() => setShowLogModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScroll}>
-            <View style={styles.modalContent}>
+        <SafeAreaView style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.modalContentFull}>
+              {/* Header */}
               <View style={styles.modalHeaderRow}>
                 <Text style={styles.modalTitle}>
                   {estimateData ? '🤖 AI Calorie Estimate' : 'Log Food Intake'}
@@ -706,125 +891,181 @@ export default function NutritionScreen() {
                 </TouchableOpacity>
               </View>
 
-              {photoBase64 && (
-                <Image source={{ uri: photoBase64 }} style={styles.foodPreview} />
-              )}
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 40 }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+              >
+                {photoBase64 && (
+                  <Image source={{ uri: photoBase64 }} style={styles.foodPreview} />
+                )}
 
-              {/* Clarifying Questions Sheet */}
-              {estimateData && estimateData.clarifying_questions && estimateData.clarifying_questions.length > 0 && (
-                <View style={styles.questionsContainer}>
-                  <Text style={styles.questionsTitle}>💡 Refine Estimate Details</Text>
-                  <Text style={styles.questionsSubtitle}>Tap to clarify cooking methods or portions:</Text>
-                  {estimateData.clarifying_questions.map((q) => (
-                    <View key={q.id} style={styles.questionBlock}>
-                      <Text style={styles.questionText}>{q.question}</Text>
-                      <View style={styles.optionsRow}>
-                        {q.options.map((opt) => {
-                          const isSelected = answers[q.id] === opt;
-                          return (
-                            <TouchableOpacity
-                              key={opt}
-                              style={[styles.optionChip, isSelected && styles.optionChipSelected]}
-                              onPress={() => handleSelectOption(q.id, opt)}
-                            >
-                              <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                                {opt}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
+                {/* Clarifying Questions Sheet */}
+                {estimateData && estimateData.clarifying_questions && estimateData.clarifying_questions.length > 0 && (
+                  <View style={styles.questionsContainer}>
+                    <Text style={styles.questionsTitle}>💡 Refine Estimate Details</Text>
+                    <Text style={styles.questionsSubtitle}>Tap to clarify cooking oils, sauces, or portions:</Text>
+                    {estimateData.clarifying_questions.map((q) => (
+                      <View key={q.id} style={styles.questionBlock}>
+                        <Text style={styles.questionText}>{q.question}</Text>
+                        <View style={styles.optionsRow}>
+                          {q.options.map((opt) => {
+                            const isSelected = answers[q.id] === opt;
+                            return (
+                              <TouchableOpacity
+                                key={opt}
+                                style={[styles.optionChip, isSelected && styles.optionChipSelected]}
+                                onPress={() => handleSelectOption(q.id, opt)}
+                              >
+                                <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                                  {opt}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Edit/Review Values */}
-              <View style={styles.inputsForm}>
-                <Text style={styles.formSectionTitle}>Item Name & Portion</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={mealNameInput}
-                  onChangeText={setMealNameInput}
-                  placeholder="e.g. 200g Grilled Chicken Breast"
-                  placeholderTextColor="#94A3B8"
-                />
-
-                <TouchableOpacity
-                  style={styles.recalcButton}
-                  onPress={() => handleRecalculateMacrosFromInput(false)}
-                  disabled={recalculatingLog}
-                >
-                  <Text style={styles.recalcButtonText}>
-                    {recalculatingLog ? 'Recalculating...' : '⚡ Auto-Recalculate Macros from Description'}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.macroInputsRow}>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Calories (kcal)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={caloriesInput}
-                      onChangeText={setCaloriesInput}
-                    />
-                  </View>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Protein (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={proteinInput}
-                      onChangeText={setProteinInput}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.macroInputsRow}>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Carbs (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={carbsInput}
-                      onChangeText={setCarbsInput}
-                    />
-                  </View>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Fat (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={fatInput}
-                      onChangeText={setFatInput}
-                    />
-                  </View>
-                </View>
-
-                {estimateData && (
-                  <View style={styles.confidenceRow}>
-                    <Text style={styles.confidenceLabel}>Confidence: </Text>
-                    <Text
-                      style={[
-                        styles.confidenceValue,
-                        estimateData.confidence === 'high' && { color: '#10B981' },
-                        estimateData.confidence === 'medium' && { color: '#F59E0B' },
-                        estimateData.confidence === 'low' && { color: '#EF4444' },
-                      ]}
-                    >
-                      {estimateData.confidence.toUpperCase()}
-                    </Text>
+                    ))}
                   </View>
                 )}
-              </View>
 
-              <TouchableOpacity style={styles.logSubmitBtn} onPress={handleLogMeal}>
-                <Text style={styles.logSubmitText}>Save Fueling Log</Text>
-              </TouchableOpacity>
+                {/* Portion Scaling & Calorie Bump Controls */}
+                <View style={styles.portionAdjustContainer}>
+                  <Text style={styles.portionAdjustTitle}>⚡ Quick Portion & Calorie Scale</Text>
+                  <Text style={styles.portionAdjustSubtitle}>Bump portion up/down to match your actual meal size:</Text>
+                  
+                  <View style={styles.multiplierRow}>
+                    {[
+                      { label: '0.75x', val: 0.75 },
+                      { label: '1.0x', val: 1.0 },
+                      { label: '1.25x', val: 1.25 },
+                      { label: '1.5x', val: 1.5 },
+                    ].map((m) => (
+                      <TouchableOpacity
+                        key={m.label}
+                        style={[
+                          styles.multiplierChip,
+                          portionMultiplier === m.val && styles.multiplierChipActive,
+                        ]}
+                        onPress={() => applyPortionMultiplier(m.val)}
+                      >
+                        <Text
+                          style={[
+                            styles.multiplierText,
+                            portionMultiplier === m.val && styles.multiplierTextActive,
+                          ]}
+                        >
+                          {m.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => bumpPercentage(-0.1)}>
+                      <Text style={styles.stepperBtnText}>-10%</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => bumpCalories(-50)}>
+                      <Text style={styles.stepperBtnText}>-50 kcal</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => bumpCalories(+50)}>
+                      <Text style={styles.stepperBtnText}>+50 kcal</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.stepperBtn} onPress={() => bumpPercentage(+0.1)}>
+                      <Text style={styles.stepperBtnText}>+10%</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Edit/Review Values */}
+                <View style={styles.inputsForm}>
+                  <Text style={styles.formSectionTitle}>Item Name & Portion</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={mealNameInput}
+                    onChangeText={setMealNameInput}
+                    placeholder="e.g. 200g Grilled Chicken Breast"
+                    placeholderTextColor="#94A3B8"
+                  />
+
+                  <TouchableOpacity
+                    style={styles.recalcButton}
+                    onPress={() => handleRecalculateMacrosFromInput(false)}
+                    disabled={recalculatingLog}
+                  >
+                    <Text style={styles.recalcButtonText}>
+                      {recalculatingLog ? 'Recalculating...' : '⚡ Auto-Recalculate Macros from Description'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.macroInputsRow}>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Calories (kcal)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={caloriesInput}
+                        onChangeText={setCaloriesInput}
+                      />
+                    </View>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Protein (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={proteinInput}
+                        onChangeText={setProteinInput}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.macroInputsRow}>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Carbs (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={carbsInput}
+                        onChangeText={setCarbsInput}
+                      />
+                    </View>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Fat (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={fatInput}
+                        onChangeText={setFatInput}
+                      />
+                    </View>
+                  </View>
+
+                  {estimateData && (
+                    <View style={styles.confidenceRow}>
+                      <Text style={styles.confidenceLabel}>Confidence: </Text>
+                      <Text
+                        style={[
+                          styles.confidenceValue,
+                          estimateData.confidence === 'high' && { color: '#10B981' },
+                          estimateData.confidence === 'medium' && { color: '#F59E0B' },
+                          estimateData.confidence === 'low' && { color: '#EF4444' },
+                        ]}
+                      >
+                        {estimateData.confidence.toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Submit Action Button */}
+                <TouchableOpacity style={styles.logSubmitBtn} onPress={handleLogMeal}>
+                  <Text style={styles.logSubmitText}>Save Fueling Log</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-          </ScrollView>
-        </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
 
       {/* Edit Existing Log Modal */}
@@ -834,9 +1075,12 @@ export default function NutritionScreen() {
         animationType="slide"
         onRequestClose={() => setShowEditModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScroll}>
-            <View style={styles.modalContent}>
+        <SafeAreaView style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.modalContentFull}>
               <View style={styles.modalHeaderRow}>
                 <Text style={styles.modalTitle}>✏️ Edit Food Log</Text>
                 <TouchableOpacity onPress={() => setShowEditModal(false)}>
@@ -844,82 +1088,89 @@ export default function NutritionScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.inputsForm}>
-                <Text style={styles.formSectionTitle}>Item Name & Quantity</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={editItemName}
-                  onChangeText={setEditItemName}
-                  placeholder="e.g. 200g Grilled Chicken Breast"
-                  placeholderTextColor="#94A3B8"
-                />
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 40 }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.inputsForm}>
+                  <Text style={styles.formSectionTitle}>Item Name & Quantity</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={editItemName}
+                    onChangeText={setEditItemName}
+                    placeholder="e.g. 200g Grilled Chicken Breast"
+                    placeholderTextColor="#94A3B8"
+                  />
+
+                  <TouchableOpacity
+                    style={styles.recalcButton}
+                    onPress={() => handleRecalculateMacrosFromInput(true)}
+                    disabled={updatingLog || recalculatingLog}
+                  >
+                    <Text style={styles.recalcButtonText}>
+                      {recalculatingLog ? 'Recalculating...' : '⚡ Auto-Recalculate Macros from Description'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.formSectionTitle}>Macros</Text>
+                  <View style={styles.macroInputsRow}>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Calories (kcal)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={editCalories}
+                        onChangeText={setEditCalories}
+                      />
+                    </View>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Protein (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={editProtein}
+                        onChangeText={setEditProtein}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.macroInputsRow}>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Carbs (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={editCarbs}
+                        onChangeText={setEditCarbs}
+                      />
+                    </View>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Fat (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={editFat}
+                        onChangeText={setEditFat}
+                      />
+                    </View>
+                  </View>
+                </View>
 
                 <TouchableOpacity
-                  style={styles.recalcButton}
-                  onPress={() => handleRecalculateMacrosFromInput(true)}
-                  disabled={updatingLog || recalculatingLog}
+                  style={styles.logSubmitBtn}
+                  onPress={handleUpdateLog}
+                  disabled={updatingLog}
                 >
-                  <Text style={styles.recalcButtonText}>
-                    {recalculatingLog ? 'Recalculating...' : '⚡ Auto-Recalculate Macros from Description'}
+                  <Text style={styles.logSubmitText}>
+                    {updatingLog ? 'Saving...' : 'Save & Re-evaluate Log'}
                   </Text>
                 </TouchableOpacity>
-
-                <Text style={styles.formSectionTitle}>Macros</Text>
-                <View style={styles.macroInputsRow}>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Calories (kcal)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={editCalories}
-                      onChangeText={setEditCalories}
-                    />
-                  </View>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Protein (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={editProtein}
-                      onChangeText={setEditProtein}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.macroInputsRow}>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Carbs (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={editCarbs}
-                      onChangeText={setEditCarbs}
-                    />
-                  </View>
-                  <View style={styles.macroInputWrapper}>
-                    <Text style={styles.inputLabel}>Fat (g)</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      value={editFat}
-                      onChangeText={setEditFat}
-                    />
-                  </View>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.logSubmitBtn}
-                onPress={handleUpdateLog}
-                disabled={updatingLog}
-              >
-                <Text style={styles.logSubmitText}>
-                  {updatingLog ? 'Saving...' : 'Save & Re-evaluate Log'}
-                </Text>
-              </TouchableOpacity>
+              </ScrollView>
             </View>
-          </ScrollView>
-        </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </View>
   );
@@ -1154,10 +1405,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   scanBtn: {
-    flex: 1.2,
+    flex: 1.1,
     borderRadius: 12,
     overflow: 'hidden',
-    marginRight: 8,
+    marginRight: 6,
     backgroundColor: Colors.light.primary,
   },
   scanBtnGradient: {
@@ -1170,8 +1421,25 @@ const styles = StyleSheet.create({
   scanBtnText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: 6,
+    fontSize: 13,
+  },
+  barcodeBtn: {
+    flex: 1.1,
+    height: 46,
+    backgroundColor: '#FAF5EE',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2D6A4F',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  barcodeBtnText: {
+    color: '#2D6A4F',
+    fontWeight: 'bold',
+    fontSize: 13,
   },
   manualBtn: {
     flex: 1,
@@ -1187,7 +1455,7 @@ const styles = StyleSheet.create({
   manualBtnText: {
     color: Colors.light.primary,
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 13,
   },
   galleryBtn: {
     flexDirection: 'row',
@@ -1250,14 +1518,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.light.primary,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 8,
     marginTop: 8,
   },
   emptyScanBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   mealItem: {
@@ -1310,27 +1578,24 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'flex-end',
   },
-  modalScroll: {
-    flexGrow: 1,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
+  modalContentFull: {
+    flex: 1,
     backgroundColor: Colors.light.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderColor: Colors.light.border,
-    padding: 20,
-    maxHeight: '90%',
+    padding: 18,
+    marginTop: 50,
   },
   modalHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 17,
@@ -1339,15 +1604,15 @@ const styles = StyleSheet.create({
   },
   foodPreview: {
     width: '100%',
-    height: 150,
+    height: 140,
     borderRadius: 12,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   questionsContainer: {
     backgroundColor: '#FAF8F5',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
@@ -1360,7 +1625,7 @@ const styles = StyleSheet.create({
   questionsSubtitle: {
     fontSize: 11,
     color: Colors.light.mutedText,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   questionBlock: {
     marginBottom: 10,
@@ -1396,6 +1661,71 @@ const styles = StyleSheet.create({
   optionTextSelected: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  portionAdjustContainer: {
+    backgroundColor: '#FAF5EE',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+  },
+  portionAdjustTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.light.text,
+    marginBottom: 2,
+  },
+  portionAdjustSubtitle: {
+    fontSize: 11,
+    color: Colors.light.mutedText,
+    marginBottom: 8,
+  },
+  multiplierRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  multiplierChip: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginHorizontal: 2,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+  },
+  multiplierChipActive: {
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
+  },
+  multiplierText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: Colors.light.mutedText,
+  },
+  multiplierTextActive: {
+    color: '#FFFFFF',
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  stepperBtn: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginHorizontal: 2,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+  },
+  stepperBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.light.text,
   },
   inputsForm: {
     backgroundColor: '#FAF8F5',
@@ -1465,17 +1795,84 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   logSubmitBtn: {
-    height: 46,
+    height: 48,
     backgroundColor: Colors.light.primary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 14,
-    marginBottom: 6,
+    marginTop: 8,
+    marginBottom: 20,
   },
   logSubmitText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  barcodeModalContent: {
+    backgroundColor: Colors.light.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  barcodeHelpText: {
+    fontSize: 12,
+    color: Colors.light.mutedText,
+    marginBottom: 12,
+  },
+  barcodeInputRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  barcodeTextInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    height: 42,
+    paddingHorizontal: 12,
+    color: Colors.light.text,
+    fontSize: 14,
+    marginRight: 8,
+  },
+  barcodeSearchBtn: {
+    backgroundColor: '#2D6A4F',
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barcodeSearchBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  quickPresetsTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  barcodeChipsWrap: {
+    flexDirection: 'column',
+  },
+  barcodePresetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FAF8F5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    marginBottom: 6,
+  },
+  barcodePresetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.text,
   },
 });

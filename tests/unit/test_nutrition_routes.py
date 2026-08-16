@@ -118,3 +118,14 @@ def test_delete_nutrition_log(client):
     res = client.delete('/nutrition/logs/log_123')
     assert res.status_code == 200
     assert res.json['id'] == 'log_123'
+
+
+def test_barcode_lookup_endpoint(client):
+    # Test known sports barcode or fallback UPC lookup
+    res = client.get('/nutrition/barcode/041570054771')
+    assert res.status_code == 200
+    data = res.get_json()
+    assert 'meal_name' in data or 'product_name' in data
+    assert data['calories'] > 0
+    assert 'protein_g' in data or 'protein' in data
+

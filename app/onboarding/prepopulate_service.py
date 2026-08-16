@@ -113,12 +113,34 @@ class TelemetryPrepopulateService:
                     result["connected_providers"].append("strava")
                     has_connected_wearable = True
 
-            # 2. Fetch 14-day Daily Health Metrics (Resting HR, HRV, Sleep)
-            two_weeks_ago = (datetime.now(timezone.utc) - timedelta(days=14)).date().isoformat()
-
             rhr_samples: List[int] = []
             hrv_samples: List[int] = []
             sleep_samples: List[float] = []
+
+            # If raw_payload contains demographic biometrics, supplement missing profile fields
+            if raw_payload:
+                raw_bio = raw_payload.get("biometrics") if isinstance(raw_payload.get("biometrics"), dict) else raw_payload
+                if not result["age"] and raw_bio.get("age"):
+                    result["age"] = int(raw_bio["age"])
+                if not result["weight"] and (raw_bio.get("weight_kg") or raw_bio.get("weight")):
+                    result["weight"] = float(raw_bio.get("weight_kg") or raw_bio.get("weight"))
+                if not result["height"] and (raw_bio.get("height_cm") or raw_bio.get("height")):
+                    result["height"] = float(raw_bio.get("height_cm") or raw_bio.get("height"))
+                if not result["biological_sex"] and raw_bio.get("biological_sex"):
+                    result["biological_sex"] = str(raw_bio["biological_sex"])
+                if raw_bio.get("resting_heart_rate") or raw_bio.get("resting_hr"):
+                    rhr_samples.append(int(raw_bio.get("resting_heart_rate") or raw_bio.get("resting_hr")))
+                if raw_bio.get("hrv_sdnn") or raw_bio.get("hrv_ms") or raw_bio.get("hrv"):
+                    hrv_samples.append(int(raw_bio.get("hrv_sdnn") or raw_bio.get("hrv_ms") or raw_bio.get("hrv")))
+                if raw_bio.get("sleep_hours"):
+                    sleep_samples.append(float(raw_bio["sleep_hours"]))
+                src = raw_payload.get("source") or "apple_health"
+                if src not in result["connected_providers"]:
+                    result["connected_providers"].append(src)
+                    has_connected_wearable = True
+
+            # 2. Fetch 14-day Daily Health Metrics (Resting HR, HRV, Sleep)
+            two_weeks_ago = (datetime.now(timezone.utc) - timedelta(days=14)).date().isoformat()
 
             # 2a. biometrics_daily table
             try:
