@@ -19,9 +19,9 @@ def record_daily_biometrics(user_id: Any, payload: dict) -> dict:
     record = {
         'user_id': uid,
         'date': str(date_val)[:10],
-        'resting_hr': payload.get('resting_hr'),
-        'hrv': payload.get('hrv') or payload.get('hrv_ms'),
-        'hrv_ms': payload.get('hrv_ms') or payload.get('hrv'),
+        'resting_hr': payload.get('resting_hr') or payload.get('resting_heart_rate'),
+        'hrv': payload.get('hrv') or payload.get('hrv_ms') or payload.get('hrv_sdnn'),
+        'hrv_ms': payload.get('hrv_ms') or payload.get('hrv') or payload.get('hrv_sdnn'),
         'hrv_status': payload.get('hrv_status'),
         'sleep_hours': payload.get('sleep_hours'),
         'sleep_score': payload.get('sleep_score'),
@@ -107,8 +107,8 @@ def ingest_telemetry_payload(user_id: Any, payload: dict) -> dict:
             'activity_type': act.get('activity_type') or act.get('type') or 'workout',
             'name': act.get('name') or act.get('activity_name') or f"{default_source.capitalize()} Workout",
             'start_time_local': start_time,
-            'distance': float(act.get('distance') or act.get('distance_m') or 0.0),
-            'duration': float(act.get('duration') or act.get('duration_s') or act.get('moving_time') or 0.0),
+            'distance': float(act.get('distance') if act.get('distance') is not None else (act.get('distance_m') if act.get('distance_m') is not None else (float(act.get('distance_km', 0.0)) * 1000.0))),
+            'duration': float(act.get('duration') if act.get('duration') is not None else (act.get('duration_s') if act.get('duration_s') is not None else (float(act.get('duration_min', 0.0)) * 60.0 if act.get('duration_min') is not None else (act.get('moving_time') or 0.0)))),
             'calories': float(act.get('calories') or act.get('calories_burned') or 0.0),
             'average_hr': act.get('average_hr') or act.get('average_heartrate'),
             'max_hr': act.get('max_hr') or act.get('max_heartrate'),
@@ -337,6 +337,8 @@ def get_telemetry_status(user_id: Any) -> Dict[str, Any]:
             garmin_connected = bool(u.get("garmin_email"))
             status_summary["garmin"]["connected"] = garmin_connected
             status_summary["garmin"]["status"] = u.get("garmin_sync_status") or ("synced" if garmin_connected else "disconnected")
+            status_summary["garmin"]["stage"] = goals.get("sync_stage") or ("completed" if garmin_connected else "idle")
+            status_summary["garmin"]["archive_inception_date"] = goals.get("archive_inception_date")
             status_summary["garmin"]["last_synced"] = u.get("garmin_sync_completed_at") or goals.get("garmin_last_synced")
             status_summary["garmin"]["progress"] = goals.get("sync_progress", 100 if garmin_connected else 0)
             status_summary["garmin"]["last_error"] = u.get("garmin_last_sync_error")
@@ -345,6 +347,7 @@ def get_telemetry_status(user_id: Any) -> Dict[str, Any]:
             strava_connected = bool(u.get("strava_access_token"))
             status_summary["strava"]["connected"] = strava_connected
             status_summary["strava"]["status"] = "connected" if strava_connected else "disconnected"
+            status_summary["strava"]["archive_inception_date"] = goals.get("strava_inception_date")
             status_summary["strava"]["last_updated"] = u.get("strava_last_updated")
             status_summary["strava"]["athlete"] = goals.get("strava_athlete")
 

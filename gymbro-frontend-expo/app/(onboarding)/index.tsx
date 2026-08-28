@@ -17,15 +17,16 @@ import { Colors } from '../../constants/Colors';
 import {
   fetchOnboardingState,
   saveOnboardingStep,
-  prepopulateTelemetry,
   generateOnboardingProposal,
   commitOnboarding,
-  OnboardingStateResponse,
   AthleteProfile,
   GoalSetDraft,
   PrepopulatedBiometrics,
   DataRealityCheck,
 } from '../../services/onboardingApi';
+import { Step1WearableConnect } from '../../components/onboarding/Step1WearableConnect';
+import { Step2SmartProfile } from '../../components/onboarding/Step2SmartProfile';
+import { Step3GoalSet } from '../../components/onboarding/Step3GoalSet';
 
 const STEP_TITLES = [
   'Connect Hardware',
@@ -139,6 +140,11 @@ export default function OnboardingStepperScreen() {
           skipped_hardware: (biometrics.connected_providers || []).length === 0,
         };
       } else if (currentStep === 2) {
+        if (!profile.age || profile.age < 16 || !profile.weight || profile.weight < 30) {
+          Alert.alert('Incomplete Profile', 'Please verify your age and weight before continuing.');
+          setSavingStep(false);
+          return;
+        }
         stepPayload = {
           age: profile.age,
           weight: profile.weight,
@@ -151,10 +157,21 @@ export default function OnboardingStepperScreen() {
           sleep_hours: biometrics.sleep_hours,
         };
       } else if (currentStep === 3) {
+        if (!goals.primary_goal) {
+          Alert.alert('Missing Goal', 'Please select a primary athletic priority.');
+          setSavingStep(false);
+          return;
+        }
+        if (!goals.days_available || goals.days_available.length < 2) {
+          Alert.alert('Schedule Availability', 'Please select at least 2 available workout days.');
+          setSavingStep(false);
+          return;
+        }
         stepPayload = {
           primary_goal: goals.primary_goal,
           secondary_goals: goals.secondary_goals,
           days_available: goals.days_available,
+          equipment: goals.equipment,
         };
       } else if (currentStep === 4) {
         stepPayload = {
@@ -189,9 +206,36 @@ export default function OnboardingStepperScreen() {
     }
   };
 
-  const handleSkipWearable = () => {
-    setBiometrics((prev) => ({ ...prev, connected_providers: [], data_available: false }));
-    handleNext();
+  const handleProviderLinked = (provider: string, prepopulatedData?: PrepopulatedBiometrics) => {
+    const updatedProviders = Array.from(new Set([...(biometrics.connected_providers || []), provider]));
+    if (prepopulatedData) {
+      setBiometrics({
+        ...prepopulatedData,
+        connected_providers: updatedProviders,
+      });
+      if (prepopulatedData.age) setProfile((p) => ({ ...p, age: prepopulatedData.age }));
+      if (prepopulatedData.weight) setProfile((p) => ({ ...p, weight: prepopulatedData.weight }));
+      if (prepopulatedData.height) setProfile((p) => ({ ...p, height: prepopulatedData.height }));
+      if (prepopulatedData.biological_sex) {
+        setProfile((p) => ({ ...p, biological_sex: prepopulatedData.biological_sex }));
+      }
+    } else {
+      setBiometrics((prev) => ({ ...prev, connected_providers: updatedProviders }));
+    }
+  };
+
+  const handleSkipWearable = async () => {
+    setSavingStep(true);
+    try {
+      setBiometrics((prev) => ({ ...prev, connected_providers: [], data_available: false }));
+      const saveRes = await saveOnboardingStep(1, { connected_providers: [], skipped_hardware: true });
+      setCurrentStep(saveRes.current_step || 2);
+    } catch (err: any) {
+      console.error('[OnboardingStepper] Skip error:', err);
+      setCurrentStep(2);
+    } finally {
+      setSavingStep(false);
+    }
   };
 
   if (loading) {
@@ -256,147 +300,28 @@ export default function OnboardingStepperScreen() {
       {/* 2. Step Viewport Container */}
       <ScrollView contentContainerStyle={styles.contentScroll} showsVerticalScrollIndicator={false}>
         {currentStep === 1 && (
-          <View style={styles.stepCard}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="watch-outline" size={28} color={Colors.light.primary} />
-              <Text style={styles.cardTitle}>Link Hardware Device</Text>
-            </View>
-            <Text style={styles.cardBody}>
-              Connecting your wearable allows GYMBro to automatically detect your resting HR, HRV,
-              and 14-day acute workload with zero manual data entry.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.providerBtn}
-              activeOpacity={0.8}
-              onPress={async () => {
-                setSavingStep(true);
-                try {
-                  const prepop = await prepopulateTelemetry({ source: 'apple_health' });
-                  setBiometrics(prepop);
-                  if (prepop.age) setProfile((p) => ({ ...p, age: prepop.age }));
-                  if (prepop.weight) setProfile((p) => ({ ...p, weight: prepop.weight }));
-                  if (prepop.height) setProfile((p) => ({ ...p, height: prepop.height }));
-                  handleNext();
-                } catch {
-                  handleNext();
-                } finally {
-                  setSavingStep(false);
-                }
-              }}
-            >
-              <Ionicons name="logo-apple" size={22} color={Colors.light.text} />
-              <Text style={styles.providerBtnText}>Apple Health / HealthKit</Text>
-              <Ionicons name="chevron-forward" size={18} color={Colors.light.subtext} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.providerBtn}
-              activeOpacity={0.8}
-              onPress={() => {
-                setBiometrics((p) => ({ ...p, connected_providers: [...(p.connected_providers || []), 'garmin'] }));
-                handleNext();
-              }}
-            >
-              <Ionicons name="speedometer-outline" size={22} color={Colors.light.text} />
-              <Text style={styles.providerBtnText}>Garmin Connect</Text>
-              <Ionicons name="chevron-forward" size={18} color={Colors.light.subtext} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.providerBtn}
-              activeOpacity={0.8}
-              onPress={() => {
-                setBiometrics((p) => ({ ...p, connected_providers: [...(p.connected_providers || []), 'strava'] }));
-                handleNext();
-              }}
-            >
-              <Ionicons name="bicycle-outline" size={22} color={Colors.light.text} />
-              <Text style={styles.providerBtnText}>Strava Activities</Text>
-              <Ionicons name="chevron-forward" size={18} color={Colors.light.subtext} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={handleSkipWearable}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.skipBtnText}>Skip / Enter Manually</Text>
-            </TouchableOpacity>
-          </View>
+          <Step1WearableConnect
+            connectedProviders={biometrics.connected_providers || []}
+            onProviderLinked={handleProviderLinked}
+            onSkip={handleSkipWearable}
+            onContinue={handleNext}
+          />
         )}
 
         {currentStep === 2 && (
-          <View style={styles.stepCard}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="person-circle-outline" size={28} color={Colors.light.primary} />
-              <Text style={styles.cardTitle}>Athlete Profile & Biometrics</Text>
-            </View>
-            <Text style={styles.cardBody}>
-              {biometrics.data_available
-                ? '✨ Biometrics automatically pre-populated from your connected device.'
-                : 'Using calibrated baseline defaults. You can adjust these anytime.'}
-            </Text>
-
-            <View style={styles.metricGrid}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Age</Text>
-                <Text style={styles.metricValue}>{profile.age || 30} yrs</Text>
-              </View>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Weight</Text>
-                <Text style={styles.metricValue}>{profile.weight || 75.0} kg</Text>
-              </View>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Resting HR</Text>
-                <Text style={styles.metricValue}>{biometrics.resting_hr || 65} bpm</Text>
-              </View>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Weekly Vol</Text>
-                <Text style={styles.metricValue}>{biometrics.weekly_volume || 0.0} km</Text>
-              </View>
-            </View>
-          </View>
+          <Step2SmartProfile
+            profile={profile}
+            biometrics={biometrics}
+            onChangeProfile={(upd) => setProfile((p) => ({ ...p, ...upd }))}
+            onChangeBiometrics={(upd) => setBiometrics((b) => ({ ...b, ...upd }))}
+          />
         )}
 
         {currentStep === 3 && (
-          <View style={styles.stepCard}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="trophy-outline" size={28} color={Colors.light.primary} />
-              <Text style={styles.cardTitle}>Goal Set & Schedule</Text>
-            </View>
-            <Text style={styles.cardBody}>
-              Select your primary athletic priority and available weekly training days.
-            </Text>
-
-            <View style={styles.chipRow}>
-              {[
-                { key: 'marathon_endurance', label: '🏃 Marathon Endurance' },
-                { key: 'muscle_strength', label: '🏋️ Hypertrophy & Strength' },
-                { key: 'hybrid_fitness', label: '⚡ Hybrid Fitness' },
-                { key: 'fat_loss', label: '🔥 Recomposition' },
-              ].map((g) => (
-                <TouchableOpacity
-                  key={g.key}
-                  style={[
-                    styles.goalChip,
-                    goals.primary_goal === g.key && styles.goalChipActive,
-                  ]}
-                  onPress={() => setGoals((prev) => ({ ...prev, primary_goal: g.key }))}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.goalChipText,
-                      goals.primary_goal === g.key && styles.goalChipTextActive,
-                    ]}
-                  >
-                    {g.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          <Step3GoalSet
+            goals={goals}
+            onChangeGoals={(upd) => setGoals((g) => ({ ...g, ...upd }))}
+          />
         )}
 
         {currentStep === 4 && (
@@ -481,6 +406,8 @@ export default function OnboardingStepperScreen() {
                 ? '🔥 Commit to Calendar & Launch'
                 : currentStep === 4
                 ? 'Preview Training Plan'
+                : currentStep === 2
+                ? 'Confirm Profile & Baselines'
                 : 'Continue'}
             </Text>
           )}
@@ -608,81 +535,6 @@ const styles = StyleSheet.create({
     color: Colors.light.secondaryText,
     lineHeight: 20,
     marginBottom: 18,
-  },
-  providerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.light.cardElevated,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  providerBtnText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.light.text,
-    marginLeft: 12,
-  },
-  skipBtn: {
-    marginTop: 12,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  skipBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.light.secondaryText,
-  },
-  metricGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  metricItem: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: Colors.light.cardElevated,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: Colors.light.secondaryText,
-    marginBottom: 4,
-  },
-  metricValue: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: Colors.light.text,
-  },
-  chipRow: {
-    flexDirection: 'column',
-    gap: 10,
-  },
-  goalChip: {
-    backgroundColor: Colors.light.cardElevated,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.light.border,
-  },
-  goalChipActive: {
-    borderColor: Colors.light.primary,
-    backgroundColor: Colors.light.primaryLight,
-  },
-  goalChipText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.light.text,
-  },
-  goalChipTextActive: {
-    color: Colors.light.primaryHover,
-    fontWeight: '700',
   },
   horizonChoiceRow: {
     flexDirection: 'column',

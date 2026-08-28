@@ -53,6 +53,7 @@ export interface GoalSetDraft {
   horizon?: string;
   units?: string;
   llm_model?: string;
+  equipment?: string;
 }
 
 export interface DataRealityCheck {
