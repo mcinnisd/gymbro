@@ -13,10 +13,22 @@ from app.nutrition.adaptive_targets import (
     reevaluate_macros
 )
 from app.nutrition.barcode_service import lookup_barcode
+from app.nutrition.recipe_service import (
+    create_recipe,
+    get_user_recipes,
+    get_recipe,
+    log_recipe_portion,
+    delete_recipe,
+    match_recipe
+)
 
 nutrition_bp = Blueprint('nutrition', __name__)
 logger = logging.getLogger(__name__)
 
+
+# ------------------------------------------------------------------------------
+# Barcode & Food Scanning Routes
+# ------------------------------------------------------------------------------
 
 @nutrition_bp.route("/barcode/<barcode>", methods=["GET"], strict_slashes=False)
 def get_barcode_nutrition(barcode):
@@ -44,6 +56,126 @@ def reevaluate_food_item():
     result["estimated_calories"] = result["calories"]
     return jsonify(result), 200
 
+
+# ------------------------------------------------------------------------------
+# Saved Recipes & Batch Meal Prep Routes
+# ------------------------------------------------------------------------------
+
+@nutrition_bp.route("/recipes", methods=["GET"], strict_slashes=False)
+@jwt_required(optional=True)
+def list_recipes():
+    """
+    Retrieves all saved recipes / meal preps for the authenticated athlete.
+    """
+    user_id = get_jwt_identity() or "1"
+    query = request.args.get("q") or request.args.get("query")
+    recipes = get_user_recipes(user_id=user_id, search_query=query)
+    return jsonify({"recipes": recipes, "count": len(recipes)}), 200
+
+
+@nutrition_bp.route("/recipes", methods=["POST"], strict_slashes=False)
+@jwt_required(optional=True)
+def add_recipe():
+    """
+    Creates a new batch recipe or meal prep.
+    """
+    user_id = get_jwt_identity() or "1"
+    data = request.get_json() or {}
+    name = data.get("name") or data.get("meal_name")
+    if not name:
+        return jsonify({"error": "Missing required field: name"}), 400
+
+    servings = float(data.get("servings") or 1.0)
+    ingredients = data.get("ingredients") or []
+    
+    result = create_recipe(
+        user_id=user_id,
+        name=name,
+        servings=servings,
+        ingredients=ingredients,
+        total_calories=data.get("total_calories"),
+        total_protein=data.get("total_protein"),
+        total_carbs=data.get("total_carbs"),
+        total_fat=data.get("total_fat"),
+        per_serving_calories=data.get("per_serving_calories"),
+        per_serving_protein=data.get("per_serving_protein"),
+        per_serving_carbs=data.get("per_serving_carbs"),
+        per_serving_fat=data.get("per_serving_fat"),
+        image_url=data.get("image_url", ""),
+        tags=data.get("tags"),
+        notes=data.get("notes", "")
+    )
+    return jsonify(result), 201
+
+
+@nutrition_bp.route("/recipes/<recipe_id>", methods=["GET"], strict_slashes=False)
+@jwt_required(optional=True)
+def get_single_recipe(recipe_id):
+    """
+    Fetches a single recipe by ID.
+    """
+    user_id = get_jwt_identity() or "1"
+    recipe = get_recipe(user_id=user_id, recipe_id=recipe_id)
+    if not recipe:
+        return jsonify({"error": "Recipe not found."}), 404
+    return jsonify({"recipe": recipe}), 200
+
+
+@nutrition_bp.route("/recipes/<recipe_id>/log", methods=["POST"], strict_slashes=False)
+@jwt_required(optional=True)
+def log_recipe(recipe_id):
+    """
+    Quick-logs a chosen portion/serving of a saved recipe.
+    """
+    user_id = get_jwt_identity() or "1"
+    data = request.get_json() or {}
+    servings = float(data.get("servings") or 1.0)
+    date = data.get("date")
+    meal_type = data.get("meal_type", "meal")
+    notes = data.get("notes", "")
+
+    result = log_recipe_portion(
+        user_id=user_id,
+        recipe_id=recipe_id,
+        servings=servings,
+        date=date,
+        meal_type=meal_type,
+        notes=notes
+    )
+    if not result.get("success"):
+        return jsonify(result), 400
+    return jsonify(result), 201
+
+
+@nutrition_bp.route("/recipes/<recipe_id>", methods=["DELETE"], strict_slashes=False)
+@jwt_required(optional=True)
+def remove_recipe(recipe_id):
+    """
+    Deletes a saved recipe.
+    """
+    user_id = get_jwt_identity() or "1"
+    result = delete_recipe(user_id=user_id, recipe_id=recipe_id)
+    return jsonify(result), 200
+
+
+@nutrition_bp.route("/recipes/match", methods=["POST"], strict_slashes=False)
+@jwt_required(optional=True)
+def match_saved_recipe():
+    """
+    Matches food item text / ingredients against the user's saved recipes.
+    """
+    user_id = get_jwt_identity() or "1"
+    data = request.get_json() or {}
+    meal_name = data.get("meal_name") or data.get("item_name")
+    ingredients = data.get("ingredients") or []
+
+    matches = match_recipe(user_id=user_id, meal_name=meal_name, ingredients=ingredients)
+    return jsonify({"matches": matches, "count": len(matches)}), 200
+
+
+# ------------------------------------------------------------------------------
+# Meal Logging & History Routes
+# ------------------------------------------------------------------------------
 
 @nutrition_bp.route("/log", methods=["POST"], strict_slashes=False)
 @jwt_required(optional=True)
@@ -153,6 +285,7 @@ def get_single_nutrition_log(log_id):
 @nutrition_bp.route("/estimate", methods=["POST"], strict_slashes=False)
 @jwt_required(optional=True)
 def estimate_nutrition():
+    user_id = get_jwt_identity() or "1"
     data = request.get_json() or {}
     if not data.get("image_base64"):
         return jsonify({"error": "Missing image_base64 in request body."}), 400
@@ -165,6 +298,9 @@ def estimate_nutrition():
         image_data = base64.b64decode(base64_str)
         from .vision_service import analyze_meal_image
         analysis = analyze_meal_image(image_data)
+        # Check for matched recipes
+        matches = match_recipe(user_id=user_id, meal_name=analysis.get("meal_name"), ingredients=analysis.get("identified_ingredients"))
+        analysis["matched_recipes"] = matches
         return jsonify(analysis), 200
     except Exception as e:
         logger.error(f"Error estimating nutrition: {e}")
@@ -172,7 +308,9 @@ def estimate_nutrition():
 
 
 @nutrition_bp.route("/analyze-photo", methods=["POST"], strict_slashes=False)
+@jwt_required(optional=True)
 def analyze_photo():
+    user_id = get_jwt_identity() or "1"
     image_bytes = None
     if 'image' in request.files:
         image_bytes = request.files['image'].read()
@@ -187,6 +325,9 @@ def analyze_photo():
         
     from .vision_service import analyze_meal_image
     analysis = analyze_meal_image(image_bytes)
+    # Check for matched recipes
+    matches = match_recipe(user_id=user_id, meal_name=analysis.get("meal_name"), ingredients=analysis.get("identified_ingredients"))
+    analysis["matched_recipes"] = matches
     return jsonify(analysis), 200
 
 

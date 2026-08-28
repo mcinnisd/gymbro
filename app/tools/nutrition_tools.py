@@ -1,13 +1,18 @@
 # app/tools/nutrition_tools.py
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from app.supabase_client import supabase
 from app.nutrition.adaptive_targets import (
     calculate_adaptive_nutrition_targets,
     get_multi_day_nutrition_summary,
     reevaluate_macros
+)
+from app.nutrition.recipe_service import (
+    get_user_recipes as get_recipes_svc,
+    create_recipe as create_recipe_svc,
+    log_recipe_portion as log_recipe_svc
 )
 
 logger = logging.getLogger(__name__)
@@ -151,3 +156,51 @@ def get_adaptive_nutrition_targets(
         "data": targets,
         **targets
     }
+
+
+def get_user_recipes(
+    user_id: str,
+    search_query: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Retrieves the athlete's saved recipes / meal preps.
+    """
+    try:
+        recipes = get_recipes_svc(user_id=user_id, search_query=search_query)
+        obs = f"Found {len(recipes)} saved recipe(s) for user."
+        return {
+            "success": True,
+            "status": "success",
+            "observation": obs,
+            "data": {"recipes": recipes, "count": len(recipes)},
+            "recipes": recipes
+        }
+    except Exception as e:
+        logger.error(f"Error in get_user_recipes tool: {e}")
+        return {"success": False, "status": "error", "error": str(e), "recipes": []}
+
+
+def log_recipe_portion(
+    user_id: str,
+    recipe_id: str,
+    servings: float = 1.0,
+    date: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Logs a portion (e.g. 1.0 serving, 0.5 serving) of a saved recipe to the athlete's food intake log.
+    """
+    try:
+        res = log_recipe_svc(user_id=user_id, recipe_id=recipe_id, servings=servings, date=date)
+        if res.get("success"):
+            return {
+                "success": True,
+                "status": "success",
+                "observation": res.get("message", "Logged recipe portion."),
+                "data": res.get("log", {}),
+                "log": res.get("log", {})
+            }
+        else:
+            return {"success": False, "status": "error", "error": res.get("error", "Failed to log recipe.")}
+    except Exception as e:
+        logger.error(f"Error in log_recipe_portion tool: {e}")
+        return {"success": False, "status": "error", "error": str(e)}

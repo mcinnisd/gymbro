@@ -129,3 +129,42 @@ def test_barcode_lookup_endpoint(client):
     assert data['calories'] > 0
     assert 'protein_g' in data or 'protein' in data
 
+
+def test_recipe_endpoints(client):
+    # 1. Create a Recipe
+    create_res = client.post('/nutrition/recipes', json={
+        'name': 'Power Athlete Overnight Oats',
+        'servings': 2.0,
+        'ingredients': [
+            {'name': 'Rolled Oats (100g)', 'calories': 380, 'protein': 13, 'carbs': 68, 'fat': 7},
+            {'name': 'Whey Protein (1 scoop)', 'calories': 120, 'protein': 25, 'carbs': 2, 'fat': 1},
+            {'name': 'Chia Seeds (1 tbsp)', 'calories': 60, 'protein': 2, 'carbs': 5, 'fat': 4}
+        ]
+    })
+    assert create_res.status_code == 201
+    recipe = create_res.get_json()['recipe']
+    recipe_id = recipe['id']
+    assert recipe['total_calories'] == 560.0
+    assert recipe['per_serving_calories'] == 280.0
+
+    # 2. List Recipes
+    list_res = client.get('/nutrition/recipes')
+    assert list_res.status_code == 200
+    recipes = list_res.get_json()['recipes']
+    assert any(r['id'] == recipe_id for r in recipes)
+
+    # 3. Log 1 Serving of Recipe
+    log_res = client.post(f'/nutrition/recipes/{recipe_id}/log', json={'servings': 1.0, 'date': '2026-08-28'})
+    assert log_res.status_code == 201
+    log = log_res.get_json()['log']
+    assert log['calories'] == 280.0
+    assert log['protein'] == 20.0
+
+    # 4. Recipe Auto-Matching
+    match_res = client.post('/nutrition/recipes/match', json={'meal_name': 'Overnight Oats with Chia and Protein'})
+    assert match_res.status_code == 200
+    matches = match_res.get_json()['matches']
+    assert len(matches) >= 1
+    assert matches[0]['id'] == recipe_id
+
+

@@ -50,6 +50,24 @@ interface EstimateResult {
   fat: number;
   confidence: 'low' | 'medium' | 'high';
   clarifying_questions?: ClarifyingQuestion[];
+  matched_recipes?: any[];
+}
+
+interface Recipe {
+  id: string;
+  name: string;
+  servings: number;
+  total_calories: number;
+  total_protein: number;
+  total_carbs: number;
+  total_fat: number;
+  per_serving_calories: number;
+  per_serving_protein: number;
+  per_serving_carbs: number;
+  per_serving_fat: number;
+  ingredients?: any[];
+  notes?: string;
+  created_at?: string;
 }
 
 interface DailyTarget {
@@ -78,6 +96,24 @@ export default function NutritionScreen() {
   const [periodAverages, setPeriodAverages] = useState<any>(null);
   const [coachSummary, setCoachSummary] = useState<string>('');
 
+  // Recipes State
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+  const [recipeTab, setRecipeTab] = useState<'list' | 'create'>('list');
+  const [recipeServingsMap, setRecipeServingsMap] = useState<Record<string, number>>({});
+  const [loggingRecipe, setLoggingRecipe] = useState(false);
+
+  // New Recipe Form State
+  const [newRecipeName, setNewRecipeName] = useState('');
+  const [newRecipeServings, setNewRecipeServings] = useState('4');
+  const [newRecipeCalories, setNewRecipeCalories] = useState('');
+  const [newRecipeProtein, setNewRecipeProtein] = useState('');
+  const [newRecipeCarbs, setNewRecipeCarbs] = useState('');
+  const [newRecipeFat, setNewRecipeFat] = useState('');
+  const [newRecipeNotes, setNewRecipeNotes] = useState('');
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const [recalculatingRecipe, setRecalculatingRecipe] = useState(false);
+
   // Photo Logging Modal
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
@@ -85,6 +121,7 @@ export default function NutritionScreen() {
   const [baseValues, setBaseValues] = useState<{ calories: number; protein: number; carbs: number; fat: number } | null>(null);
   const [portionMultiplier, setPortionMultiplier] = useState<number>(1.0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [matchedRecipes, setMatchedRecipes] = useState<any[]>([]);
 
   // Custom manual logging or final modifications
   const [showLogModal, setShowLogModal] = useState(false);
@@ -127,7 +164,22 @@ export default function NutritionScreen() {
 
   useEffect(() => {
     fetchHistory();
+    fetchRecipes();
   }, [authToken]);
+
+  const fetchRecipes = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/recipes`, {
+        headers: { Authorization: `Bearer ${authToken || ''}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setRecipes(data.recipes || []);
+      }
+    } catch (e) {
+      console.error('Error fetching recipes:', e);
+    }
+  };
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -237,12 +289,34 @@ export default function NutritionScreen() {
           setProteinInput(String(p));
           setCarbsInput(String(c));
           setFatInput(String(f));
+
+          // Also check recipe match
+          checkRecipeMatch(textToAnalyze);
         }
       }
     } catch (err) {
       console.error('Error recalculating macros:', err);
     }
     setRecalculatingLog(false);
+  };
+
+  const checkRecipeMatch = async (name: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/nutrition/recipes/match`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken || ''}`,
+        },
+        body: JSON.stringify({ meal_name: name }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMatchedRecipes(data.matches || []);
+      }
+    } catch (e) {
+      console.error('Error matching recipe:', e);
+    }
   };
 
   const applyPortionMultiplier = (multiplier: number) => {
@@ -384,6 +458,7 @@ export default function NutritionScreen() {
     setEstimating(true);
     setEstimateData(null);
     setAnswers({});
+    setMatchedRecipes([]);
     try {
       const response = await fetch(`${apiUrl}/nutrition/analyze-photo`, {
         method: 'POST',
@@ -410,8 +485,10 @@ export default function NutritionScreen() {
           fat: fG,
           confidence: data.confidence || 'high',
           clarifying_questions: data.clarifying_questions || [],
+          matched_recipes: data.matched_recipes || [],
         });
 
+        setMatchedRecipes(data.matched_recipes || []);
         setBaseValues({ calories: estCal, protein: pG, carbs: cG, fat: fG });
         setPortionMultiplier(1.0);
         setMealNameInput(name);
@@ -455,6 +532,7 @@ export default function NutritionScreen() {
 
         setEstimateData(null);
         setPhotoBase64(null);
+        setMatchedRecipes([]);
         setBaseValues({ calories: cals, protein: p, carbs: c, fat: f });
         setPortionMultiplier(1.0);
         setMealNameInput(name);
@@ -547,9 +625,174 @@ export default function NutritionScreen() {
     }
   };
 
+  const handleSaveAsRecipeFromModal = async () => {
+    if (!mealNameInput.trim() || !caloriesInput) {
+      Alert.alert('Missing Info', 'Please enter a name and calories for this recipe.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/recipes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken || ''}`,
+        },
+        body: JSON.stringify({
+          name: mealNameInput,
+          servings: 1.0,
+          total_calories: Number(caloriesInput),
+          total_protein: Number(proteinInput) || 0,
+          total_carbs: Number(carbsInput) || 0,
+          total_fat: Number(fatInput) || 0,
+        }),
+      });
+
+      if (response.ok) {
+        fetchRecipes();
+        Alert.alert('Recipe Saved', `"${mealNameInput}" has been added to your Recipe Library!`);
+      } else {
+        const err = await response.json();
+        Alert.alert('Error', err.error || 'Could not save recipe.');
+      }
+    } catch (e) {
+      console.error('Error saving recipe:', e);
+      Alert.alert('Error', 'Network error saving recipe.');
+    }
+  };
+
+  const handleCreateNewRecipe = async () => {
+    if (!newRecipeName.trim() || !newRecipeCalories) {
+      Alert.alert('Missing Info', 'Please provide a name and total batch calories.');
+      return;
+    }
+
+    setSavingRecipe(true);
+    try {
+      const servingsVal = Math.max(Number(newRecipeServings) || 1, 0.1);
+      const totCal = Number(newRecipeCalories) || 0;
+      const totP = Number(newRecipeProtein) || 0;
+      const totC = Number(newRecipeCarbs) || 0;
+      const totF = Number(newRecipeFat) || 0;
+
+      const response = await fetch(`${apiUrl}/nutrition/recipes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken || ''}`,
+        },
+        body: JSON.stringify({
+          name: newRecipeName,
+          servings: servingsVal,
+          total_calories: totCal,
+          total_protein: totP,
+          total_carbs: totC,
+          total_fat: totF,
+          notes: newRecipeNotes,
+        }),
+      });
+
+      if (response.ok) {
+        fetchRecipes();
+        setNewRecipeName('');
+        setNewRecipeCalories('');
+        setNewRecipeProtein('');
+        setNewRecipeCarbs('');
+        setNewRecipeFat('');
+        setNewRecipeNotes('');
+        setRecipeTab('list');
+        Alert.alert('Success', 'Batch Recipe / Meal Prep created!');
+      } else {
+        const err = await response.json();
+        Alert.alert('Error', err.error || 'Failed to create recipe.');
+      }
+    } catch (err) {
+      console.error('Error creating recipe:', err);
+      Alert.alert('Error', 'Network error creating recipe.');
+    }
+    setSavingRecipe(false);
+  };
+
+  const handleRecalculateRecipeMacros = async () => {
+    if (!newRecipeName.trim()) return;
+    setRecalculatingRecipe(true);
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/reevaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken || ''}`,
+        },
+        body: JSON.stringify({ item_name: newRecipeName }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNewRecipeCalories(String(Math.round(data.calories)));
+        setNewRecipeProtein(String(Math.round(data.protein)));
+        setNewRecipeCarbs(String(Math.round(data.carbs)));
+        setNewRecipeFat(String(Math.round(data.fat)));
+      }
+    } catch (e) {
+      console.error('Error recalculating recipe macros:', e);
+    }
+    setRecalculatingRecipe(false);
+  };
+
+  const handleLogRecipePortion = async (recipe: Recipe, servings: number) => {
+    setLoggingRecipe(true);
+    try {
+      const response = await fetch(`${apiUrl}/nutrition/recipes/${recipe.id}/log`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken || ''}`,
+        },
+        body: JSON.stringify({
+          servings: servings,
+          date: selectedDate,
+        }),
+      });
+
+      if (response.ok) {
+        setShowRecipeModal(false);
+        fetchHistory();
+        Alert.alert('Success', `Logged ${servings} serving(s) of "${recipe.name}"!`);
+      } else {
+        const err = await response.json();
+        Alert.alert('Error', err.error || 'Failed to log recipe portion.');
+      }
+    } catch (err) {
+      console.error('Error logging recipe portion:', err);
+      Alert.alert('Error', 'Network error logging recipe portion.');
+    }
+    setLoggingRecipe(false);
+  };
+
+  const handleDeleteRecipe = async (recipeId: string) => {
+    Alert.alert('Delete Recipe', 'Are you sure you want to remove this saved recipe?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await fetch(`${apiUrl}/nutrition/recipes/${recipeId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${authToken || ''}` },
+            });
+            fetchRecipes();
+          } catch (e) {
+            console.error('Error deleting recipe:', e);
+          }
+        },
+      },
+    ]);
+  };
+
   const openManualLog = () => {
     setPhotoBase64(null);
     setEstimateData(null);
+    setMatchedRecipes([]);
     setBaseValues(null);
     setPortionMultiplier(1.0);
     setMealNameInput('');
@@ -702,18 +945,23 @@ export default function NutritionScreen() {
           <View style={styles.actionButtonsRow}>
             <TouchableOpacity style={styles.scanBtn} onPress={() => handlePickImage(true)}>
               <View style={styles.scanBtnGradient}>
-                <Ionicons name="camera" size={18} color="#FFFFFF" />
-                <Text style={styles.scanBtnText}>Photo Scan</Text>
+                <Ionicons name="camera" size={16} color="#FFFFFF" />
+                <Text style={styles.scanBtnText}>Photo</Text>
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.barcodeBtn} onPress={() => setShowBarcodeModal(true)}>
-              <Ionicons name="barcode-outline" size={18} color="#2D6A4F" style={{ marginRight: 6 }} />
+              <Ionicons name="barcode-outline" size={16} color="#2D6A4F" style={{ marginRight: 4 }} />
               <Text style={styles.barcodeBtnText}>Barcode</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.recipeBtn} onPress={() => setShowRecipeModal(true)}>
+              <Ionicons name="book-outline" size={16} color="#D97706" style={{ marginRight: 4 }} />
+              <Text style={styles.recipeBtnText}>Recipes</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.manualBtn} onPress={openManualLog}>
-              <Ionicons name="create-outline" size={18} color={Colors.light.primary} style={{ marginRight: 6 }} />
+              <Ionicons name="create-outline" size={16} color={Colors.light.primary} style={{ marginRight: 4 }} />
               <Text style={styles.manualBtnText}>Manual</Text>
             </TouchableOpacity>
           </View>
@@ -728,7 +976,7 @@ export default function NutritionScreen() {
         {estimating && (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={Colors.light.primary} />
-            <Text style={styles.loaderText}>Gemini AI is analyzing meal photo & portion geometry...</Text>
+            <Text style={styles.loaderText}>Gemini AI is analyzing meal photo & checking saved recipes...</Text>
           </View>
         )}
 
@@ -746,16 +994,20 @@ export default function NutritionScreen() {
               <Ionicons name="restaurant-outline" size={28} color={Colors.light.mutedText} style={{ marginBottom: 6 }} />
               <Text style={styles.emptyMealsTitle}>No Meals Logged for this Day</Text>
               <Text style={styles.emptyMealsSubtitle}>
-                Snap a photo of your meal, scan a barcode, or manually enter items to track fuel and recovery.
+                Snap a photo, scan a barcode, or pick from saved meal prep recipes.
               </Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 <TouchableOpacity style={styles.emptyScanBtn} onPress={() => handlePickImage(true)}>
-                  <Ionicons name="camera" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                  <Text style={styles.emptyScanBtnText}>📸 Photo</Text>
+                  <Ionicons name="camera" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.emptyScanBtnText}>Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.emptyScanBtn, { backgroundColor: '#2D6A4F' }]} onPress={() => setShowBarcodeModal(true)}>
-                  <Ionicons name="barcode-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                  <Text style={styles.emptyScanBtnText}>🔍 Barcode</Text>
+                  <Ionicons name="barcode-outline" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.emptyScanBtnText}>Barcode</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.emptyScanBtn, { backgroundColor: '#D97706' }]} onPress={() => setShowRecipeModal(true)}>
+                  <Ionicons name="book-outline" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.emptyScanBtnText}>Recipes</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -868,6 +1120,250 @@ export default function NutritionScreen() {
         </SafeAreaView>
       </Modal>
 
+      {/* Recipes & Batch Meal Prep Modal */}
+      <Modal
+        visible={showRecipeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRecipeModal(false)}
+      >
+        <SafeAreaView style={styles.modalOverlay}>
+          <View style={styles.modalContentFull}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="book-outline" size={22} color="#D97706" style={{ marginRight: 8 }} />
+                <Text style={styles.modalTitle}>Saved Recipes & Batch Prep</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowRecipeModal(false)}>
+                <Ionicons name="close" size={24} color={Colors.light.mutedText} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Tab Selector */}
+            <View style={styles.recipeTabRow}>
+              <TouchableOpacity
+                style={[styles.recipeTabBtn, recipeTab === 'list' && styles.recipeTabBtnActive]}
+                onPress={() => setRecipeTab('list')}
+              >
+                <Text style={[styles.recipeTabBtnText, recipeTab === 'list' && styles.recipeTabBtnTextActive]}>
+                  My Recipes ({recipes.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.recipeTabBtn, recipeTab === 'create' && styles.recipeTabBtnActive]}
+                onPress={() => setRecipeTab('create')}
+              >
+                <Text style={[styles.recipeTabBtnText, recipeTab === 'create' && styles.recipeTabBtnTextActive]}>
+                  + New Batch Prep
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {recipeTab === 'list' ? (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+                {recipes.length === 0 ? (
+                  <View style={styles.emptyMealsCard}>
+                    <Ionicons name="book-outline" size={32} color={Colors.light.mutedText} style={{ marginBottom: 6 }} />
+                    <Text style={styles.emptyMealsTitle}>No Saved Recipes Yet</Text>
+                    <Text style={styles.emptyMealsSubtitle}>
+                      Create batch recipes or meal prep dishes to log exact portions in 1 tap.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.emptyScanBtn, { backgroundColor: '#D97706' }]}
+                      onPress={() => setRecipeTab('create')}
+                    >
+                      <Text style={styles.emptyScanBtnText}>+ Create Batch Recipe</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  recipes.map((r) => {
+                    const currentServings = recipeServingsMap[r.id] ?? 1.0;
+                    const portionCal = Math.round(r.per_serving_calories * currentServings);
+                    const portionP = Math.round(r.per_serving_protein * currentServings);
+                    const portionC = Math.round(r.per_serving_carbs * currentServings);
+                    const portionF = Math.round(r.per_serving_fat * currentServings);
+
+                    return (
+                      <View key={r.id} style={styles.recipeCard}>
+                        <View style={styles.recipeCardHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.recipeCardTitle}>{r.name}</Text>
+                            <Text style={styles.recipeCardServingsInfo}>
+                              Batch: {r.servings} servings total • {Math.round(r.total_calories)} kcal total
+                            </Text>
+                          </View>
+                          <TouchableOpacity onPress={() => handleDeleteRecipe(r.id)} style={{ padding: 4 }}>
+                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Per-Serving Macro Badges */}
+                        <View style={styles.recipeMacroPillsRow}>
+                          <View style={styles.recipeMacroPill}>
+                            <Text style={styles.recipeMacroPillLabel}>1 Serving:</Text>
+                            <Text style={styles.recipeMacroPillValue}>{Math.round(r.per_serving_calories)} kcal</Text>
+                          </View>
+                          <View style={[styles.recipeMacroPill, { backgroundColor: '#E8F5E9' }]}>
+                            <Text style={[styles.recipeMacroPillValue, { color: '#2D6A4F' }]}>P: {Math.round(r.per_serving_protein)}g</Text>
+                          </View>
+                          <View style={[styles.recipeMacroPill, { backgroundColor: '#FEF3C7' }]}>
+                            <Text style={[styles.recipeMacroPillValue, { color: '#D97706' }]}>C: {Math.round(r.per_serving_carbs)}g</Text>
+                          </View>
+                          <View style={[styles.recipeMacroPill, { backgroundColor: '#EDE9FE' }]}>
+                            <Text style={[styles.recipeMacroPillValue, { color: '#6366F1' }]}>F: {Math.round(r.per_serving_fat)}g</Text>
+                          </View>
+                        </View>
+
+                        {/* Portion Adjuster & Quick Log */}
+                        <View style={styles.recipePortionRow}>
+                          <View style={styles.recipeStepperWrap}>
+                            <TouchableOpacity
+                              style={styles.recipeStepperBtn}
+                              onPress={() => {
+                                const next = Math.max(0.5, Math.round((currentServings - 0.5) * 10) / 10);
+                                setRecipeServingsMap((prev) => ({ ...prev, [r.id]: next }));
+                              }}
+                            >
+                              <Text style={styles.recipeStepperBtnText}>-</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.recipeStepperText}>{currentServings} serving(s)</Text>
+                            <TouchableOpacity
+                              style={styles.recipeStepperBtn}
+                              onPress={() => {
+                                const next = Math.round((currentServings + 0.5) * 10) / 10;
+                                setRecipeServingsMap((prev) => ({ ...prev, [r.id]: next }));
+                              }}
+                            >
+                              <Text style={styles.recipeStepperBtnText}>+</Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          <TouchableOpacity
+                            style={styles.recipeQuickLogBtn}
+                            onPress={() => handleLogRecipePortion(r, currentServings)}
+                            disabled={loggingRecipe}
+                          >
+                            <Ionicons name="add-circle" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                            <Text style={styles.recipeQuickLogText}>
+                              Log {portionCal} kcal
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            ) : (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+                <View style={styles.inputsForm}>
+                  <Text style={styles.formSectionTitle}>Recipe / Batch Details</Text>
+                  <Text style={styles.inputLabel}>Recipe Name</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={newRecipeName}
+                    onChangeText={setNewRecipeName}
+                    placeholder="e.g. Weekly Ground Beef & Jasmine Rice Prep"
+                    placeholderTextColor="#94A3B8"
+                  />
+
+                  <TouchableOpacity
+                    style={styles.recalcButton}
+                    onPress={handleRecalculateRecipeMacros}
+                    disabled={recalculatingRecipe || !newRecipeName.trim()}
+                  >
+                    <Text style={styles.recalcButtonText}>
+                      {recalculatingRecipe ? 'Estimating...' : '⚡ Auto-Estimate Macros from Title'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.inputLabel}>Total Batch Servings Count</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    keyboardType="numeric"
+                    value={newRecipeServings}
+                    onChangeText={setNewRecipeServings}
+                    placeholder="e.g. 4"
+                    placeholderTextColor="#94A3B8"
+                  />
+
+                  <Text style={[styles.formSectionTitle, { marginTop: 14 }]}>Total Batch Macros (All Servings Combined)</Text>
+                  <View style={styles.macroInputsRow}>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Total Calories</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={newRecipeCalories}
+                        onChangeText={setNewRecipeCalories}
+                        placeholder="e.g. 1600"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Total Protein (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={newRecipeProtein}
+                        onChangeText={setNewRecipeProtein}
+                        placeholder="e.g. 110"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.macroInputsRow}>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Total Carbs (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={newRecipeCarbs}
+                        onChangeText={setNewRecipeCarbs}
+                        placeholder="e.g. 180"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                    <View style={styles.macroInputWrapper}>
+                      <Text style={styles.inputLabel}>Total Fat (g)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="numeric"
+                        value={newRecipeFat}
+                        onChangeText={setNewRecipeFat}
+                        placeholder="e.g. 45"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Prep Notes / Storage (Optional)</Text>
+                  <TextInput
+                    style={[styles.textInput, { height: 60, textAlignVertical: 'top', paddingTop: 8 }]}
+                    value={newRecipeNotes}
+                    onChangeText={setNewRecipeNotes}
+                    placeholder="e.g. Divided equally into 4 Glasslock containers."
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.logSubmitBtn, { backgroundColor: '#D97706' }]}
+                  onPress={handleCreateNewRecipe}
+                  disabled={savingRecipe}
+                >
+                  <Text style={styles.logSubmitText}>
+                    {savingRecipe ? 'Saving...' : 'Save Batch Recipe'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+
       {/* Estimations & Confirmation Modal (Full Height Scrollable Sheet) */}
       <Modal
         visible={showLogModal}
@@ -899,6 +1395,42 @@ export default function NutritionScreen() {
               >
                 {photoBase64 && (
                   <Image source={{ uri: photoBase64 }} style={styles.foodPreview} />
+                )}
+
+                {/* Auto-Matched Saved Recipe Banner */}
+                {matchedRecipes && matchedRecipes.length > 0 && (
+                  <View style={styles.autoMatchBanner}>
+                    <View style={styles.autoMatchHeader}>
+                      <Ionicons name="sparkles" size={16} color="#D97706" />
+                      <Text style={styles.autoMatchTitle}>Saved Recipe Match Detected</Text>
+                    </View>
+                    <Text style={styles.autoMatchSubtitle}>
+                      Looks like your saved recipe "{matchedRecipes[0].name}".
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.applyRecipeBtn}
+                      onPress={() => {
+                        const r = matchedRecipes[0];
+                        setMealNameInput(`${r.name} (1 serving)`);
+                        setCaloriesInput(String(Math.round(r.per_serving_calories)));
+                        setProteinInput(String(Math.round(r.per_serving_protein)));
+                        setCarbsInput(String(Math.round(r.per_serving_carbs)));
+                        setFatInput(String(Math.round(r.per_serving_fat)));
+                        setBaseValues({
+                          calories: r.per_serving_calories,
+                          protein: r.per_serving_protein,
+                          carbs: r.per_serving_carbs,
+                          fat: r.per_serving_fat,
+                        });
+                        setPortionMultiplier(1.0);
+                        setMatchedRecipes([]);
+                      }}
+                    >
+                      <Text style={styles.applyRecipeBtnText}>
+                        ⚡ Apply {matchedRecipes[0].name} ({Math.round(matchedRecipes[0].per_serving_calories)} kcal)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
 
                 {/* Clarifying Questions Sheet */}
@@ -984,7 +1516,10 @@ export default function NutritionScreen() {
                   <TextInput
                     style={styles.textInput}
                     value={mealNameInput}
-                    onChangeText={setMealNameInput}
+                    onChangeText={(val) => {
+                      setMealNameInput(val);
+                      if (val.length > 3) checkRecipeMatch(val);
+                    }}
                     placeholder="e.g. 200g Grilled Chicken Breast"
                     placeholderTextColor="#94A3B8"
                   />
@@ -1057,6 +1592,12 @@ export default function NutritionScreen() {
                     </View>
                   )}
                 </View>
+
+                {/* Save Current as Recipe Button */}
+                <TouchableOpacity style={styles.saveAsRecipeBtn} onPress={handleSaveAsRecipeFromModal}>
+                  <Ionicons name="bookmark-outline" size={15} color="#D97706" style={{ marginRight: 6 }} />
+                  <Text style={styles.saveAsRecipeBtnText}>💾 Save this Meal to My Recipe Library</Text>
+                </TouchableOpacity>
 
                 {/* Submit Action Button */}
                 <TouchableOpacity style={styles.logSubmitBtn} onPress={handleLogMeal}>
@@ -1405,14 +1946,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   scanBtn: {
-    flex: 1.1,
+    flex: 1,
     borderRadius: 12,
     overflow: 'hidden',
-    marginRight: 6,
+    marginRight: 5,
     backgroundColor: Colors.light.primary,
   },
   scanBtnGradient: {
-    height: 46,
+    height: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1421,12 +1962,12 @@ const styles = StyleSheet.create({
   scanBtnText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    marginLeft: 6,
-    fontSize: 13,
+    marginLeft: 4,
+    fontSize: 12,
   },
   barcodeBtn: {
     flex: 1.1,
-    height: 46,
+    height: 44,
     backgroundColor: '#FAF5EE',
     borderRadius: 12,
     borderWidth: 1,
@@ -1434,16 +1975,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 5,
   },
   barcodeBtnText: {
     color: '#2D6A4F',
     fontWeight: 'bold',
-    fontSize: 13,
+    fontSize: 12,
+  },
+  recipeBtn: {
+    flex: 1.1,
+    height: 44,
+    backgroundColor: '#FAF5EE',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D97706',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 5,
+  },
+  recipeBtnText: {
+    color: '#D97706',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
   manualBtn: {
     flex: 1,
-    height: 46,
+    height: 44,
     backgroundColor: '#FAF5EE',
     borderRadius: 12,
     borderWidth: 1,
@@ -1455,7 +2013,7 @@ const styles = StyleSheet.create({
   manualBtnText: {
     color: Colors.light.primary,
     fontWeight: 'bold',
-    fontSize: 13,
+    fontSize: 12,
   },
   galleryBtn: {
     flexDirection: 'row',
@@ -1518,8 +2076,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.light.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
     marginTop: 8,
   },
@@ -1589,7 +2147,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
     padding: 18,
-    marginTop: 50,
+    marginTop: 40,
   },
   modalHeaderRow: {
     flexDirection: 'row',
@@ -1607,6 +2165,41 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 12,
     marginBottom: 12,
+  },
+  autoMatchBanner: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 12,
+    marginBottom: 12,
+  },
+  autoMatchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  autoMatchTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#D97706',
+    marginLeft: 5,
+  },
+  autoMatchSubtitle: {
+    fontSize: 11,
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  applyRecipeBtn: {
+    backgroundColor: '#D97706',
+    borderRadius: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+  },
+  applyRecipeBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
   questionsContainer: {
     backgroundColor: '#FAF8F5',
@@ -1794,13 +2387,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'bold',
   },
+  saveAsRecipeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  saveAsRecipeBtnText: {
+    color: '#D97706',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
   logSubmitBtn: {
     height: 48,
     backgroundColor: Colors.light.primary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 4,
     marginBottom: 20,
   },
   logSubmitText: {
@@ -1874,5 +2483,132 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: Colors.light.text,
+  },
+  recipeTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FAF5EE',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+  },
+  recipeTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  recipeTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  recipeTabBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.mutedText,
+  },
+  recipeTabBtnTextActive: {
+    color: '#D97706',
+    fontWeight: 'bold',
+  },
+  recipeCard: {
+    backgroundColor: '#FAF8F5',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  recipeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  recipeCardTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  recipeCardServingsInfo: {
+    fontSize: 11,
+    color: Colors.light.mutedText,
+    marginTop: 2,
+  },
+  recipeMacroPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  recipeMacroPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FAF5EE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+  },
+  recipeMacroPillLabel: {
+    fontSize: 10,
+    color: Colors.light.mutedText,
+    marginRight: 4,
+    fontWeight: '600',
+  },
+  recipeMacroPillValue: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  recipePortionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E7DFD5',
+  },
+  recipeStepperWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  recipeStepperBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  recipeStepperBtnText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  recipeStepperText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.light.text,
+    paddingHorizontal: 4,
+  },
+  recipeQuickLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2D6A4F',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  recipeQuickLogText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
 });
