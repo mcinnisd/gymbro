@@ -100,6 +100,24 @@ npm start
 
 ---
 
+---
+
+## MCP Server (Grokbot / Cursor)
+
+GYMBro exposes its domain tool catalog over the [Model Context Protocol](https://modelcontextprotocol.io) for external agents.
+
+```bash
+# Auth: JWT *or* API key + user id
+export GYMBRO_MCP_API_KEY="a-long-random-secret"
+export GYMBRO_MCP_USER_ID="YOUR_USER_ID"
+
+python -m app.mcp
+```
+
+See **[docs/mcp.md](docs/mcp.md)** for Cursor / Grokbot config samples, mutation policy, and auth details.
+
+---
+
 ## 🏗️ Architecture Overview
 
 - **Backend (`/app`)**: Flask REST API providing `/auth`, `/coach`, `/chats`, `/activities`, `/nutrition`, `/journal`, `/analytics`, `/strava`, and `/garmin` endpoints.
