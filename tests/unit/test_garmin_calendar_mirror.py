@@ -4,6 +4,7 @@ import pytest
 
 from app.calendar.constraints import (
     TRAINING_EVENT_CREATED_BY_ALLOWED,
+    TRAINING_EVENT_TYPES_ALLOWED,
     assert_training_event_row,
     calendar_event_from_garmin_activity,
     is_undefined_column_error,
@@ -62,9 +63,13 @@ def test_unknown_created_by_still_rejected():
 def test_map_garmin_running_to_calendar_run():
     assert map_activity_type_to_event_type("running") == "run"
     assert map_activity_type_to_event_type("trail_running") == "run"
-    assert map_activity_type_to_event_type("cycling") == "cross_train"
     assert map_activity_type_to_event_type("strength_training") == "strength"
+    assert map_activity_type_to_event_type("hiking") == "other"
+    assert map_activity_type_to_event_type("resort_snowboarding") == "other"
+    assert map_activity_type_to_event_type("cycling") == "other"
     assert map_activity_type_to_event_type("workout") == "other"
+    for raw in ("running", "strength_training", "hiking", "resort_snowboarding"):
+        assert map_activity_type_to_event_type(raw) in TRAINING_EVENT_TYPES_ALLOWED
 
 
 def test_calendar_event_from_garmin_activity_is_constraint_safe():
@@ -89,7 +94,21 @@ def test_calendar_event_from_garmin_activity_is_constraint_safe():
     assert_training_event_row(strip_metrics_column(event))
 
 
-def test_garmin_calendar_mirror_upserts_training_events():
+def test_calendar_mirror_maps_raw_garmin_types_before_insert():
+    supabase.table("training_events").data["training_events"] = []
+    _sync_activities_to_calendar("2", [
+        {"activity_id": "g1", "activity_name": "Run", "start_time_local": "2026-09-15T06:00:00", "activity_type": "running"},
+        {"activity_id": "g2", "activity_name": "Lift", "start_time_local": "2026-09-14T06:00:00", "activity_type": "strength_training"},
+        {"activity_id": "g3", "activity_name": "Hike", "start_time_local": "2026-09-13T06:00:00", "activity_type": "hiking"},
+        {"activity_id": "g4", "activity_name": "Board", "start_time_local": "2026-09-12T06:00:00", "activity_type": "resort_snowboarding"},
+    ])
+    rows = supabase.table("training_events").select("*").eq("user_id", 2).execute().data
+    types = {r["title"]: r["event_type"] for r in rows}
+    assert types["Run"] == "run"
+    assert types["Lift"] == "strength"
+    assert types["Hike"] == "other"
+    assert types["Board"] == "other"
+    assert all(r["event_type"] in TRAINING_EVENT_TYPES_ALLOWED for r in rows)
     supabase.table("training_events").data["training_events"] = []
     _sync_activities_to_calendar("2", [{
         "activity_name": "Santa Monica Running",

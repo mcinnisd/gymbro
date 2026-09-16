@@ -30,7 +30,7 @@ or empty-data logic. MCP binds `user_id` from the API token / API key; never inv
 ENCRYPTION_KEY=...          # must match the key used to encrypt stored Garmin passwords
 ENABLE_TELEMETRY_SCHEDULER=true
 TELEMETRY_SYNC_INTERVAL_HOURS=6
-INTERNAL_JOB_TOKEN=...      # optional; enables the cron HTTP seam
+GYMBRO_GARMIN_SYNC_USER_IDS=2   # optional; scopes scheduler/CLI when several users have Garmin
 ```
 
 ## Manual / cron trigger
@@ -45,7 +45,7 @@ curl -X POST "$API_URL/internal/jobs/telemetry-sync" \
 
 # CLI (uses stored encrypted credentials; does not print them)
 PYTHONPATH=. python -m app.garmin.cli status
-PYTHONPATH=. python -m app.garmin.cli sync --mode incremental
+PYTHONPATH=. python -m app.garmin.cli sync --user-id 2 --mode incremental
 PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
 ```
 
@@ -75,6 +75,17 @@ jsonb exists (canonical schema). Remirror stays idempotent via a
 
 A later `sync --user-id 2 --force` also remirrors as it re-upserts activities.
 Prefer `remirror-calendar` when `garmin_activities` is already current.
+
+**User-scoped sync:** `garmin_activities.activity_id` used to be UNIQUE globally.
+Syncing a second account (user 100) with the same Garmin workouts **moved** those
+rows off user 2 (`on_conflict=activity_id` updates `user_id`). Apply
+`migrations/20260916_garmin_activities_user_scoped.sql` (UNIQUE(user_id, activity_id)).
+Always pass `--user-id 2`; if several users have Garmin, CLI refuses unless
+`--all-users` or `GYMBRO_GARMIN_SYNC_USER_IDS=2`.
+
+**Calendar event_type:** live CHECK is `run|strength|rest|race|other`. Garmin
+`running` / `strength_training` / `hiking` / `resort_snowboarding` are mapped
+before insert (not stored raw).
 
 ## Verify on localhost (do not use Cloudflare / trycloudflare)
 

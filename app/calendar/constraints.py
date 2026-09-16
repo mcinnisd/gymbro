@@ -14,7 +14,8 @@ import json
 import re
 
 TRAINING_EVENT_CREATED_BY_ALLOWED = ("user", "coach", "agent", "garmin", "strava")
-TRAINING_EVENT_TYPES_ALLOWED = ("run", "strength", "rest", "race", "cross_train", "other")
+# Live Postgres CHECK is run|strength|rest|race|other (no Garmin typeKeys, no cross_train).
+TRAINING_EVENT_TYPES_ALLOWED = ("run", "strength", "rest", "race", "other")
 TRAINING_EVENT_STATUS_ALLOWED = ("planned", "completed", "skipped")
 
 # Live Postgres may not yet have training_events.metrics (42703). Persist the
@@ -22,31 +23,56 @@ TRAINING_EVENT_STATUS_ALLOWED = ("planned", "completed", "skipped")
 GARMIN_ACTIVITY_ID_MARKER = "garmin_activity_id="
 _GARMIN_ACTIVITY_ID_RE = re.compile(r"\[garmin_activity_id=([^\]]+)\]")
 
+_EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE = {
+    "run": "run",
+    "running": "run",
+    "trail_running": "run",
+    "treadmill_running": "run",
+    "track_running": "run",
+    "virtual_run": "run",
+    "strength": "strength",
+    "strength_training": "strength",
+    "weight_training": "strength",
+    "workout": "other",
+    "rest": "rest",
+    "race": "race",
+    "hiking": "other",
+    "walking": "other",
+    "cycling": "other",
+    "indoor_cycling": "other",
+    "mountain_biking": "other",
+    "swimming": "other",
+    "lap_swimming": "other",
+    "open_water_swimming": "other",
+    "yoga": "other",
+    "cardio": "other",
+    "elliptical": "other",
+    "resort_snowboarding": "other",
+    "snowboarding": "other",
+    "resort_skiing": "other",
+    "skiing": "other",
+    "cross_country_skiing": "other",
+    "cross_train": "other",
+}
+
 _ACTIVITY_TYPE_TO_EVENT_TYPE = (
     ("strength", "strength"),
     ("weight", "strength"),
     ("gym", "strength"),
     ("race", "race"),
     ("rest", "rest"),
+    ("running", "run"),
     ("run", "run"),
-    ("cycling", "cross_train"),
-    ("cycle", "cross_train"),
-    ("bik", "cross_train"),
-    ("swim", "cross_train"),
-    ("walk", "cross_train"),
-    ("hik", "cross_train"),
-    ("row", "cross_train"),
-    ("yoga", "cross_train"),
-    ("cardio", "cross_train"),
-    ("elliptical", "cross_train"),
 )
 
 
 def map_activity_type_to_event_type(activity_type: Optional[str]) -> str:
-    """Map Garmin/Strava activity_type strings onto training_events.event_type."""
-    raw = str(activity_type or "other").strip().lower()
+    """Map Garmin/Strava activity_type strings onto live training_events.event_type."""
+    raw = str(activity_type or "other").strip().lower().replace(" ", "_").replace("-", "_")
     if raw in TRAINING_EVENT_TYPES_ALLOWED:
         return raw
+    if raw in _EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE:
+        return _EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE[raw]
     for needle, mapped in _ACTIVITY_TYPE_TO_EVENT_TYPE:
         if needle in raw:
             return mapped
@@ -121,6 +147,7 @@ def calendar_event_from_garmin_activity(user_id: Any, doc: Dict[str, Any]) -> Op
         "created_by": "garmin",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    row["event_type"] = map_activity_type_to_event_type(row["event_type"])
     if activity_id:
         row["metrics"] = {"garmin_activity_id": activity_id}
     return row

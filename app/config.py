@@ -59,6 +59,7 @@ class Config:
     )
     GYMBRO_MCP_ALLOWED_HOSTS = os.getenv("GYMBRO_MCP_ALLOWED_HOSTS", "")
     GYMBRO_MCP_STATELESS = os.getenv("GYMBRO_MCP_STATELESS", "false").lower() == "true"
+    GYMBRO_GARMIN_SYNC_USER_IDS = os.getenv("GYMBRO_GARMIN_SYNC_USER_IDS", "")
     
     # CORS: Use a default for local development; override in production
     CORS_ORIGIN = os.getenv("CORS_ORIGIN") or os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082"

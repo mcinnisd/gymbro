@@ -6,8 +6,7 @@ Does not print passwords, emails, tokens, or ENCRYPTION_KEY.
 Usage:
   PYTHONPATH=. python -m app.garmin.cli status
   PYTHONPATH=. python -m app.garmin.cli verify-tools
-  PYTHONPATH=. python -m app.garmin.cli sync --mode incremental
-  PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 1
+  PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 2
   PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
 """
 from __future__ import annotations
@@ -77,11 +76,14 @@ def cmd_sync(args):
         return 1
 
     rows = _users_with_garmin(supabase)
-    if args.user_id:
-        rows = [u for u in rows if str(u.get("id")) == str(args.user_id)]
-        if not rows:
-            print(f"sync: no Garmin-connected user with id={args.user_id}")
-            return 1
+    from app.garmin.scope import select_users_for_garmin_sync
+
+    rows, err = select_users_for_garmin_sync(
+        rows, user_id=args.user_id, all_users=getattr(args, "all_users", False)
+    )
+    if err:
+        print(f"sync: {err}")
+        return 1
 
     if not rows:
         print("sync: no Garmin-connected users. Reconnect in the app.")
@@ -241,6 +243,11 @@ def main(argv=None):
     sync_p.add_argument("--mode", choices=["incremental", "deep_365", "all_time"], default="incremental")
     sync_p.add_argument("--days-back", type=int, default=None)
     sync_p.add_argument("--user-id", default=None, help="Limit to one athlete id (from the users table)")
+    sync_p.add_argument(
+        "--all-users",
+        action="store_true",
+        help="Sync every Garmin-connected user (default is --user-id or GYMBRO_GARMIN_SYNC_USER_IDS)",
+    )
     sync_p.add_argument("--force", action="store_true", help="Force resync (skip delta-date skipping)")
 
     verify_p = sub.add_parser(

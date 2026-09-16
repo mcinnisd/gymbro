@@ -61,6 +61,32 @@ def test_scheduled_telemetry_sync_calls_incremental_garmin_mode():
     assert any(k.get("days_back") == 7 for k in kwargs_list)
 
 
+def test_scheduled_telemetry_sync_honors_user_allowlist(monkeypatch):
+    monkeypatch.setenv("GYMBRO_GARMIN_SYNC_USER_IDS", "7")
+    supabase.table("users").upsert({
+        "id": 7,
+        "username": "allowlisted",
+        "garmin_email": "ok@example.com",
+        "garmin_password": "encrypted_test_pass",
+        "garmin_sync_status": "synced",
+    }, on_conflict="id").execute()
+    supabase.table("users").upsert({
+        "id": 100,
+        "username": "other_account",
+        "garmin_email": "other@example.com",
+        "garmin_password": "encrypted_test_pass",
+        "garmin_sync_status": "synced",
+    }, on_conflict="id").execute()
+
+    with patch("app.scheduler_jobs.sync_all_garmin_data_for_user") as mock_sync, \
+         patch("app.scheduler_jobs.AnalyticsService.calculate_baselines"):
+        scheduled_telemetry_sync()
+
+    synced_ids = [str(c.args[0]) for c in mock_sync.call_args_list]
+    assert "7" in synced_ids
+    assert "100" not in synced_ids
+
+
 def test_scheduled_telemetry_sync_skips_users_already_syncing():
     supabase.table("users").upsert({
         "id": 8,
