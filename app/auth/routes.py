@@ -148,6 +148,9 @@ def update_profile():
             current_goals["preferred_workout_source"] = data["preferred_workout_source"]
         if "preferred_biometrics_source" in data:
             current_goals["preferred_biometrics_source"] = data["preferred_biometrics_source"]
+        if "coach_name" in data and isinstance(data["coach_name"], str):
+            name = data["coach_name"].strip()[:32]
+            current_goals["coach_name"] = name or "Coach"
             
         updates["goals"] = current_goals
 
@@ -189,6 +192,7 @@ def get_profile():
             "llm_model": goals.get("llm_model", "gemini-3.1-flash-lite"), # Default to gemini-3.1-flash-lite
             "preferred_workout_source": goals.get("preferred_workout_source", "auto"),
             "preferred_biometrics_source": goals.get("preferred_biometrics_source", "auto"),
+            "coach_name": goals.get("coach_name") or "Coach",
             "garmin_connected": bool(user.get("garmin_email") and user.get("garmin_password")),
             "strava_connected": bool(user.get("strava_access_token")),
             "coach_status": user.get("coach_status") or "not_started",

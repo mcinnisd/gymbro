@@ -42,7 +42,7 @@ export default function WelcomeScreen() {
 
     if (loggedInUser) {
       if (loggedInUser.coach_status === 'active') {
-        router.replace('/(tabs)/training');
+        router.replace('/(tabs)/today');
       } else {
         router.replace('/(onboarding)');
       }

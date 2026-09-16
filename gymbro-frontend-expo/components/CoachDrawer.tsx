@@ -16,6 +16,8 @@ import {
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
+import { DEFAULT_COACH_NAME, resolveCoachName } from '../constants/coach';
+import Colors from '../constants/Colors';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DRAWER_PEEK_HEIGHT = 60;
@@ -31,7 +33,7 @@ interface Message {
 }
 
 export default function CoachDrawer() {
-  const { authToken, user, apiUrl } = useContext(AuthContext);
+  const { authToken, user, apiUrl, setUser } = useContext(AuthContext);
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -39,6 +41,9 @@ export default function CoachDrawer() {
   const [statusMessage, setStatusMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [chatId, setChatId] = useState<number | null>(null);
+  const [coachName, setCoachName] = useState(DEFAULT_COACH_NAME);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(DEFAULT_COACH_NAME);
 
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT - DRAWER_PEEK_HEIGHT)).current;
   const scrollViewRef = useRef<ScrollView>(null);
@@ -47,8 +52,56 @@ export default function CoachDrawer() {
   useEffect(() => {
     if (authToken) {
       fetchOrCreateChat();
+      loadCoachName();
     }
   }, [authToken]);
+
+  const loadCoachName = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/auth/profile`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const goals = data.profile?.goals || {};
+        const name = resolveCoachName(goals);
+        setCoachName(name);
+        setNameDraft(name);
+      } else {
+        const name = resolveCoachName((user as any)?.goals);
+        setCoachName(name);
+        setNameDraft(name);
+      }
+    } catch {
+      const name = resolveCoachName((user as any)?.goals);
+      setCoachName(name);
+      setNameDraft(name);
+    }
+  };
+
+  const saveCoachName = async () => {
+    const next = nameDraft.trim().slice(0, 32) || DEFAULT_COACH_NAME;
+    setRenaming(false);
+    setCoachName(next);
+    try {
+      const response = await fetch(`${apiUrl}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ goals: { coach_name: next }, coach_name: next }),
+      });
+      if (response.ok && setUser && user) {
+        setUser({
+          ...user,
+          goals: { ...((user as any).goals || {}), coach_name: next },
+        } as any);
+      }
+    } catch (err) {
+      console.error('Failed to save coach name:', err);
+    }
+  };
 
   // Scroll to bottom when messages or open state changes
   useEffect(() => {
@@ -83,7 +136,7 @@ export default function CoachDrawer() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${authToken}`,
           },
-          body: JSON.stringify({ title: 'Coach Bro' }),
+          body: JSON.stringify({ title: 'Coach' }),
         });
         if (createRes.ok) {
           const createData = await createRes.json();
@@ -339,7 +392,33 @@ export default function CoachDrawer() {
         <View style={styles.headerContent}>
           <View style={styles.titleRow}>
             <View style={styles.liveDot} />
-            <Text style={styles.headerTitle}>Coach Bro</Text>
+            {renaming ? (
+              <TextInput
+                style={styles.renameInput}
+                value={nameDraft}
+                onChangeText={setNameDraft}
+                onSubmitEditing={saveCoachName}
+                onBlur={saveCoachName}
+                autoFocus
+                maxLength={32}
+                placeholder={DEFAULT_COACH_NAME}
+                placeholderTextColor={Colors.light.mutedText}
+              />
+            ) : (
+              <View style={styles.titleTap}>
+                <Text style={styles.headerTitle}>{coachName}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setNameDraft(coachName);
+                    setRenaming(true);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ marginLeft: 6 }}
+                >
+                  <Ionicons name="pencil-outline" size={12} color={Colors.light.mutedText} />
+                </TouchableOpacity>
+              </View>
+            )}
             {pathname !== '/' && (
               <Text style={styles.contextBadge}>Viewing {pathname.replace('/', '') || 'Dashboard'}</Text>
             )}
@@ -368,7 +447,7 @@ export default function CoachDrawer() {
             {messages.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="chatbubbles-outline" size={48} color="#475569" />
-                <Text style={styles.emptyText}>Hey Bro! Ask me anything about your runs, recovery, or diet.</Text>
+                <Text style={styles.emptyText}>Hey! Ask me anything about your runs, recovery, or diet.</Text>
               </View>
             ) : (
               messages.map((msg, index) => (
@@ -403,7 +482,7 @@ export default function CoachDrawer() {
                         ? 'You'
                         : msg.sender === 'system'
                         ? 'System'
-                        : 'Coach Bro'}
+                        : coachName}
                     </Text>
                     <Text style={styles.messageText}>{msg.content}</Text>
 
@@ -482,8 +561,8 @@ export default function CoachDrawer() {
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.textInput}
-              placeholder="Ask Coach Bro... (e.g. 'reschedule tomorrow's workout')"
-              placeholderTextColor="#64748B"
+              placeholder={`Ask ${coachName}... (e.g. 'reschedule tomorrow's workout')`}
+              placeholderTextColor={Colors.light.mutedText}
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSendMessage}
@@ -541,6 +620,21 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  titleTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  renameInput: {
+    minWidth: 100,
+    maxWidth: 160,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.primary,
   },
   liveDot: {
     width: 8,

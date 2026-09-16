@@ -11,7 +11,7 @@ export interface User {
   coach_status?: string;
   interview_chat_id?: number | null;
   training_plan?: any;
-  goals?: any;
+  goals?: Record<string, any>;
 }
 
 export interface AuthContextType {
