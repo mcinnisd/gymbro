@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS public.training_events (
   date DATE NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  event_type TEXT CHECK (event_type IN ('run', 'strength', 'rest', 'race', 'cross_train', 'other')) NOT NULL,
+  event_type TEXT CHECK (event_type IN ('run', 'strength', 'rest', 'race', 'other', 'cross_train', 'ride', 'swim', 'walk', 'hike')) NOT NULL,
   status TEXT CHECK (status IN ('planned', 'completed', 'skipped')) DEFAULT 'planned',
   created_by TEXT CHECK (created_by IN ('user', 'coach', 'agent', 'garmin', 'strava')) DEFAULT 'user',
   metrics JSONB DEFAULT '{}'::jsonb, -- structured targets (target_pace, sets/reps, zone)

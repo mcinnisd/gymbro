@@ -28,12 +28,16 @@ def scheduled_telemetry_sync():
                 "id, garmin_email, garmin_password, garmin_sync_status"
             ).not_.is_("garmin_email", "null").execute()
             garmin_users = res.data or []
-            from app.garmin.scope import apply_sync_user_allowlist, parse_sync_user_allowlist
+            from app.garmin.scope import parse_sync_user_allowlist, select_users_for_garmin_sync
 
+            garmin_users, scope_err = select_users_for_garmin_sync(
+                garmin_users, all_users=True
+            )
+            if scope_err:
+                logger.warning("Scheduled Garmin sync skipped: %s", scope_err)
+                garmin_users = []
             allow = parse_sync_user_allowlist()
-            if allow:
-                garmin_users = apply_sync_user_allowlist(garmin_users)
-            elif len(garmin_users) > 1:
+            if not allow and len(garmin_users) > 1:
                 ids = ", ".join(str(u.get("id")) for u in garmin_users)
                 logger.warning(
                     "Scheduled Garmin sync found multiple connected users (%s). "

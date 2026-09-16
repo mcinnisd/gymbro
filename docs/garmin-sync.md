@@ -83,9 +83,19 @@ rows off user 2 (`on_conflict=activity_id` updates `user_id`). Apply
 Always pass `--user-id 2`; if several users have Garmin, CLI refuses unless
 `--all-users` or `GYMBRO_GARMIN_SYNC_USER_IDS=2`.
 
-**Calendar event_type:** live CHECK is `run|strength|rest|race|other`. Garmin
-`running` / `strength_training` / `hiking` / `resort_snowboarding` are mapped
-before insert (not stored raw).
+**Duplicate Garmin email:** several test users can store the same Garmin login.
+Deep sync then fans the same account onto every id (activities landed on 100,
+biometrics stayed on 2). CLI/scheduler keep **one user per Garmin email**
+(allowlist, then lowest numeric id). `--user-id 100` is refused when it shares
+an account with the canonical athlete. Logs and errors use user ids only — never
+emails.
+
+**Calendar event_type:** live CHECK is
+`run|strength|rest|race|other|cross_train|ride|swim|walk|hike` (migration
+`20260916_training_events_event_type_check.sql`). Garmin writers still emit only
+`run|strength|rest|race|other`; unknown typeKeys (`hiking`, `cycling`,
+`cross_train`, `resort_snowboarding`, …) map to `other` so the enum does not
+grow for every Garmin activity. Onboarding may still write `cross_train`.
 
 ## Verify on localhost (do not use Cloudflare / trycloudflare)
 

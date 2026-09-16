@@ -68,7 +68,23 @@ def test_map_garmin_running_to_calendar_run():
     assert map_activity_type_to_event_type("resort_snowboarding") == "other"
     assert map_activity_type_to_event_type("cycling") == "other"
     assert map_activity_type_to_event_type("workout") == "other"
-    for raw in ("running", "strength_training", "hiking", "resort_snowboarding"):
+    # Live CHECK extras must not passthrough from Garmin typeKeys.
+    assert map_activity_type_to_event_type("cross_train") == "other"
+    assert map_activity_type_to_event_type("ride") == "other"
+    assert map_activity_type_to_event_type("swim") == "other"
+    assert map_activity_type_to_event_type("walk") == "other"
+    assert map_activity_type_to_event_type("hike") == "other"
+    for raw in (
+        "running",
+        "strength_training",
+        "hiking",
+        "resort_snowboarding",
+        "cross_train",
+        "ride",
+        "swim",
+        "walk",
+        "hike",
+    ):
         assert map_activity_type_to_event_type(raw) in TRAINING_EVENT_TYPES_ALLOWED
 
 
@@ -101,6 +117,8 @@ def test_calendar_mirror_maps_raw_garmin_types_before_insert():
         {"activity_id": "g2", "activity_name": "Lift", "start_time_local": "2026-09-14T06:00:00", "activity_type": "strength_training"},
         {"activity_id": "g3", "activity_name": "Hike", "start_time_local": "2026-09-13T06:00:00", "activity_type": "hiking"},
         {"activity_id": "g4", "activity_name": "Board", "start_time_local": "2026-09-12T06:00:00", "activity_type": "resort_snowboarding"},
+        {"activity_id": "g5", "activity_name": "Cross", "start_time_local": "2026-09-11T06:00:00", "activity_type": "cross_train"},
+        {"activity_id": "g6", "activity_name": "Ride", "start_time_local": "2026-09-10T06:00:00", "activity_type": "ride"},
     ])
     rows = supabase.table("training_events").select("*").eq("user_id", 2).execute().data
     types = {r["title"]: r["event_type"] for r in rows}
@@ -108,6 +126,8 @@ def test_calendar_mirror_maps_raw_garmin_types_before_insert():
     assert types["Lift"] == "strength"
     assert types["Hike"] == "other"
     assert types["Board"] == "other"
+    assert types["Cross"] == "other"
+    assert types["Ride"] == "other"
     assert all(r["event_type"] in TRAINING_EVENT_TYPES_ALLOWED for r in rows)
     supabase.table("training_events").data["training_events"] = []
     _sync_activities_to_calendar("2", [{
@@ -223,6 +243,51 @@ def test_remirror_succeeds_when_metrics_column_missing():
     finally:
         supabase.missing_columns.pop("training_events", None)
         reset_training_events_metrics_column_cache(None)
+
+
+def test_live_event_type_check_accepts_widened_values_but_writers_use_other():
+    from app.calendar.constraints import TRAINING_EVENT_TYPES_CHECK
+
+    for extra in ("cross_train", "ride", "swim", "walk", "hike"):
+        assert extra in TRAINING_EVENT_TYPES_CHECK
+        assert extra not in TRAINING_EVENT_TYPES_ALLOWED
+        assert map_activity_type_to_event_type(extra) == "other"
+        assert_training_event_row({
+            "user_id": 2,
+            "date": "2026-09-15",
+            "title": "Legacy extra",
+            "event_type": extra,
+            "status": "completed",
+            "created_by": "coach",
+        })
+
+
+def test_raw_garmin_type_fails_assert_until_mapped():
+    with pytest.raises(ValueError, match="training_events_event_type_check"):
+        assert_training_event_row({
+            "user_id": 2,
+            "date": "2026-09-15",
+            "title": "Santa Monica Running",
+            "event_type": "running",
+            "status": "completed",
+            "created_by": "garmin",
+        })
+    assert_training_event_row({
+        "user_id": 2,
+        "date": "2026-09-15",
+        "title": "Santa Monica Running",
+        "event_type": map_activity_type_to_event_type("running"),
+        "status": "completed",
+        "created_by": "garmin",
+    })
+
+
+def test_event_type_check_migration_matches_live():
+    from pathlib import Path
+    sql = Path("migrations/20260916_training_events_event_type_check.sql").read_text()
+    assert "DROP CONSTRAINT IF EXISTS training_events_event_type_check" in sql
+    for value in ("run", "strength", "rest", "race", "other", "cross_train", "ride", "swim", "walk", "hike"):
+        assert f"'{value}'" in sql
 
 
 def test_mock_supabase_rejects_invalid_created_by_like_postgres():

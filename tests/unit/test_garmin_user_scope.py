@@ -1,4 +1,7 @@
-from app.garmin.scope import select_users_for_garmin_sync
+from app.garmin.scope import (
+    collapse_duplicate_garmin_emails,
+    select_users_for_garmin_sync,
+)
 from app.garmin.sync import upsert_garmin_activities
 from app.supabase_client import supabase
 
@@ -8,6 +11,7 @@ def test_select_users_for_garmin_sync_requires_user_id_when_multiple():
     selected, err = select_users_for_garmin_sync(rows)
     assert selected == []
     assert err and "--user-id" in err
+    assert "@" not in err
 
     selected, err = select_users_for_garmin_sync(rows, user_id="2")
     assert err is None
@@ -16,6 +20,61 @@ def test_select_users_for_garmin_sync_requires_user_id_when_multiple():
     selected, err = select_users_for_garmin_sync(rows, all_users=True)
     assert err is None
     assert len(selected) == 2
+
+
+def test_collapse_duplicate_garmin_emails_keeps_lowest_id():
+    rows = [
+        {"id": 100, "garmin_email": "Shared@example.com"},
+        {"id": 2, "garmin_email": " shared@example.com "},
+        {"id": 50, "garmin_email": "other@example.com"},
+    ]
+    kept, skipped = collapse_duplicate_garmin_emails(rows)
+    kept_ids = {u["id"] for u in kept}
+    assert 2 in kept_ids
+    assert 50 in kept_ids
+    assert 100 not in kept_ids
+    assert skipped == ["100"]
+
+
+def test_select_users_refuses_duplicate_email_user_id():
+    rows = [
+        {"id": 2, "garmin_email": "shared@example.com"},
+        {"id": 100, "garmin_email": "shared@example.com"},
+    ]
+    selected, err = select_users_for_garmin_sync(rows, user_id="100")
+    assert selected == []
+    assert err and "user_id=100" in err and "user_id=2" in err
+    assert "@" not in err
+    assert "shared" not in err.lower()
+
+    selected, err = select_users_for_garmin_sync(rows, user_id="2")
+    assert err is None
+    assert [u["id"] for u in selected] == [2]
+
+
+def test_select_users_collapses_duplicate_email_without_user_id():
+    rows = [
+        {"id": 2, "garmin_email": "shared@example.com"},
+        {"id": 100, "garmin_email": "shared@example.com"},
+    ]
+    selected, err = select_users_for_garmin_sync(rows)
+    assert err is None
+    assert [u["id"] for u in selected] == [2]
+
+    selected, err = select_users_for_garmin_sync(rows, all_users=True)
+    assert err is None
+    assert [u["id"] for u in selected] == [2]
+
+
+def test_select_users_allowlist_wins_duplicate_email(monkeypatch):
+    monkeypatch.setenv("GYMBRO_GARMIN_SYNC_USER_IDS", "100")
+    rows = [
+        {"id": 2, "garmin_email": "shared@example.com"},
+        {"id": 100, "garmin_email": "shared@example.com"},
+    ]
+    selected, err = select_users_for_garmin_sync(rows, user_id="100")
+    assert err is None
+    assert [u["id"] for u in selected] == [100]
 
 
 def test_select_users_for_garmin_sync_honors_allowlist(monkeypatch):

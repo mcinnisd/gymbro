@@ -203,15 +203,19 @@ def cmd_remirror_calendar(args):
         print("remirror-calendar: supabase client is not configured")
         return 1
 
-    user_ids = []
-    if args.user_id:
-        user_ids = [str(args.user_id)]
-    else:
-        rows = _users_with_garmin(supabase)
-        user_ids = [str(u["id"]) for u in rows]
-        if not user_ids:
-            print("remirror-calendar: no Garmin-connected users.")
-            return 1
+    rows = _users_with_garmin(supabase)
+    from app.garmin.scope import select_users_for_garmin_sync
+
+    rows, err = select_users_for_garmin_sync(
+        rows, user_id=args.user_id, all_users=args.user_id is None
+    )
+    if err:
+        print(f"remirror-calendar: {err}")
+        return 1
+    user_ids = [str(u["id"]) for u in rows]
+    if not user_ids:
+        print("remirror-calendar: no Garmin-connected users.")
+        return 1
 
     failures = 0
     for uid in user_ids:
@@ -246,7 +250,7 @@ def main(argv=None):
     sync_p.add_argument(
         "--all-users",
         action="store_true",
-        help="Sync every Garmin-connected user (default is --user-id or GYMBRO_GARMIN_SYNC_USER_IDS)",
+        help="Sync every Garmin-connected user after collapsing duplicate Garmin emails",
     )
     sync_p.add_argument("--force", action="store_true", help="Force resync (skip delta-date skipping)")
 

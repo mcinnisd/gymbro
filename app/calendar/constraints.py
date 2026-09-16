@@ -14,8 +14,24 @@ import json
 import re
 
 TRAINING_EVENT_CREATED_BY_ALLOWED = ("user", "coach", "agent", "garmin", "strava")
-# Live Postgres CHECK is run|strength|rest|race|other (no Garmin typeKeys, no cross_train).
-TRAINING_EVENT_TYPES_ALLOWED = ("run", "strength", "rest", "race", "other")
+# Writers emit this closed set. Unknown Garmin typeKeys map to "other" rather
+# than growing the enum (cross_train/ride/swim/walk/hike stay CHECK-only).
+TRAINING_EVENT_TYPES_WRITTEN = ("run", "strength", "rest", "race", "other")
+TRAINING_EVENT_TYPES_ALLOWED = TRAINING_EVENT_TYPES_WRITTEN
+# Live Postgres CHECK (widened 2026-09-16). assert_training_event_row accepts
+# this set; Garmin remirror still writes TRAINING_EVENT_TYPES_WRITTEN only.
+TRAINING_EVENT_TYPES_CHECK = (
+    "run",
+    "strength",
+    "rest",
+    "race",
+    "other",
+    "cross_train",
+    "ride",
+    "swim",
+    "walk",
+    "hike",
+)
 TRAINING_EVENT_STATUS_ALLOWED = ("planned", "completed", "skipped")
 
 # Live Postgres may not yet have training_events.metrics (42703). Persist the
@@ -37,13 +53,20 @@ _EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE = {
     "rest": "rest",
     "race": "race",
     "hiking": "other",
+    "hike": "other",
     "walking": "other",
+    "walk": "other",
     "cycling": "other",
     "indoor_cycling": "other",
     "mountain_biking": "other",
+    "road_biking": "other",
+    "ride": "other",
+    "bike": "other",
+    "biking": "other",
     "swimming": "other",
     "lap_swimming": "other",
     "open_water_swimming": "other",
+    "swim": "other",
     "yoga": "other",
     "cardio": "other",
     "elliptical": "other",
@@ -67,16 +90,25 @@ _ACTIVITY_TYPE_TO_EVENT_TYPE = (
 
 
 def map_activity_type_to_event_type(activity_type: Optional[str]) -> str:
-    """Map Garmin/Strava activity_type strings onto live training_events.event_type."""
+    """Map Garmin/Strava activity_type strings onto written calendar types.
+
+    Live CHECK also allows cross_train/ride/swim/walk/hike (onboarding / widened
+    live enum). Do not passthrough those: unknown Garmin types become `other`.
+    """
     raw = str(activity_type or "other").strip().lower().replace(" ", "_").replace("-", "_")
-    if raw in TRAINING_EVENT_TYPES_ALLOWED:
+    if raw in TRAINING_EVENT_TYPES_WRITTEN:
         return raw
     if raw in _EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE:
-        return _EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE[raw]
-    for needle, mapped in _ACTIVITY_TYPE_TO_EVENT_TYPE:
-        if needle in raw:
-            return mapped
-    return "other"
+        mapped = _EXACT_ACTIVITY_TYPE_TO_EVENT_TYPE[raw]
+    else:
+        mapped = "other"
+        for needle, mapped_type in _ACTIVITY_TYPE_TO_EVENT_TYPE:
+            if needle in raw:
+                mapped = mapped_type
+                break
+    if mapped not in TRAINING_EVENT_TYPES_WRITTEN:
+        return "other"
+    return mapped
 
 
 def garmin_activity_id_from_doc(doc: Dict[str, Any]) -> Optional[str]:
@@ -162,7 +194,7 @@ def assert_training_event_row(row: Dict[str, Any]) -> None:
             '"training_events_created_by_check"'
         )
     event_type = row.get("event_type")
-    if event_type not in TRAINING_EVENT_TYPES_ALLOWED:
+    if event_type not in TRAINING_EVENT_TYPES_CHECK:
         raise ValueError(
             'new row for relation "training_events" violates check constraint '
             '"training_events_event_type_check"'

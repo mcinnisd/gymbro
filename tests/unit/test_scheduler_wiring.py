@@ -87,6 +87,35 @@ def test_scheduled_telemetry_sync_honors_user_allowlist(monkeypatch):
     assert "100" not in synced_ids
 
 
+def test_scheduled_telemetry_sync_collapses_duplicate_garmin_email(monkeypatch):
+    monkeypatch.delenv("GYMBRO_GARMIN_SYNC_USER_IDS", raising=False)
+    original_users = list(supabase.data.get("users") or [])
+    supabase.data["users"] = [
+        {
+            "id": 2,
+            "username": "canonical",
+            "garmin_email": "shared@example.com",
+            "garmin_password": "encrypted_test_pass",
+            "garmin_sync_status": "synced",
+        },
+        {
+            "id": 100,
+            "username": "duplicate_test",
+            "garmin_email": "shared@example.com",
+            "garmin_password": "encrypted_test_pass",
+            "garmin_sync_status": "synced",
+        },
+    ]
+    try:
+        with patch("app.scheduler_jobs.sync_all_garmin_data_for_user") as mock_sync, \
+             patch("app.scheduler_jobs.AnalyticsService.calculate_baselines"):
+            scheduled_telemetry_sync()
+        synced_ids = [str(c.args[0]) for c in mock_sync.call_args_list]
+        assert synced_ids == ["2"]
+    finally:
+        supabase.data["users"] = original_users
+
+
 def test_scheduled_telemetry_sync_skips_users_already_syncing():
     supabase.table("users").upsert({
         "id": 8,
