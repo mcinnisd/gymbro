@@ -64,6 +64,23 @@ def create_app():
     from app.onboarding.routes import onboarding_bp
     app.register_blueprint(onboarding_bp, url_prefix="/onboarding")
 
+    # Authenticated MCP Streamable HTTP (phone / Cloudflare Tunnel / ngrok)
+    from app.mcp.routes import mcp_bp
+    from app.mcp.http_transport import init_mcp_http
+
+    app.register_blueprint(mcp_bp)
+    # Skip background runtime when explicitly disabled (e.g. some unit suites).
+    if os.getenv("GYMBRO_MCP_HTTP_DISABLE", "").lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        try:
+            init_mcp_http(app)
+        except Exception as exc:  # pragma: no cover - startup diagnostics
+            app.logger.error("MCP HTTP runtime failed to start: %s", exc)
+
     # Set up logging if not in debug mode
     if not app.debug:
         handler = RotatingFileHandler('error.log', maxBytes=100000, backupCount=3)
