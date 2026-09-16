@@ -68,6 +68,23 @@ def create_app():
     from app.scheduler import init_telemetry_scheduler
     init_telemetry_scheduler(app)
 
+    # Authenticated MCP Streamable HTTP at /api/mcp (localhost; no Cloudflare required)
+    from app.mcp.routes import mcp_bp
+
+    app.register_blueprint(mcp_bp)
+    if os.getenv("GYMBRO_MCP_HTTP_DISABLE", "").lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        try:
+            from app.mcp.http_transport import init_mcp_http
+
+            init_mcp_http(app)
+        except Exception as exc:  # pragma: no cover - startup diagnostics
+            app.logger.error("MCP HTTP runtime failed to start: %s", exc)
+
     @app.route("/internal/jobs/telemetry-sync", methods=["POST"])
     @limiter.exempt
     def internal_telemetry_sync():

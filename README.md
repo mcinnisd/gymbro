@@ -23,6 +23,10 @@ SECRET_KEY=your_secret_key
 JWT_SECRET_KEY=your_jwt_secret_key
 MOCK_DB=true  # Set to true for offline local testing, or false to use Supabase
 
+# MCP connector (localhost /api/mcp). Put real values only in .env — never commit them.
+# GYMBRO_MCP_API_KEY=a-long-random-secret
+# GYMBRO_MCP_USER_ID=2
+
 # LLM Configuration
 LLM_PROVIDER=gemini  # 'gemini', 'openai', 'xai', or 'local'
 GEMINI_API_KEY=your_gemini_api_key
@@ -102,7 +106,7 @@ npm start
 
 ## 🏗️ Architecture Overview
 
-- **Backend (`/app`)**: Flask REST API providing `/auth`, `/coach`, `/chats`, `/activities`, `/nutrition`, `/journal`, `/analytics`, `/strava`, and `/garmin` endpoints. Garmin → Supabase auto-sync and **localhost** MCP-tool verification (no Cloudflare tunnel) are in [`docs/garmin-sync.md`](docs/garmin-sync.md).
+- **Backend (`/app`)**: Flask REST API providing `/auth`, `/coach`, `/chats`, `/activities`, `/nutrition`, `/journal`, `/analytics`, `/strava`, `/garmin`, and authenticated MCP Streamable HTTP at `/api/mcp`. Garmin → Supabase auto-sync is in [`docs/garmin-sync.md`](docs/garmin-sync.md). Run the MCP server on localhost (no Cloudflare) via [`docs/mcp.md`](docs/mcp.md).
 - **Mobile Frontend (`/gymbro-frontend-expo`)**: React Native app with Expo Router (`/training`, `/chat`, `/stats`, `/recovery`, `/nutrition`).
 - **Web Frontend (`/gymbro-frontend`)**: React + MUI web dashboard.
 - **AI Engine (`app/coach` & `app/agent`)**: Dynamic context builder & prompt generator interfacing with LLM providers to deliver autonomous fitness coaching.

@@ -3,6 +3,10 @@ import os
 from urllib.parse import urlparse
 from app import create_app
 
+# Skip the Streamable HTTP runtime for the general suite (no background thread).
+# tests/unit/test_mcp_http.py unsets this so it can exercise POST /api/mcp.
+os.environ.setdefault("GYMBRO_MCP_HTTP_DISABLE", "true")
+
 class FlaskTestClientWrapper:
     def __init__(self, flask_client):
         self.client = flask_client

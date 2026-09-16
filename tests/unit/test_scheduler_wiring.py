@@ -19,7 +19,10 @@ class ImmediateThread:
             self._target(*self._args, **self._kwargs)
 
 
-def test_should_start_scheduler_disabled_during_pytest():
+def test_create_app_registers_mcp_http_route(app):
+    rules = {rule.rule for rule in app.url_map.iter_rules()}
+    assert "/api/mcp" in rules
+    assert "/internal/jobs/telemetry-sync" in rules
     assert os.environ.get("PYTEST_CURRENT_TEST")
     class _App:
         config = {}

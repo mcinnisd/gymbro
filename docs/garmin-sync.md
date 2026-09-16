@@ -8,11 +8,11 @@ This is **not** official Garmin OAuth. Credentials are Garmin email + password,
 encrypted with `ENCRYPTION_KEY` and stored on the athlete row. Do not commit
 `.env`, tokens, or passwords.
 
-`app/mcp/` is not on `main` yet (ADR-0003). Verify tools on **localhost**
-(`127.0.0.1:5001` or in-process CLI / pytest). Do not use Cloudflare quick
-tunnel / trycloudflare for tests — it rate-limits at ~50 requests/hour. Those
-429s are the tunnel, not Garmin or empty-data logic. MCP binds `user_id` from
-the API token; never invent one.
+Authenticated MCP HTTP lives at `app/mcp/` (`POST /api/mcp` and `python -m app.mcp`).
+See [`docs/mcp.md`](mcp.md). Verify tools on **localhost** (`127.0.0.1:5001` or
+in-process CLI / pytest). Do not use Cloudflare quick tunnel / trycloudflare for
+tests — it rate-limits at ~50 requests/hour. Those 429s are the tunnel, not Garmin
+or empty-data logic. MCP binds `user_id` from the API token / API key; never invent one.
 
 ## How sync is supposed to run
 
@@ -63,15 +63,17 @@ but calendar mirroring fails with `training_events_created_by_check`.
 ## Verify on localhost (do not use Cloudflare / trycloudflare)
 
 trycloudflare rate-limits at ~50 requests/hour. That 429 is **not** this bug and
-is **not** required for verification. `app/mcp/` is not on `main` (ADR-0003);
-the domain tools MCP would call are the same Python functions tested below.
+is **not** required for verification. The domain tools MCP calls are the same
+Python functions tested below; `/api/mcp` is documented in [`docs/mcp.md`](mcp.md).
 
 ### 1. Regression tests (no server, no tunnel, no live Garmin)
 
 ```bash
 MOCK_DB=true PYTHONPATH=. python -m pytest \
   tests/unit/test_activity_tools.py \
-  tests/unit/test_scheduler_wiring.py -v
+  tests/unit/test_scheduler_wiring.py \
+  tests/unit/test_mcp_adapter.py \
+  tests/unit/test_mcp_http.py -v
 ```
 
 These seed **fixture** Garmin rows in the in-memory mock DB only. They prove the
