@@ -96,16 +96,17 @@ def sync_if_needed(user_id: str, debounce_minutes: int = 15) -> bool:
                 enc_key = os.environ.get("ENCRYPTION_KEY")
 
             days_to_sync = 365 if is_first_sync else 7
+            sync_mode = "all_time" if is_first_sync else "incremental"
             import threading
-            def _garmin_auto_worker(uid, key, days):
+            def _garmin_auto_worker(uid, key, days, mode):
                 try:
-                    sync_all_garmin_data_for_user(uid, days_back=days, encryption_key=key)
+                    sync_all_garmin_data_for_user(uid, days_back=days, encryption_key=key, mode=mode)
                     from app.analytics.analytics_service import AnalyticsService
                     AnalyticsService.calculate_baselines(uid)
                 except Exception as g_err:
                     logger.error(f"Background auto-sync error for user {uid}: {g_err}")
 
-            thread = threading.Thread(target=_garmin_auto_worker, args=(user_id, enc_key, days_to_sync))
+            thread = threading.Thread(target=_garmin_auto_worker, args=(user_id, enc_key, days_to_sync, sync_mode))
             thread.daemon = True
             thread.start()
             return True

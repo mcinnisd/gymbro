@@ -139,15 +139,16 @@ def check_and_sync_if_needed():
             if should_sync_garmin:
                 from app.garmin.sync import sync_all_garmin_data_for_user
                 days_to_sync = 365 if is_first_sync else 7
-                def _garmin_auto(u_id, key, days):
+                sync_mode = "all_time" if is_first_sync else "incremental"
+                def _garmin_auto(u_id, key, days, mode):
                     try:
-                        sync_all_garmin_data_for_user(u_id, days_back=days, encryption_key=key)
+                        sync_all_garmin_data_for_user(u_id, days_back=days, encryption_key=key, mode=mode)
                         from app.analytics.analytics_service import AnalyticsService
                         AnalyticsService.calculate_baselines(u_id)
                     except Exception as err:
                         logger.error(f"Auto-sync Garmin error for user {u_id}: {err}")
 
-                t = threading.Thread(target=_garmin_auto, args=(user_id, enc_key, days_to_sync))
+                t = threading.Thread(target=_garmin_auto, args=(user_id, enc_key, days_to_sync, sync_mode))
                 t.daemon = True
                 t.start()
                 triggered_providers.append("garmin")

@@ -1,5 +1,6 @@
 # app/__init__.py
 
+import hmac
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request
@@ -63,6 +64,29 @@ def create_app():
 
     from app.onboarding.routes import onboarding_bp
     app.register_blueprint(onboarding_bp, url_prefix="/onboarding")
+
+    from app.scheduler import init_telemetry_scheduler
+    init_telemetry_scheduler(app)
+
+    @app.route("/internal/jobs/telemetry-sync", methods=["POST"])
+    @limiter.exempt
+    def internal_telemetry_sync():
+        """
+        External cron / Cloud Scheduler seam for Garmin → Supabase incremental sync.
+        Disabled until INTERNAL_JOB_TOKEN is set. Token is compared as a header only.
+        """
+        expected = os.getenv("INTERNAL_JOB_TOKEN")
+        if not expected:
+            return jsonify({
+                "error": "INTERNAL_JOB_TOKEN is not configured. Set it to enable cron/Cloud Scheduler triggers.",
+                "status": "disabled",
+            }), 503
+        provided = request.headers.get("X-Internal-Job-Token") or ""
+        if not hmac.compare_digest(provided, expected):
+            return jsonify({"error": "unauthorized"}), 401
+        from app.scheduler_jobs import scheduled_telemetry_sync
+        scheduled_telemetry_sync()
+        return jsonify({"status": "ok", "job": "telemetry_sync"}), 200
 
     # Set up logging if not in debug mode
     if not app.debug:
