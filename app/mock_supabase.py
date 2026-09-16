@@ -36,6 +36,12 @@ class MockSupabaseClient:
         self.current_table = None
         self.query_filters = []
 
+    def _validate_row(self, item):
+        if self.current_table != "training_events":
+            return
+        from app.calendar.constraints import assert_training_event_row
+        assert_training_event_row(item)
+
     def table(self, table_name):
         self.current_table = table_name
         if table_name not in self.data:
@@ -52,6 +58,7 @@ class MockSupabaseClient:
                 inserted = []
                 for item in data:
                     item_copy = dict(item)
+                    self._validate_row(item_copy)
                     if "id" not in item_copy:
                         item_copy["id"] = len(self.data[self.current_table]) + 1
                     self.data[self.current_table].append(item_copy)
@@ -59,6 +66,7 @@ class MockSupabaseClient:
                 self.last_result_data = inserted
             else:
                 item_copy = dict(data)
+                self._validate_row(item_copy)
                 if "id" not in item_copy:
                     item_copy["id"] = len(self.data[self.current_table]) + 1
                 self.data[self.current_table].append(item_copy)
@@ -71,6 +79,7 @@ class MockSupabaseClient:
             results = []
             for item in items:
                 item_copy = dict(item)
+                self._validate_row(item_copy)
                 conflict_key = on_conflict or "id"
                 existing = None
                 keys = [k.strip() for k in conflict_key.split(",")]

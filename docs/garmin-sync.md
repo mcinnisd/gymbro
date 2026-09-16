@@ -54,6 +54,12 @@ session/init, the stored password cannot be decrypted (`ENCRYPTION_KEY` mismatch
 or Garmin SSO rejected the login (password change, 2FA). Reconnect; do not paste
 credentials into issues or chat.
 
+After a successful `python -m app.garmin.cli sync`, apply
+`migrations/20260916_training_events_created_by_garmin.sql` once on the live
+Supabase project (SQL editor) so `created_by='garmin'` is allowed on
+`training_events`. Until that runs, activity rows land in `garmin_activities`
+but calendar mirroring fails with `training_events_created_by_check`.
+
 ## Verify on localhost (do not use Cloudflare / trycloudflare)
 
 trycloudflare rate-limits at ~50 requests/hour. That 429 is **not** this bug and
