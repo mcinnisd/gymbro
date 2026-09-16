@@ -274,7 +274,7 @@ TOOLS_REGISTRY = [
         "type": "function",
         "function": {
             "name": "get_recent_activities",
-            "description": "Retrieve recent workout activities (runs, rides, swims, strength) with distances, durations, paces, and heart rates.",
+            "description": "Retrieve recent workout activities (Garmin-first via unified garmin_activities / Strava / manual) with distances, durations, paces, and heart rates.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -295,7 +295,7 @@ TOOLS_REGISTRY = [
         "type": "function",
         "function": {
             "name": "get_wellness_metrics",
-            "description": "Retrieve sleep quality, HRV, resting heart rate, and stress metrics over a period.",
+            "description": "Retrieve sleep quality, HRV, resting heart rate, and stress metrics from biometrics_daily (Garmin canonical wellness table).",
             "parameters": {
                 "type": "object",
                 "properties": {

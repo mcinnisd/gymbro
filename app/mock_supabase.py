@@ -35,15 +35,38 @@ class MockSupabaseClient:
         }
         self.current_table = None
         self.query_filters = []
+        # table -> column names that should raise Postgres 42703 (undefined column)
+        self.missing_columns = {}
+
+    def _raise_if_missing_columns(self, names):
+        missing = self.missing_columns.get(self.current_table) or set()
+        for name in names:
+            if name and name != "*" and name in missing:
+                err = ValueError(
+                    f'column {self.current_table}.{name} does not exist'
+                )
+                err.code = "42703"
+                raise err
+
+    def _validate_row(self, item):
+        if self.current_table != "training_events":
+            return
+        from app.calendar.constraints import assert_training_event_row
+        assert_training_event_row(item)
+        self._raise_if_missing_columns(item.keys())
 
     def table(self, table_name):
         self.current_table = table_name
         if table_name not in self.data:
             self.data[table_name] = []
         self.query_filters = []
+        for attr in ("range_start", "range_end", "limit_count", "order_column", "order_desc", "select_columns"):
+            if hasattr(self, attr):
+                delattr(self, attr)
         return self
 
     def select(self, *columns, **kwargs):
+        self.select_columns = columns[0] if columns else "*"
         return self
 
     def insert(self, data):
@@ -52,6 +75,7 @@ class MockSupabaseClient:
                 inserted = []
                 for item in data:
                     item_copy = dict(item)
+                    self._validate_row(item_copy)
                     if "id" not in item_copy:
                         item_copy["id"] = len(self.data[self.current_table]) + 1
                     self.data[self.current_table].append(item_copy)
@@ -59,6 +83,7 @@ class MockSupabaseClient:
                 self.last_result_data = inserted
             else:
                 item_copy = dict(data)
+                self._validate_row(item_copy)
                 if "id" not in item_copy:
                     item_copy["id"] = len(self.data[self.current_table]) + 1
                 self.data[self.current_table].append(item_copy)
@@ -71,6 +96,7 @@ class MockSupabaseClient:
             results = []
             for item in items:
                 item_copy = dict(item)
+                self._validate_row(item_copy)
                 conflict_key = on_conflict or "id"
                 existing = None
                 keys = [k.strip() for k in conflict_key.split(",")]
@@ -159,6 +185,12 @@ class MockSupabaseClient:
     def limit(self, count):
         self.limit_count = count
         return self
+
+    def range(self, start, end):
+        """Inclusive range, matching PostgREST / supabase-py."""
+        self.range_start = start
+        self.range_end = end
+        return self
         
     def single(self):
         self.single_mode = True
@@ -195,6 +227,11 @@ class MockSupabaseClient:
             return MockResponse(res_data)
 
         rows = self.data.get(self.current_table, [])
+        if hasattr(self, "select_columns"):
+            cols = self.select_columns
+            del self.select_columns
+            if cols and cols != "*":
+                self._raise_if_missing_columns([c.strip() for c in str(cols).split(",")])
         
         # Apply filters
         for f in self.query_filters:
@@ -228,6 +265,13 @@ class MockSupabaseClient:
         if hasattr(self, 'limit_count'):
             rows = rows[:self.limit_count]
             del self.limit_count
+
+        if hasattr(self, "range_start"):
+            start = self.range_start
+            end_exclusive = self.range_end + 1
+            rows = rows[start:end_exclusive]
+            del self.range_start
+            del self.range_end
             
         if hasattr(self, 'single_mode'):
             del self.single_mode

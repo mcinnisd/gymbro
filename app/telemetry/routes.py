@@ -139,15 +139,16 @@ def check_and_sync_if_needed():
             if should_sync_garmin:
                 from app.garmin.sync import sync_all_garmin_data_for_user
                 days_to_sync = 365 if is_first_sync else 7
-                def _garmin_auto(u_id, key, days):
+                sync_mode = "all_time" if is_first_sync else "incremental"
+                def _garmin_auto(u_id, key, days, mode):
                     try:
-                        sync_all_garmin_data_for_user(u_id, days_back=days, encryption_key=key)
+                        sync_all_garmin_data_for_user(u_id, days_back=days, encryption_key=key, mode=mode)
                         from app.analytics.analytics_service import AnalyticsService
                         AnalyticsService.calculate_baselines(u_id)
                     except Exception as err:
                         logger.error(f"Auto-sync Garmin error for user {u_id}: {err}")
 
-                t = threading.Thread(target=_garmin_auto, args=(user_id, enc_key, days_to_sync))
+                t = threading.Thread(target=_garmin_auto, args=(user_id, enc_key, days_to_sync, sync_mode))
                 t.daemon = True
                 t.start()
                 triggered_providers.append("garmin")
@@ -257,6 +258,33 @@ def get_daily_biometrics():
     except Exception as e:
         logger.error(f"Error fetching daily biometrics for user {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
+
+@telemetry_bp.route("/tools/wellness-metrics", methods=["GET"])
+@jwt_required()
+def mcp_equivalent_wellness_metrics():
+    """
+    Localhost MCP-equivalent: same function MCP get_wellness_metrics calls.
+    Binds athlete from the JWT. No Cloudflare tunnel required.
+    """
+    from app.tools.activity_tools import get_wellness_metrics
+    user_id = str(get_jwt_identity())
+    days = request.args.get("days", default=7, type=int) or 7
+    return jsonify(get_wellness_metrics(user_id, days=days)), 200
+
+
+@telemetry_bp.route("/tools/recent-activities", methods=["GET"])
+@jwt_required()
+def mcp_equivalent_recent_activities():
+    """
+    Localhost MCP-equivalent: same function MCP get_recent_activities calls.
+    Binds athlete from the JWT. No Cloudflare tunnel required.
+    """
+    from app.tools.activity_tools import get_recent_activities
+    user_id = str(get_jwt_identity())
+    days = request.args.get("days", default=14, type=int) or 14
+    activity_type = request.args.get("activity_type")
+    return jsonify(get_recent_activities(user_id, days=days, activity_type=activity_type)), 200
+
 
 @telemetry_bp.route("/biometrics", methods=["POST"])
 @jwt_required()

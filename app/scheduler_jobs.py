@@ -1,5 +1,6 @@
 # app/scheduler_jobs.py
 import logging
+import os
 from app.garmin.sync import sync_all_garmin_data_for_user
 from app.strava.sync import sync_strava_activities
 from app.analytics.analytics_service import AnalyticsService
@@ -9,21 +10,55 @@ logger = logging.getLogger(__name__)
 
 def scheduled_telemetry_sync():
     """
-    Scheduled task to orchestrate daily telemetry synchronization across Garmin Connect
+    Scheduled task to orchestrate incremental telemetry synchronization across Garmin Connect
     and Strava accounts for all active users, updating baseline analytics.
+
+    Must be called with mode="incremental". Default sync_all_garmin_data_for_user mode is
+    all_time, which would re-backfill the entire archive on every tick.
     """
     if not supabase:
         return
 
+    encryption_key = os.environ.get("ENCRYPTION_KEY")
+
     try:
         # 1. Sync Garmin users
         try:
-            res = supabase.table("users").select("id").not_.is_("garmin_email", "null").execute()
+            res = supabase.table("users").select(
+                "id, garmin_email, garmin_password, garmin_sync_status"
+            ).not_.is_("garmin_email", "null").execute()
             garmin_users = res.data or []
+            from app.garmin.scope import parse_sync_user_allowlist, select_users_for_garmin_sync
+
+            garmin_users, scope_err = select_users_for_garmin_sync(
+                garmin_users, all_users=True
+            )
+            if scope_err:
+                logger.warning("Scheduled Garmin sync skipped: %s", scope_err)
+                garmin_users = []
+            allow = parse_sync_user_allowlist()
+            if not allow and len(garmin_users) > 1:
+                ids = ", ".join(str(u.get("id")) for u in garmin_users)
+                logger.warning(
+                    "Scheduled Garmin sync found multiple connected users (%s). "
+                    "Set GYMBRO_GARMIN_SYNC_USER_IDS=2 to scope to the real athlete.",
+                    ids,
+                )
             for user in garmin_users:
                 user_id = str(user["id"])
+                if not user.get("garmin_password"):
+                    logger.info(f"Skipping scheduled Garmin sync for user {user_id}: credentials incomplete.")
+                    continue
+                if user.get("garmin_sync_status") == "syncing":
+                    logger.info(f"Skipping scheduled Garmin sync for user {user_id}: already syncing.")
+                    continue
                 try:
-                    sync_all_garmin_data_for_user(user_id, days_back=1)
+                    sync_all_garmin_data_for_user(
+                        user_id,
+                        days_back=7,
+                        encryption_key=encryption_key,
+                        mode="incremental",
+                    )
                     AnalyticsService.calculate_baselines(user_id)
                     logger.info(f"Scheduled Garmin sync completed for user {user_id}.")
                 except Exception as e:

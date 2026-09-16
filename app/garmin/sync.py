@@ -15,8 +15,11 @@ from garminconnect import (
 )
 
 from app.utils.encryption import encrypt_data, decrypt_data
+from app.garmin.scope import normalize_garmin_user_id
 
 logger = logging.getLogger(__name__)
+
+GARMIN_ACTIVITIES_ON_CONFLICT = "user_id,activity_id"
 
 def robust_api_call(func, *args, retries=3, backoff_base=1.5, **kwargs):
     """
@@ -142,37 +145,209 @@ def log_to_file(msg):
     except:
         pass
 
+# Cached after the first 42703 / successful metrics write.
+_TRAINING_EVENTS_HAS_METRICS = None
+
+
+def reset_training_events_metrics_column_cache(value=None):
+    """Test helper: None = unknown, True/False = force include/omit metrics."""
+    global _TRAINING_EVENTS_HAS_METRICS
+    _TRAINING_EVENTS_HAS_METRICS = value
+
+
+def _without_metrics(row: dict) -> dict:
+    from app.calendar.constraints import strip_metrics_column
+    return strip_metrics_column(row)
+
+
+def _is_missing_metrics_column(exc: BaseException) -> bool:
+    from app.calendar.constraints import is_undefined_column_error
+    return is_undefined_column_error(exc, "metrics")
+
+
+def _upsert_training_events(batch: list) -> None:
+    """Upsert calendar rows, omitting metrics when live Postgres lacks the column."""
+    global _TRAINING_EVENTS_HAS_METRICS
+    if not batch:
+        return
+    from app.calendar.constraints import map_activity_type_to_event_type
+
+    payload = [
+        {**row, "event_type": map_activity_type_to_event_type(row.get("event_type"))}
+        for row in batch
+    ]
+    if _TRAINING_EVENTS_HAS_METRICS is False:
+        payload = [_without_metrics(row) for row in payload]
+    try:
+        supabase.table("training_events").upsert(payload).execute()
+        if _TRAINING_EVENTS_HAS_METRICS is None and any("metrics" in row for row in payload):
+            _TRAINING_EVENTS_HAS_METRICS = True
+        return
+    except Exception as exc:
+        if _TRAINING_EVENTS_HAS_METRICS is not False and _is_missing_metrics_column(exc):
+            _TRAINING_EVENTS_HAS_METRICS = False
+            logger.warning(
+                "training_events.metrics is missing (42703); remirror continues without that column. "
+                "Apply migrations/20260916_training_events_metrics.sql when convenient."
+            )
+            supabase.table("training_events").upsert(
+                [_without_metrics(row) for row in payload]
+            ).execute()
+            return
+        raise
+
+
+def upsert_garmin_activities(user_id, batch: list) -> None:
+    """
+    Write garmin_activities for one athlete without stealing another user's rows.
+
+    Conflict target is (user_id, activity_id). A global UNIQUE(activity_id) used
+    to reassign Santa Monica workouts from user 2 onto user 100.
+    """
+    if not supabase or not batch:
+        return
+    uid = normalize_garmin_user_id(user_id)
+    payload = []
+    for doc in batch:
+        row = dict(doc)
+        row["user_id"] = uid
+        row["activity_id"] = str(row.get("activity_id") or "")
+        payload.append(row)
+    try:
+        supabase.table("garmin_activities").upsert(
+            payload, on_conflict=GARMIN_ACTIVITIES_ON_CONFLICT
+        ).execute()
+        return
+    except Exception as exc:
+        logger.warning(
+            "garmin_activities upsert on (user_id, activity_id) failed (%s); "
+            "trying legacy on_conflict=activity_id. Apply "
+            "migrations/20260916_garmin_activities_user_scoped.sql.",
+            exc,
+        )
+    supabase.table("garmin_activities").upsert(payload, on_conflict="activity_id").execute()
+
+
+def _garmin_calendar_existing_keys(user_id):
+    """Return (activity_ids, date+title pairs) already mirrored as created_by=garmin."""
+    from app.calendar.constraints import parse_garmin_activity_id_from_row
+
+    uid = int(user_id) if str(user_id).isdigit() else user_id
+    # Do not select metrics: live Postgres 42703s if the column is undeployed.
+    res = (
+        supabase.table("training_events")
+        .select("date,title,description")
+        .eq("user_id", uid)
+        .eq("created_by", "garmin")
+        .execute()
+    )
+    activity_ids = set()
+    date_titles = set()
+    for row in res.data or []:
+        aid = parse_garmin_activity_id_from_row(row)
+        if aid:
+            activity_ids.add(str(aid))
+        date_titles.add((str(row.get("date") or "")[:10], row.get("title")))
+    return activity_ids, date_titles
+
+
 def _sync_activities_to_calendar(user_id: str, activities: list):
     """
     Populates Garmin activities into the training_events table for calendar strip display.
+    created_by is 'garmin' (allowed by training_events_created_by_check).
+    event_type is mapped onto the calendar enum (running → run, etc.).
+    Skips rows already mirrored so a remirror after a failed CHECK is idempotent.
     """
     if not supabase or not activities:
-        return
+        return {"inserted": 0, "skipped": 0}
     try:
+        from app.calendar.constraints import (
+            assert_training_event_row,
+            calendar_event_from_garmin_activity,
+            map_activity_type_to_event_type,
+        )
         calendar_batch = []
         uid = int(user_id) if str(user_id).isdigit() else user_id
+        existing_ids, existing_titles = _garmin_calendar_existing_keys(uid)
+        skipped = 0
         for doc in activities:
-            act_date = str(doc.get("start_time_local", ""))[:10]
-            if act_date:
-                raw_dist = doc.get("distance") or 0
-                dist_km = round(raw_dist / 1000, 2) if raw_dist > 100 else round(raw_dist, 2)
-                raw_dur = doc.get("duration") or 0
-                dur_min = round(raw_dur / 60, 1) if raw_dur > 300 else round(raw_dur, 1)
-                calendar_batch.append({
-                    "user_id": uid,
-                    "date": act_date,
-                    "title": doc.get("activity_name") or "Garmin Workout",
-                    "description": f"Distance: {dist_km}km, Duration: {dur_min}min, Avg HR: {doc.get('average_hr', 'N/A')} bpm",
-                    "event_type": doc.get("activity_type", "workout").lower(),
-                    "status": "completed",
-                    "created_by": "garmin",
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                })
+            event = calendar_event_from_garmin_activity(uid, doc)
+            if not event:
+                skipped += 1
+                continue
+            event["event_type"] = map_activity_type_to_event_type(event.get("event_type"))
+            aid = (event.get("metrics") or {}).get("garmin_activity_id")
+            title_key = (event["date"], event["title"])
+            event["event_type"] = map_activity_type_to_event_type(event.get("event_type"))
+            already = (aid and str(aid) in existing_ids) or title_key in existing_titles
+            if already:
+                skipped += 1
+                continue
+            assert_training_event_row(event)
+            calendar_batch.append(event)
+            if aid:
+                existing_ids.add(str(aid))
+            existing_titles.add(title_key)
         if calendar_batch:
-            supabase.table("training_events").upsert(calendar_batch).execute()
-            logger.info(f"Synced {len(calendar_batch)} Garmin activities to training_events calendar for user {user_id}")
+            _upsert_training_events(calendar_batch)
+            logger.info(
+                "Synced %s Garmin activities to training_events calendar for user %s (skipped %s)",
+                len(calendar_batch),
+                user_id,
+                skipped,
+            )
+        return {"inserted": len(calendar_batch), "skipped": skipped}
     except Exception as e:
         logger.warning(f"Failed to sync Garmin activities to training_events calendar: {e}")
+        return {"inserted": 0, "skipped": 0, "error": str(e)}
+
+
+def remirror_garmin_calendar(user_id: str, page_size: int = 200) -> dict:
+    """
+    Write training_events from garmin_activities already in Supabase.
+
+    Does not call Garmin Connect or decrypt passwords. Use this after
+    training_events_created_by_check allows created_by=garmin, when an earlier
+    sync stored activities but calendar upserts failed.
+    """
+    if not supabase:
+        return {"user_id": str(user_id), "source": 0, "inserted": 0, "skipped": 0, "error": "supabase not configured"}
+
+    uid = int(user_id) if str(user_id).isdigit() else user_id
+    source = 0
+    inserted = 0
+    skipped = 0
+    errors = []
+    start = 0
+    while True:
+        end = start + page_size - 1
+        query = supabase.table("garmin_activities").select("*").eq("user_id", uid)
+        if hasattr(query, "range"):
+            query = query.range(start, end)
+        else:
+            query = query.limit(page_size)
+        page = query.execute().data or []
+        if not page:
+            break
+        source += len(page)
+        result = _sync_activities_to_calendar(str(uid), page) or {}
+        inserted += int(result.get("inserted") or 0)
+        skipped += int(result.get("skipped") or 0)
+        if result.get("error"):
+            errors.append(result["error"])
+        if len(page) < page_size:
+            break
+        start += page_size
+
+    out = {
+        "user_id": str(user_id),
+        "source": source,
+        "inserted": inserted,
+        "skipped": skipped,
+    }
+    if errors:
+        out["error"] = errors[-1]
+    return out
 
 def discover_garmin_inception_date(garmin_api, batch_size: int = 100):
     """
@@ -414,7 +589,7 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                             break # Don't retry other errors
 
                 doc = {
-                    "user_id": user_id,
+                    "user_id": normalize_garmin_user_id(user_id),
                     "activity_id": activity_id,
                     "activity_name": act.get("activityName"),
                     "start_time_local": act.get("startTimeLocal"),
@@ -439,12 +614,12 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                     update_progress(user_id, pct)
 
                 if len(batch_activities) >= 20:
-                    supabase.table("garmin_activities").upsert(batch_activities, on_conflict="activity_id").execute()
+                    upsert_garmin_activities(user_id, batch_activities)
                     _sync_activities_to_calendar(user_id, batch_activities)
                     batch_activities = []
             
             if batch_activities:
-                supabase.table("garmin_activities").upsert(batch_activities, on_conflict="activity_id").execute()
+                upsert_garmin_activities(user_id, batch_activities)
                 _sync_activities_to_calendar(user_id, batch_activities)
 
         except Exception as e:

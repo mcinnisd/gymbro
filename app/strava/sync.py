@@ -6,6 +6,7 @@ import logging
 from flask import current_app
 from datetime import datetime, timezone
 from app.supabase_client import supabase
+from app.calendar.constraints import map_activity_type_to_event_type, assert_training_event_row
 
 logger = logging.getLogger(__name__)
 
@@ -116,12 +117,14 @@ def _sync_strava_activities_to_calendar(user_id: str, activities: list):
                     "date": act_date,
                     "title": doc.get("name") or "Strava Activity",
                     "description": f"Distance: {dist_km}km, Duration: {dur_min}min, Avg HR: {doc.get('average_hr', 'N/A')} bpm",
-                    "event_type": doc.get("type", "run").lower(),
+                    "event_type": map_activity_type_to_event_type(doc.get("type") or doc.get("activity_type") or "run"),
                     "status": "completed",
                     "created_by": "strava",
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
         if calendar_batch:
+            for event in calendar_batch:
+                assert_training_event_row(event)
             supabase.table("training_events").upsert(calendar_batch).execute()
             logger.info(f"Synced {len(calendar_batch)} Strava activities to training_events calendar for user {user_id}")
     except Exception as e:
