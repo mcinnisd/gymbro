@@ -19,6 +19,7 @@ TOOL_MUTATION_POLICIES: Dict[str, MutationPolicy] = {
     "get_calendar_events": MutationPolicy(category="read", requires_approval=False),
     "get_recent_activities": MutationPolicy(category="read", requires_approval=False),
     "get_wellness_metrics": MutationPolicy(category="read", requires_approval=False),
+    "get_readiness": MutationPolicy(category="read", requires_approval=False),
     "get_biomarkers": MutationPolicy(category="read", requires_approval=False),
     "get_biomarker_trends": MutationPolicy(category="read", requires_approval=False),
     # Analytics

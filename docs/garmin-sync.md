@@ -149,11 +149,16 @@ curl -s "http://127.0.0.1:5001/telemetry/tools/wellness-metrics?days=7" \
 
 curl -s "http://127.0.0.1:5001/telemetry/tools/recent-activities?days=14" \
   -H "Authorization: Bearer $TOKEN"
+
+curl -s "http://127.0.0.1:5001/telemetry/tools/readiness" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 `get_wellness_metrics` (7d) `records_count > 0` only if `biometrics_daily` has
 rows in that window. `get_recent_activities` (14d) `count > 0` only if unified
-Garmin/Strava/manual workouts exist. `get_calendar_events` fills from `training_events` after activity sync or
+Garmin/Strava/manual workouts exist. `get_readiness` returns `score: null` when
+those windows are empty (it does not invent values; see [`docs/readiness.md`](readiness.md)).
+`get_calendar_events` fills from `training_events` after activity sync or
 `remirror-calendar`. `get_biomarkers(flagged_only)` is lab panels, not Garmin —
 empty is expected until bloodwork is uploaded.
 

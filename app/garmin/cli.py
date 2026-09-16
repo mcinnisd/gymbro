@@ -125,11 +125,13 @@ def verify_mcp_tools_for_user(user_id: str, wellness_days: int = 7, activity_day
     """
     from app.tools.activity_tools import get_recent_activities, get_wellness_metrics
     from app.tools.calendar_tools import get_events
+    from app.tools.readiness_tools import get_readiness
 
     uid = str(user_id)
     wellness = get_wellness_metrics(uid, days=wellness_days)
     activities = get_recent_activities(uid, days=activity_days)
     calendar = get_events(uid)
+    readiness = get_readiness(uid)
     return {
         "user_id": uid,
         "wellness": {
@@ -144,6 +146,13 @@ def verify_mcp_tools_for_user(user_id: str, wellness_days: int = 7, activity_day
         "calendar": {
             "status": calendar.get("status"),
             "count": calendar.get("count", 0),
+        },
+        "readiness": {
+            "status": readiness.get("status"),
+            "score": readiness.get("score"),
+            "band": readiness.get("band"),
+            "confidence": readiness.get("confidence"),
+            "missing_count": len(readiness.get("missing") or []),
         },
     }
 
@@ -176,10 +185,12 @@ def cmd_verify_tools(args):
             activity_days=activity_days,
         )
         avg = snapshot["wellness"].get("averages") or {}
+        ready = snapshot.get("readiness") or {}
         print(
             "user_id={uid} wellness_status={wstatus} records_count={records} "
             "sleep={sleep} hrv={hrv} rhr={rhr} activities_status={astatus} "
-            "activity_count={acount} calendar_count={ccount}".format(
+            "activity_count={acount} calendar_count={ccount} "
+            "readiness={rscore} band={rband} confidence={rconf}".format(
                 uid=snapshot["user_id"],
                 wstatus=snapshot["wellness"].get("status"),
                 records=snapshot["wellness"].get("records_count"),
@@ -189,6 +200,9 @@ def cmd_verify_tools(args):
                 astatus=snapshot["activities"].get("status"),
                 acount=snapshot["activities"].get("count"),
                 ccount=(snapshot.get("calendar") or {}).get("count", 0),
+                rscore=ready.get("score"),
+                rband=ready.get("band"),
+                rconf=ready.get("confidence"),
             )
         )
     return 0
@@ -256,7 +270,7 @@ def main(argv=None):
 
     verify_p = sub.add_parser(
         "verify-tools",
-        help="Call get_wellness_metrics / get_recent_activities in-process (no Cloudflare tunnel)",
+        help="Call get_wellness_metrics / get_recent_activities / get_readiness in-process (no Cloudflare tunnel)",
     )
     verify_p.add_argument("--user-id", default=None, help="Limit to one athlete id from the users table")
     verify_p.add_argument("--days-wellness", type=int, default=7)

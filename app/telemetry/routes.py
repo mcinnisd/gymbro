@@ -272,6 +272,19 @@ def mcp_equivalent_wellness_metrics():
     return jsonify(get_wellness_metrics(user_id, days=days)), 200
 
 
+@telemetry_bp.route("/tools/readiness", methods=["GET"])
+@jwt_required()
+def mcp_equivalent_readiness():
+    """
+    Localhost MCP-equivalent: same function MCP get_readiness calls.
+    Binds athlete from the JWT. No Cloudflare tunnel required.
+    """
+    from app.tools.readiness_tools import get_readiness
+    user_id = str(get_jwt_identity())
+    as_of = request.args.get("as_of")
+    return jsonify(get_readiness(user_id, as_of=as_of)), 200
+
+
 @telemetry_bp.route("/tools/recent-activities", methods=["GET"])
 @jwt_required()
 def mcp_equivalent_recent_activities():

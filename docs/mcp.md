@@ -104,7 +104,7 @@ curl -sS -X POST "http://127.0.0.1:5001/api/mcp" \
 ```
 
 After initialize, `tools/list` then `tools/call` for `get_wellness_metrics` /
-`get_recent_activities` (omit `user_id`; the server binds it from the API key).
+`get_recent_activities` / `get_readiness` (omit `user_id`; the server binds it from the API key).
 
 ### 2. Stdio (desktop Cursor / Claude Desktop)
 
@@ -142,7 +142,8 @@ Prefer the venv interpreter, e.g. `"/absolute/path/to/gymbro/venv/bin/python"`.
 MOCK_DB=true PYTHONPATH=. python -m pytest \
   tests/unit/test_mcp_adapter.py \
   tests/unit/test_mcp_http.py \
-  tests/unit/test_activity_tools.py -v
+  tests/unit/test_activity_tools.py \
+  tests/unit/test_readiness_tools.py -v
 ```
 
 Optional env:
@@ -174,11 +175,13 @@ key if a URL leaks. Auth is still required on every `/api/mcp` request.
 From `TOOL_IMPLEMENTATIONS`:
 
 - Calendar: `create_calendar_event`, `get_calendar_events`, `update_calendar_event`, `delete_calendar_event`
-- Telemetry: `get_recent_activities`, `get_wellness_metrics`, `generate_chart`, `get_biomarkers`, `get_biomarker_trends`
+- Telemetry: `get_recent_activities`, `get_wellness_metrics`, `get_readiness`, `generate_chart`, `get_biomarkers`, `get_biomarker_trends`
 - Coach: `generate_training_plan`, `update_goal`, `reschedule_workout`, `log_manual_workout`, `log_meal`
 
 `get_wellness_metrics` reads `biometrics_daily`. `get_recent_activities` uses
-`get_unified_activities()` (Garmin-first). Widget-only Expo envelopes and Garmin
+`get_unified_activities()` (Garmin-first). `get_readiness` is the sparse-aware
+composite over those signals plus optional journal/biomarkers
+(see [`docs/readiness.md`](readiness.md)). Widget-only Expo envelopes and Garmin
 credential writes stay off MCP.
 
 ## Related
