@@ -188,3 +188,5 @@ credential writes stay off MCP.
   (`user|coach|agent|garmin|strava`). If `training_events` is still empty after
   a pre-migration sync, remirror from existing `garmin_activities`:
   `PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2`
+  (retries without `metrics` if that column is undeployed; apply
+  `migrations/20260916_training_events_metrics.sql` to add `metrics jsonb`).

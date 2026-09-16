@@ -1,6 +1,5 @@
 # app/garmin/sync.py
 
-import json
 import logging
 from datetime import datetime, timedelta, date, timezone
 from flask import current_app
@@ -143,12 +142,62 @@ def log_to_file(msg):
     except:
         pass
 
+# Cached after the first 42703 / successful metrics write.
+_TRAINING_EVENTS_HAS_METRICS = None
+
+
+def reset_training_events_metrics_column_cache(value=None):
+    """Test helper: None = unknown, True/False = force include/omit metrics."""
+    global _TRAINING_EVENTS_HAS_METRICS
+    _TRAINING_EVENTS_HAS_METRICS = value
+
+
+def _without_metrics(row: dict) -> dict:
+    from app.calendar.constraints import strip_metrics_column
+    return strip_metrics_column(row)
+
+
+def _is_missing_metrics_column(exc: BaseException) -> bool:
+    from app.calendar.constraints import is_undefined_column_error
+    return is_undefined_column_error(exc, "metrics")
+
+
+def _upsert_training_events(batch: list) -> None:
+    """Upsert calendar rows, omitting metrics when live Postgres lacks the column."""
+    global _TRAINING_EVENTS_HAS_METRICS
+    if not batch:
+        return
+    payload = batch
+    if _TRAINING_EVENTS_HAS_METRICS is False:
+        payload = [_without_metrics(row) for row in batch]
+    try:
+        supabase.table("training_events").upsert(payload).execute()
+        if _TRAINING_EVENTS_HAS_METRICS is None and any("metrics" in row for row in payload):
+            _TRAINING_EVENTS_HAS_METRICS = True
+        return
+    except Exception as exc:
+        if _TRAINING_EVENTS_HAS_METRICS is not False and _is_missing_metrics_column(exc):
+            _TRAINING_EVENTS_HAS_METRICS = False
+            logger.warning(
+                "training_events.metrics is missing (42703); remirror continues without that column. "
+                "Apply migrations/20260916_training_events_metrics.sql when convenient."
+            )
+            supabase.table("training_events").upsert(
+                [_without_metrics(row) for row in batch]
+            ).execute()
+            return
+        raise
+
+
 def _garmin_calendar_existing_keys(user_id):
     """Return (activity_ids, date+title pairs) already mirrored as created_by=garmin."""
+    from app.calendar.constraints import parse_garmin_activity_id_from_row
+
     uid = int(user_id) if str(user_id).isdigit() else user_id
+    # Do not select metrics: live Postgres 42703s if the column is undeployed.
     res = (
         supabase.table("training_events")
-        .select("date,title,metrics")
+        .select("date,title,description")
         .eq("user_id", uid)
         .eq("created_by", "garmin")
         .execute()
@@ -156,13 +205,7 @@ def _garmin_calendar_existing_keys(user_id):
     activity_ids = set()
     date_titles = set()
     for row in res.data or []:
-        metrics = row.get("metrics") or {}
-        if isinstance(metrics, str):
-            try:
-                metrics = json.loads(metrics)
-            except Exception:
-                metrics = {}
-        aid = metrics.get("garmin_activity_id") if isinstance(metrics, dict) else None
+        aid = parse_garmin_activity_id_from_row(row)
         if aid:
             activity_ids.add(str(aid))
         date_titles.add((str(row.get("date") or "")[:10], row.get("title")))
@@ -194,7 +237,8 @@ def _sync_activities_to_calendar(user_id: str, activities: list):
                 continue
             aid = (event.get("metrics") or {}).get("garmin_activity_id")
             title_key = (event["date"], event["title"])
-            if (aid and str(aid) in existing_ids) or (not aid and title_key in existing_titles):
+            already = (aid and str(aid) in existing_ids) or title_key in existing_titles
+            if already:
                 skipped += 1
                 continue
             assert_training_event_row(event)
@@ -203,7 +247,7 @@ def _sync_activities_to_calendar(user_id: str, activities: list):
                 existing_ids.add(str(aid))
             existing_titles.add(title_key)
         if calendar_batch:
-            supabase.table("training_events").upsert(calendar_batch).execute()
+            _upsert_training_events(calendar_batch)
             logger.info(
                 "Synced %s Garmin activities to training_events calendar for user %s (skipped %s)",
                 len(calendar_batch),

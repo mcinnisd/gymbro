@@ -35,24 +35,38 @@ class MockSupabaseClient:
         }
         self.current_table = None
         self.query_filters = []
+        # table -> column names that should raise Postgres 42703 (undefined column)
+        self.missing_columns = {}
+
+    def _raise_if_missing_columns(self, names):
+        missing = self.missing_columns.get(self.current_table) or set()
+        for name in names:
+            if name and name != "*" and name in missing:
+                err = ValueError(
+                    f'column {self.current_table}.{name} does not exist'
+                )
+                err.code = "42703"
+                raise err
 
     def _validate_row(self, item):
         if self.current_table != "training_events":
             return
         from app.calendar.constraints import assert_training_event_row
         assert_training_event_row(item)
+        self._raise_if_missing_columns(item.keys())
 
     def table(self, table_name):
         self.current_table = table_name
         if table_name not in self.data:
             self.data[table_name] = []
         self.query_filters = []
-        for attr in ("range_start", "range_end", "limit_count", "order_column", "order_desc"):
+        for attr in ("range_start", "range_end", "limit_count", "order_column", "order_desc", "select_columns"):
             if hasattr(self, attr):
                 delattr(self, attr)
         return self
 
     def select(self, *columns, **kwargs):
+        self.select_columns = columns[0] if columns else "*"
         return self
 
     def insert(self, data):
@@ -213,6 +227,11 @@ class MockSupabaseClient:
             return MockResponse(res_data)
 
         rows = self.data.get(self.current_table, [])
+        if hasattr(self, "select_columns"):
+            cols = self.select_columns
+            del self.select_columns
+            if cols and cols != "*":
+                self._raise_if_missing_columns([c.strip() for c in str(cols).split(",")])
         
         # Apply filters
         for f in self.query_filters:

@@ -10,10 +10,17 @@ Postgres constraint names:
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+import json
+import re
 
 TRAINING_EVENT_CREATED_BY_ALLOWED = ("user", "coach", "agent", "garmin", "strava")
 TRAINING_EVENT_TYPES_ALLOWED = ("run", "strength", "rest", "race", "cross_train", "other")
 TRAINING_EVENT_STATUS_ALLOWED = ("planned", "completed", "skipped")
+
+# Live Postgres may not yet have training_events.metrics (42703). Persist the
+# Garmin activity id in description so remirror stays idempotent either way.
+GARMIN_ACTIVITY_ID_MARKER = "garmin_activity_id="
+_GARMIN_ACTIVITY_ID_RE = re.compile(r"\[garmin_activity_id=([^\]]+)\]")
 
 _ACTIVITY_TYPE_TO_EVENT_TYPE = (
     ("strength", "strength"),
@@ -46,6 +53,46 @@ def map_activity_type_to_event_type(activity_type: Optional[str]) -> str:
     return "other"
 
 
+def garmin_activity_id_from_doc(doc: Dict[str, Any]) -> Optional[str]:
+    raw = doc.get("activity_id") or doc.get("id")
+    if raw in (None, ""):
+        return None
+    return str(raw)
+
+
+def parse_garmin_activity_id_from_row(row: Dict[str, Any]) -> Optional[str]:
+    """Read garmin activity id from metrics jsonb or description marker."""
+    metrics = row.get("metrics") or {}
+    if isinstance(metrics, str):
+        try:
+            metrics = json.loads(metrics)
+        except Exception:
+            metrics = {}
+    if isinstance(metrics, dict):
+        aid = metrics.get("garmin_activity_id")
+        if aid not in (None, ""):
+            return str(aid)
+    desc = str(row.get("description") or "")
+    match = _GARMIN_ACTIVITY_ID_RE.search(desc)
+    if match:
+        return match.group(1)
+    return None
+
+
+def strip_metrics_column(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop metrics so the payload matches live tables that lack the column."""
+    return {k: v for k, v in row.items() if k != "metrics"}
+
+
+def is_undefined_column_error(exc: BaseException, column: str = "metrics") -> bool:
+    text = str(exc)
+    code = str(getattr(exc, "code", "") or "")
+    if code == "42703":
+        return True
+    lowered = text.lower()
+    return column in lowered and ("does not exist" in lowered or "42703" in lowered)
+
+
 def calendar_event_from_garmin_activity(user_id: Any, doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Build a training_events row for a Garmin activity. Returns None if undated."""
     from datetime import datetime, timezone
@@ -58,18 +105,25 @@ def calendar_event_from_garmin_activity(user_id: Any, doc: Dict[str, Any]) -> Op
     raw_dur = doc.get("duration") or 0
     dur_min = round(raw_dur / 60, 1) if raw_dur > 300 else round(raw_dur, 1)
     uid = int(user_id) if str(user_id).isdigit() else user_id
-    activity_id = doc.get("activity_id") or doc.get("id")
-    return {
+    activity_id = garmin_activity_id_from_doc(doc)
+    description = (
+        f"Distance: {dist_km}km, Duration: {dur_min}min, Avg HR: {doc.get('average_hr', 'N/A')} bpm"
+    )
+    if activity_id:
+        description = f"{description} [{GARMIN_ACTIVITY_ID_MARKER}{activity_id}]"
+    row = {
         "user_id": uid,
         "date": act_date,
         "title": doc.get("activity_name") or doc.get("name") or "Garmin Workout",
-        "description": f"Distance: {dist_km}km, Duration: {dur_min}min, Avg HR: {doc.get('average_hr', 'N/A')} bpm",
+        "description": description,
         "event_type": map_activity_type_to_event_type(doc.get("activity_type")),
         "status": "completed",
         "created_by": "garmin",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "metrics": {"garmin_activity_id": str(activity_id)} if activity_id not in (None, "") else {},
     }
+    if activity_id:
+        row["metrics"] = {"garmin_activity_id": activity_id}
+    return row
 
 
 def assert_training_event_row(row: Dict[str, Any]) -> None:

@@ -6,7 +6,10 @@ from app.calendar.constraints import (
     TRAINING_EVENT_CREATED_BY_ALLOWED,
     assert_training_event_row,
     calendar_event_from_garmin_activity,
+    is_undefined_column_error,
     map_activity_type_to_event_type,
+    parse_garmin_activity_id_from_row,
+    strip_metrics_column,
 )
 from app.garmin.sync import _sync_activities_to_calendar
 from app.supabase_client import supabase
@@ -81,7 +84,9 @@ def test_calendar_event_from_garmin_activity_is_constraint_safe():
     assert event["title"] == "Santa Monica Running"
     assert event["user_id"] == 2
     assert event["metrics"]["garmin_activity_id"] == "act-123"
+    assert "[garmin_activity_id=act-123]" in event["description"]
     assert_training_event_row(event)
+    assert_training_event_row(strip_metrics_column(event))
 
 
 def test_garmin_calendar_mirror_upserts_training_events():
@@ -129,6 +134,76 @@ def test_remirror_garmin_calendar_from_existing_activities_is_idempotent():
     again = supabase.table("training_events").select("*").eq("user_id", 2).eq("created_by", "garmin").execute().data
     titles = [r["title"] for r in again if r["title"] == "Remirror Easy Run"]
     assert len(titles) == 1
+
+
+def test_undefined_column_error_detects_postgres_42703():
+    class ApiError(Exception):
+        code = "42703"
+
+    assert is_undefined_column_error(
+        ApiError('column training_events.metrics does not exist')
+    )
+    assert is_undefined_column_error(
+        ValueError("column training_events.metrics does not exist")
+    )
+    assert not is_undefined_column_error(ValueError("unrelated"))
+
+
+def test_parse_garmin_activity_id_from_description_without_metrics():
+    aid = parse_garmin_activity_id_from_row({
+        "date": "2026-09-15",
+        "title": "Easy Run",
+        "description": "Distance: 5.0km, Duration: 25.0min, Avg HR: 138 bpm [garmin_activity_id=abc-9]",
+    })
+    assert aid == "abc-9"
+
+
+def test_metrics_migration_sql_adds_jsonb_column():
+    from pathlib import Path
+    sql = Path("migrations/20260916_training_events_metrics.sql").read_text()
+    assert "ADD COLUMN IF NOT EXISTS metrics" in sql
+    assert "JSONB" in sql.upper()
+
+
+def test_remirror_succeeds_when_metrics_column_missing():
+    """Live 42703: match schema without metrics; stay idempotent via description."""
+    from app.garmin.sync import remirror_garmin_calendar, reset_training_events_metrics_column_cache
+
+    reset_training_events_metrics_column_cache(None)
+    supabase.missing_columns["training_events"] = {"metrics"}
+    supabase.table("training_events").data["training_events"] = []
+    supabase.table("garmin_activities").data["garmin_activities"] = []
+    try:
+        supabase.table("garmin_activities").insert({
+            "user_id": 2,
+            "activity_id": "garmin_live_schema_1",
+            "activity_name": "Live Schema Run",
+            "start_time_local": datetime.now(timezone.utc).isoformat(),
+            "distance": 5000.0,
+            "duration": 1500.0,
+            "average_hr": 138,
+            "activity_type": "running",
+        }).execute()
+
+        first = remirror_garmin_calendar("2")
+        assert first.get("error") is None
+        assert first["source"] >= 1
+        assert first["inserted"] >= 1
+        rows = supabase.table("training_events").select("*").eq("user_id", 2).eq("created_by", "garmin").execute().data
+        mirrored = [r for r in rows if r.get("title") == "Live Schema Run"]
+        assert len(mirrored) == 1
+        assert "metrics" not in mirrored[0]
+        assert "[garmin_activity_id=garmin_live_schema_1]" in (mirrored[0].get("description") or "")
+
+        second = remirror_garmin_calendar("2")
+        assert second.get("error") is None
+        assert second["inserted"] == 0
+        assert second["skipped"] >= 1
+        again = supabase.table("training_events").select("*").eq("user_id", 2).eq("created_by", "garmin").execute().data
+        assert len([r for r in again if r.get("title") == "Live Schema Run"]) == 1
+    finally:
+        supabase.missing_columns.pop("training_events", None)
+        reset_training_events_metrics_column_cache(None)
 
 
 def test_mock_supabase_rejects_invalid_created_by_like_postgres():

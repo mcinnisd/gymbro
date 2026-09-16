@@ -67,6 +67,12 @@ PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
 PYTHONPATH=. python -m app.garmin.cli verify-tools --user-id 2 --days-wellness 30 --days-activities 90
 ```
 
+If remirror errors with `column training_events.metrics does not exist` (42703),
+the code retries without that column. Apply
+`migrations/20260916_training_events_metrics.sql` when convenient so `metrics`
+jsonb exists (canonical schema). Remirror stays idempotent via a
+`[garmin_activity_id=…]` marker in `description`.
+
 A later `sync --user-id 2 --force` also remirrors as it re-upserts activities.
 Prefer `remirror-calendar` when `garmin_activities` is already current.
 
