@@ -259,6 +259,33 @@ def get_daily_biometrics():
         logger.error(f"Error fetching daily biometrics for user {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
+@telemetry_bp.route("/tools/wellness-metrics", methods=["GET"])
+@jwt_required()
+def mcp_equivalent_wellness_metrics():
+    """
+    Localhost MCP-equivalent: same function MCP get_wellness_metrics calls.
+    Binds athlete from the JWT. No Cloudflare tunnel required.
+    """
+    from app.tools.activity_tools import get_wellness_metrics
+    user_id = str(get_jwt_identity())
+    days = request.args.get("days", default=7, type=int) or 7
+    return jsonify(get_wellness_metrics(user_id, days=days)), 200
+
+
+@telemetry_bp.route("/tools/recent-activities", methods=["GET"])
+@jwt_required()
+def mcp_equivalent_recent_activities():
+    """
+    Localhost MCP-equivalent: same function MCP get_recent_activities calls.
+    Binds athlete from the JWT. No Cloudflare tunnel required.
+    """
+    from app.tools.activity_tools import get_recent_activities
+    user_id = str(get_jwt_identity())
+    days = request.args.get("days", default=14, type=int) or 14
+    activity_type = request.args.get("activity_type")
+    return jsonify(get_recent_activities(user_id, days=days, activity_type=activity_type)), 200
+
+
 @telemetry_bp.route("/biometrics", methods=["POST"])
 @jwt_required()
 def post_single_biometrics():

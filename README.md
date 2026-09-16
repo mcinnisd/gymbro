@@ -102,7 +102,7 @@ npm start
 
 ## 🏗️ Architecture Overview
 
-- **Backend (`/app`)**: Flask REST API providing `/auth`, `/coach`, `/chats`, `/activities`, `/nutrition`, `/journal`, `/analytics`, `/strava`, and `/garmin` endpoints. Garmin → Supabase auto-sync is documented in [`docs/garmin-sync.md`](docs/garmin-sync.md).
+- **Backend (`/app`)**: Flask REST API providing `/auth`, `/coach`, `/chats`, `/activities`, `/nutrition`, `/journal`, `/analytics`, `/strava`, and `/garmin` endpoints. Garmin → Supabase auto-sync and **localhost** MCP-tool verification (no Cloudflare tunnel) are in [`docs/garmin-sync.md`](docs/garmin-sync.md).
 - **Mobile Frontend (`/gymbro-frontend-expo`)**: React Native app with Expo Router (`/training`, `/chat`, `/stats`, `/recovery`, `/nutrition`).
 - **Web Frontend (`/gymbro-frontend`)**: React + MUI web dashboard.
 - **AI Engine (`app/coach` & `app/agent`)**: Dynamic context builder & prompt generator interfacing with LLM providers to deliver autonomous fitness coaching.

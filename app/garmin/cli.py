@@ -5,6 +5,7 @@ Does not print passwords, emails, tokens, or ENCRYPTION_KEY.
 
 Usage:
   PYTHONPATH=. python -m app.garmin.cli status
+  PYTHONPATH=. python -m app.garmin.cli verify-tools
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 1
   PYTHONPATH=. python -m app.garmin.cli sync --mode all_time --force
@@ -113,6 +114,74 @@ def cmd_sync(args):
     return 1 if failures else 0
 
 
+def verify_mcp_tools_for_user(user_id: str, wellness_days: int = 7, activity_days: int = 14) -> dict:
+    """
+    Invoke the same domain tools MCP uses. `user_id` must come from the users table
+    or a JWT — never invent one. Does not fabricate telemetry.
+    """
+    from app.tools.activity_tools import get_recent_activities, get_wellness_metrics
+
+    uid = str(user_id)
+    wellness = get_wellness_metrics(uid, days=wellness_days)
+    activities = get_recent_activities(uid, days=activity_days)
+    return {
+        "user_id": uid,
+        "wellness": {
+            "status": wellness.get("status"),
+            "records_count": wellness.get("records_count", 0),
+            "averages": wellness.get("averages"),
+        },
+        "activities": {
+            "status": activities.get("status"),
+            "count": activities.get("count", 0),
+        },
+    }
+
+
+def cmd_verify_tools(args):
+    from app.supabase_client import supabase
+    if not supabase:
+        print("verify-tools: supabase client is not configured")
+        return 1
+
+    rows = _users_with_garmin(supabase)
+    if args.user_id:
+        rows = [u for u in rows if str(u.get("id")) == str(args.user_id)]
+        if not rows:
+            print(f"verify-tools: no Garmin-connected user with id={args.user_id}")
+            return 1
+
+    if not rows:
+        print("verify-tools: no Garmin-connected users in the database.")
+        print("Reconnect Garmin in the app, or run pytest with MOCK_DB=true (no tunnel).")
+        return 0
+
+    wellness_days = args.days_wellness
+    activity_days = args.days_activities
+    print(f"verify-tools: localhost/in-process (no Cloudflare). wellness_days={wellness_days} activity_days={activity_days}")
+    for u in rows:
+        snapshot = verify_mcp_tools_for_user(
+            u["id"],
+            wellness_days=wellness_days,
+            activity_days=activity_days,
+        )
+        avg = snapshot["wellness"].get("averages") or {}
+        print(
+            "user_id={uid} wellness_status={wstatus} records_count={records} "
+            "sleep={sleep} hrv={hrv} rhr={rhr} activities_status={astatus} activity_count={acount}".format(
+                uid=snapshot["user_id"],
+                wstatus=snapshot["wellness"].get("status"),
+                records=snapshot["wellness"].get("records_count"),
+                sleep=avg.get("sleep_score"),
+                hrv=avg.get("hrv_ms"),
+                rhr=avg.get("resting_hr_bpm"),
+                astatus=snapshot["activities"].get("status"),
+                acount=snapshot["activities"].get("count"),
+            )
+        )
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Garmin → Supabase sync (no secrets printed).")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -125,6 +194,14 @@ def main(argv=None):
     sync_p.add_argument("--user-id", default=None, help="Limit to one athlete id (from the users table)")
     sync_p.add_argument("--force", action="store_true", help="Force resync (skip delta-date skipping)")
 
+    verify_p = sub.add_parser(
+        "verify-tools",
+        help="Call get_wellness_metrics / get_recent_activities in-process (no Cloudflare tunnel)",
+    )
+    verify_p.add_argument("--user-id", default=None, help="Limit to one athlete id from the users table")
+    verify_p.add_argument("--days-wellness", type=int, default=7)
+    verify_p.add_argument("--days-activities", type=int, default=14)
+
     args = parser.parse_args(argv)
     app = _load_app()
     with app.app_context():
@@ -132,6 +209,8 @@ def main(argv=None):
             return cmd_status(args)
         if args.command == "sync":
             return cmd_sync(args)
+        if args.command == "verify-tools":
+            return cmd_verify_tools(args)
         parser.error(f"unknown command {args.command}")
         return 2
 

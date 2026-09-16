@@ -99,3 +99,80 @@ def test_get_wellness_metrics_empty_window_does_not_invent_data():
     assert res["averages"]["hrv_ms"] is None
     assert res["averages"]["resting_hr_bpm"] is None
     assert res.get("records") == []
+
+
+def test_localhost_mcp_equivalent_routes_bind_jwt_and_read_garmin_tables(client, auth_headers):
+    """JWT-bound /telemetry/tools/* is the localhost stand-in for MCP (no Cloudflare)."""
+    supabase.table("garmin_activities").data["garmin_activities"] = []
+    supabase.table("strava_activities").data["strava_activities"] = []
+    supabase.table("activities").data["activities"] = []
+    supabase.table("biometrics_daily").data["biometrics_daily"] = []
+
+    supabase.table("garmin_activities").insert({
+        "user_id": 1,
+        "activity_id": "garmin_local_verify",
+        "activity_name": "Localhost Verify Run",
+        "start_time_local": _recent_iso(1),
+        "distance": 5000.0,
+        "duration": 1500.0,
+        "activity_type": "running",
+    }).execute()
+    supabase.table("biometrics_daily").upsert({
+        "user_id": 1,
+        "date": _recent_date(1),
+        "sleep_score": 79,
+        "hrv": 61,
+        "resting_hr": 52,
+        "source": "garmin",
+    }, on_conflict="user_id, date").execute()
+
+    wellness = client.get("/telemetry/tools/wellness-metrics?days=7", headers=auth_headers)
+    assert wellness.status_code == 200
+    w = wellness.json
+    assert w["status"] == "success"
+    assert w["records_count"] >= 1
+    assert w["averages"]["sleep_score"] == 79
+
+    acts = client.get("/telemetry/tools/recent-activities?days=14", headers=auth_headers)
+    assert acts.status_code == 200
+    a = acts.json
+    assert a["status"] == "success"
+    assert a["count"] >= 1
+    assert any(row["name"] == "Localhost Verify Run" for row in a["activities"])
+
+
+def test_verify_mcp_tools_for_user_uses_canonical_tables():
+    from app.garmin.cli import verify_mcp_tools_for_user
+
+    supabase.table("biometrics_daily").data["biometrics_daily"] = []
+    supabase.table("garmin_activities").data["garmin_activities"] = []
+    supabase.table("strava_activities").data["strava_activities"] = []
+    supabase.table("activities").data["activities"] = []
+
+    empty = verify_mcp_tools_for_user("99", wellness_days=7, activity_days=14)
+    assert empty["user_id"] == "99"
+    assert empty["wellness"]["records_count"] == 0
+    assert empty["activities"]["count"] == 0
+
+    supabase.table("biometrics_daily").upsert({
+        "user_id": 1,
+        "date": _recent_date(1),
+        "sleep_score": 80,
+        "hrv": 70,
+        "resting_hr": 50,
+        "source": "garmin",
+    }, on_conflict="user_id, date").execute()
+    supabase.table("garmin_activities").insert({
+        "user_id": 1,
+        "activity_id": "garmin_cli_verify",
+        "activity_name": "CLI Verify Ride",
+        "start_time_local": _recent_iso(1),
+        "distance": 20000.0,
+        "duration": 3600.0,
+        "activity_type": "cycling",
+    }).execute()
+
+    snapshot = verify_mcp_tools_for_user("1")
+    assert snapshot["wellness"]["records_count"] >= 1
+    assert snapshot["wellness"]["averages"]["hrv_ms"] == 70
+    assert snapshot["activities"]["count"] >= 1

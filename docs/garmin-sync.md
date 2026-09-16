@@ -8,9 +8,11 @@ This is **not** official Garmin OAuth. Credentials are Garmin email + password,
 encrypted with `ENCRYPTION_KEY` and stored on the athlete row. Do not commit
 `.env`, tokens, or passwords.
 
-`app/mcp/` is not on `main` yet (ADR-0003). Live MCP in Cursor talks to the
-Cloudflare-tunneled Flask server and binds `user_id` from the API token.
-Cloudflare 429s (50/hour) are tunnel rate limits, not Garmin or empty-data logic.
+`app/mcp/` is not on `main` yet (ADR-0003). Verify tools on **localhost**
+(`127.0.0.1:5001` or in-process CLI / pytest). Do not use Cloudflare quick
+tunnel / trycloudflare for tests — it rate-limits at ~50 requests/hour. Those
+429s are the tunnel, not Garmin or empty-data logic. MCP binds `user_id` from
+the API token; never invent one.
 
 ## How sync is supposed to run
 
@@ -52,19 +54,62 @@ session/init, the stored password cannot be decrypted (`ENCRYPTION_KEY` mismatch
 or Garmin SSO rejected the login (password change, 2FA). Reconnect; do not paste
 credentials into issues or chat.
 
-## Verify (MCP, after a successful sync)
+## Verify on localhost (do not use Cloudflare / trycloudflare)
 
-Athlete `user_id` is bound from the MCP/API token. Do not pass a guessed id.
+trycloudflare rate-limits at ~50 requests/hour. That 429 is **not** this bug and
+is **not** required for verification. `app/mcp/` is not on `main` (ADR-0003);
+the domain tools MCP would call are the same Python functions tested below.
 
-1. `get_wellness_metrics` with `days=7` — `records_count > 0` and non-null
-   sleep/HRV/RHR averages **only if** `biometrics_daily` has Garmin rows in that window.
-2. `get_recent_activities` with `days=14` — `count > 0` **only if**
-   `garmin_activities` (or unified Strava/manual) has workouts in that window.
-3. `get_calendar_events` — Garmin completions appear after activities sync into
-   `training_events`. Empty is valid when there are no planned/completed events.
-4. `get_biomarkers(flagged_only=true)` — lab panels, not Garmin. Empty is expected
-   until bloodwork is uploaded.
+### 1. Regression tests (no server, no tunnel, no live Garmin)
 
-Empty short-window MCP reads after a confirmed sync still mean missing rows for
-that athlete in Supabase, not a Cloudflare 429. Longer lookbacks against the
-trycloudflare tunnel may 429 independently.
+```bash
+MOCK_DB=true PYTHONPATH=. python -m pytest \
+  tests/unit/test_activity_tools.py \
+  tests/unit/test_scheduler_wiring.py -v
+```
+
+These seed **fixture** Garmin rows in the in-memory mock DB only. They prove the
+tools read `biometrics_daily` / `garmin_activities`. They do not write fake
+athlete data to production Supabase.
+
+### 2. In-process tool probe (same functions as MCP)
+
+Binds `user_id` from Garmin-connected rows already in the database. Does not
+invent an id. Empty counts are valid when those tables have no rows in-window.
+
+```bash
+PYTHONPATH=. python -m app.garmin.cli verify-tools
+PYTHONPATH=. python -m app.garmin.cli verify-tools --days-wellness 7 --days-activities 14
+```
+
+### 3. Optional local Flask (127.0.0.1 only)
+
+```bash
+# Do NOT pass --tunnel / do not start cloudflared or trycloudflare
+ENABLE_TELEMETRY_SCHEDULER=true PYTHONPATH=. python app.py
+# listens on http://127.0.0.1:5001
+```
+
+Login, then call the JWT-bound MCP-equivalent routes (athlete id comes from the
+token, never from a query parameter):
+
+```bash
+TOKEN=$(curl -s http://127.0.0.1:5001/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"<your-username>","password":"<your-password>"}' \
+  | python -c "import sys,json; print(json.load(sys.stdin).get('access_token') or '')")
+
+curl -s "http://127.0.0.1:5001/telemetry/tools/wellness-metrics?days=7" \
+  -H "Authorization: Bearer $TOKEN"
+
+curl -s "http://127.0.0.1:5001/telemetry/tools/recent-activities?days=14" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+`get_wellness_metrics` (7d) `records_count > 0` only if `biometrics_daily` has
+rows in that window. `get_recent_activities` (14d) `count > 0` only if unified
+Garmin/Strava/manual workouts exist. `get_calendar_events` fills from
+`training_events` after activity sync. `get_biomarkers(flagged_only)` is lab
+panels, not Garmin — empty is expected until bloodwork is uploaded.
+
+Do not commit `.env`, tokens, or curl transcripts that contain passwords.
