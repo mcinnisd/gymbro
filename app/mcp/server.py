@@ -1,8 +1,9 @@
 """
-MCP stdio server wrapping TOOLS_REGISTRY / TOOL_IMPLEMENTATIONS.
+MCP server wrapping TOOLS_REGISTRY / TOOL_IMPLEMENTATIONS.
 
-Transport: stdio (local Grokbot / Cursor / Claude Desktop).
-HTTP `/api/mcp` is intentionally deferred (see docs/mcp.md).
+Transports:
+  - stdio via ``python -m app.mcp`` (local Grokbot / Cursor)
+  - authenticated Streamable HTTP at ``/api/mcp`` on Flask (phone / tunnel)
 """
 
 from __future__ import annotations

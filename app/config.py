@@ -51,10 +51,16 @@ class Config:
     OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
     
 
-    # MCP adapter (stdio / external agents — see docs/mcp.md)
-    GYMBRO_MCP_TOKEN = os.getenv("GYMBRO_MCP_TOKEN")  # JWT access token
+    # MCP adapter (stdio + HTTP /api/mcp — see docs/mcp.md)
+    GYMBRO_MCP_TOKEN = os.getenv("GYMBRO_MCP_TOKEN")  # JWT access token (stdio)
     GYMBRO_MCP_API_KEY = os.getenv("GYMBRO_MCP_API_KEY")  # long-lived personal key
     GYMBRO_MCP_USER_ID = os.getenv("GYMBRO_MCP_USER_ID")  # athlete id bound to API key
+    # HTTP: optional DNS-rebinding lock-down for /api/mcp Host header
+    GYMBRO_MCP_DNS_REBINDING_PROTECTION = (
+        os.getenv("GYMBRO_MCP_DNS_REBINDING_PROTECTION", "false").lower() == "true"
+    )
+    GYMBRO_MCP_ALLOWED_HOSTS = os.getenv("GYMBRO_MCP_ALLOWED_HOSTS", "")
+    GYMBRO_MCP_STATELESS = os.getenv("GYMBRO_MCP_STATELESS", "false").lower() == "true"
 
     # CORS: Use a default for local development; override in production
     CORS_ORIGIN = os.getenv("CORS_ORIGIN") or os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://localhost:3001,http://localhost:8081,http://localhost:8082"
