@@ -153,6 +153,7 @@ def test_verify_mcp_tools_for_user_uses_canonical_tables():
     assert empty["user_id"] == "99"
     assert empty["wellness"]["records_count"] == 0
     assert empty["activities"]["count"] == 0
+    assert empty["calendar"]["count"] == 0
 
     supabase.table("biometrics_daily").upsert({
         "user_id": 1,

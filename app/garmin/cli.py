@@ -8,7 +8,7 @@ Usage:
   PYTHONPATH=. python -m app.garmin.cli verify-tools
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 1
-  PYTHONPATH=. python -m app.garmin.cli sync --mode all_time --force
+  PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
 """
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ import sys
 
 def _load_app():
     os.environ["ENABLE_TELEMETRY_SCHEDULER"] = "false"
+    # CLI commands should not start the Streamable HTTP MCP runtime.
+    os.environ.setdefault("GYMBRO_MCP_HTTP_DISABLE", "true")
     from app import create_app
     return create_app()
 
@@ -120,10 +122,12 @@ def verify_mcp_tools_for_user(user_id: str, wellness_days: int = 7, activity_day
     or a JWT — never invent one. Does not fabricate telemetry.
     """
     from app.tools.activity_tools import get_recent_activities, get_wellness_metrics
+    from app.tools.calendar_tools import get_events
 
     uid = str(user_id)
     wellness = get_wellness_metrics(uid, days=wellness_days)
     activities = get_recent_activities(uid, days=activity_days)
+    calendar = get_events(uid)
     return {
         "user_id": uid,
         "wellness": {
@@ -134,6 +138,10 @@ def verify_mcp_tools_for_user(user_id: str, wellness_days: int = 7, activity_day
         "activities": {
             "status": activities.get("status"),
             "count": activities.get("count", 0),
+        },
+        "calendar": {
+            "status": calendar.get("status"),
+            "count": calendar.get("count", 0),
         },
     }
 
@@ -168,7 +176,8 @@ def cmd_verify_tools(args):
         avg = snapshot["wellness"].get("averages") or {}
         print(
             "user_id={uid} wellness_status={wstatus} records_count={records} "
-            "sleep={sleep} hrv={hrv} rhr={rhr} activities_status={astatus} activity_count={acount}".format(
+            "sleep={sleep} hrv={hrv} rhr={rhr} activities_status={astatus} "
+            "activity_count={acount} calendar_count={ccount}".format(
                 uid=snapshot["user_id"],
                 wstatus=snapshot["wellness"].get("status"),
                 records=snapshot["wellness"].get("records_count"),
@@ -177,9 +186,49 @@ def cmd_verify_tools(args):
                 rhr=avg.get("resting_hr_bpm"),
                 astatus=snapshot["activities"].get("status"),
                 acount=snapshot["activities"].get("count"),
+                ccount=(snapshot.get("calendar") or {}).get("count", 0),
             )
         )
     return 0
+
+
+def cmd_remirror_calendar(args):
+    """Mirror garmin_activities → training_events without calling Garmin."""
+    from app.supabase_client import supabase
+    from app.garmin.sync import remirror_garmin_calendar
+
+    if not supabase:
+        print("remirror-calendar: supabase client is not configured")
+        return 1
+
+    user_ids = []
+    if args.user_id:
+        user_ids = [str(args.user_id)]
+    else:
+        rows = _users_with_garmin(supabase)
+        user_ids = [str(u["id"]) for u in rows]
+        if not user_ids:
+            print("remirror-calendar: no Garmin-connected users.")
+            return 1
+
+    failures = 0
+    for uid in user_ids:
+        result = remirror_garmin_calendar(uid)
+        err = result.get("error")
+        print(
+            "user_id={uid} garmin_activities={source} mirrored={inserted} skipped={skipped}{err}".format(
+                uid=result.get("user_id", uid),
+                source=result.get("source", 0),
+                inserted=result.get("inserted", 0),
+                skipped=result.get("skipped", 0),
+                err=f" error={err}" if err else "",
+            )
+        )
+        if err:
+            failures += 1
+        elif result.get("source", 0) == 0:
+            print(f"user_id={uid} no garmin_activities rows to remirror")
+    return 1 if failures else 0
 
 
 def main(argv=None):
@@ -202,6 +251,12 @@ def main(argv=None):
     verify_p.add_argument("--days-wellness", type=int, default=7)
     verify_p.add_argument("--days-activities", type=int, default=14)
 
+    remirror_p = sub.add_parser(
+        "remirror-calendar",
+        help="Write training_events from existing garmin_activities (no Garmin API)",
+    )
+    remirror_p.add_argument("--user-id", default=None, help="Athlete id (from the users table)")
+
     args = parser.parse_args(argv)
     app = _load_app()
     with app.app_context():
@@ -211,6 +266,8 @@ def main(argv=None):
             return cmd_sync(args)
         if args.command == "verify-tools":
             return cmd_verify_tools(args)
+        if args.command == "remirror-calendar":
+            return cmd_remirror_calendar(args)
         parser.error(f"unknown command {args.command}")
         return 2
 

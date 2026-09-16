@@ -46,6 +46,7 @@ curl -X POST "$API_URL/internal/jobs/telemetry-sync" \
 # CLI (uses stored encrypted credentials; does not print them)
 PYTHONPATH=. python -m app.garmin.cli status
 PYTHONPATH=. python -m app.garmin.cli sync --mode incremental
+PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
 ```
 
 If `status` shows `garmin_connected: false`, reconnect Garmin in the Expo Stats
@@ -54,11 +55,20 @@ session/init, the stored password cannot be decrypted (`ENCRYPTION_KEY` mismatch
 or Garmin SSO rejected the login (password change, 2FA). Reconnect; do not paste
 credentials into issues or chat.
 
-After a successful `python -m app.garmin.cli sync`, apply
-`migrations/20260916_training_events_created_by_garmin.sql` once on the live
-Supabase project (SQL editor) so `created_by='garmin'` is allowed on
-`training_events`. Until that runs, activity rows land in `garmin_activities`
-but calendar mirroring fails with `training_events_created_by_check`.
+After a successful `python -m app.garmin.cli sync`, live Supabase already allows
+`created_by IN ('user','coach','agent','garmin','strava')` (migration
+`20260916_training_events_created_by_garmin.sql` applied). Earlier activity
+syncs that ran **before** that CHECK change left `training_events` empty even
+when `garmin_activities` is populated. Remirror from rows already in Supabase
+(no Garmin API, no passwords):
+
+```bash
+PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
+PYTHONPATH=. python -m app.garmin.cli verify-tools --user-id 2 --days-wellness 30 --days-activities 90
+```
+
+A later `sync --user-id 2 --force` also remirrors as it re-upserts activities.
+Prefer `remirror-calendar` when `garmin_activities` is already current.
 
 ## Verify on localhost (do not use Cloudflare / trycloudflare)
 
@@ -116,8 +126,8 @@ curl -s "http://127.0.0.1:5001/telemetry/tools/recent-activities?days=14" \
 
 `get_wellness_metrics` (7d) `records_count > 0` only if `biometrics_daily` has
 rows in that window. `get_recent_activities` (14d) `count > 0` only if unified
-Garmin/Strava/manual workouts exist. `get_calendar_events` fills from
-`training_events` after activity sync. `get_biomarkers(flagged_only)` is lab
-panels, not Garmin — empty is expected until bloodwork is uploaded.
+Garmin/Strava/manual workouts exist. `get_calendar_events` fills from `training_events` after activity sync or
+`remirror-calendar`. `get_biomarkers(flagged_only)` is lab panels, not Garmin —
+empty is expected until bloodwork is uploaded.
 
 Do not commit `.env`, tokens, or curl transcripts that contain passwords.

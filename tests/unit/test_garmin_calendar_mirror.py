@@ -66,6 +66,7 @@ def test_map_garmin_running_to_calendar_run():
 
 def test_calendar_event_from_garmin_activity_is_constraint_safe():
     event = calendar_event_from_garmin_activity(2, {
+        "activity_id": "act-123",
         "activity_name": "Santa Monica Running",
         "start_time_local": "2026-09-15T06:12:00",
         "distance": 8000.0,
@@ -79,6 +80,7 @@ def test_calendar_event_from_garmin_activity_is_constraint_safe():
     assert event["status"] == "completed"
     assert event["title"] == "Santa Monica Running"
     assert event["user_id"] == 2
+    assert event["metrics"]["garmin_activity_id"] == "act-123"
     assert_training_event_row(event)
 
 
@@ -96,6 +98,37 @@ def test_garmin_calendar_mirror_upserts_training_events():
     assert len(rows) >= 1
     assert any(r["created_by"] == "garmin" and r["title"] == "Santa Monica Running" for r in rows)
     assert all(r["event_type"] == "run" for r in rows if r.get("title") == "Santa Monica Running")
+
+
+def test_remirror_garmin_calendar_from_existing_activities_is_idempotent():
+    from app.garmin.sync import remirror_garmin_calendar
+
+    supabase.table("training_events").data["training_events"] = []
+    supabase.table("garmin_activities").data["garmin_activities"] = []
+    supabase.table("garmin_activities").insert({
+        "user_id": 2,
+        "activity_id": "garmin_remirror_1",
+        "activity_name": "Remirror Easy Run",
+        "start_time_local": datetime.now(timezone.utc).isoformat(),
+        "distance": 5000.0,
+        "duration": 1500.0,
+        "average_hr": 138,
+        "activity_type": "running",
+    }).execute()
+
+    first = remirror_garmin_calendar("2")
+    assert first["source"] >= 1
+    assert first["inserted"] >= 1
+    rows = supabase.table("training_events").select("*").eq("user_id", 2).eq("created_by", "garmin").execute().data
+    assert any(r["title"] == "Remirror Easy Run" for r in rows)
+
+    second = remirror_garmin_calendar("2")
+    assert second["source"] >= 1
+    assert second["inserted"] == 0
+    assert second["skipped"] >= 1
+    again = supabase.table("training_events").select("*").eq("user_id", 2).eq("created_by", "garmin").execute().data
+    titles = [r["title"] for r in again if r["title"] == "Remirror Easy Run"]
+    assert len(titles) == 1
 
 
 def test_mock_supabase_rejects_invalid_created_by_like_postgres():

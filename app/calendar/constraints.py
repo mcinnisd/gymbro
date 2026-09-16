@@ -58,6 +58,7 @@ def calendar_event_from_garmin_activity(user_id: Any, doc: Dict[str, Any]) -> Op
     raw_dur = doc.get("duration") or 0
     dur_min = round(raw_dur / 60, 1) if raw_dur > 300 else round(raw_dur, 1)
     uid = int(user_id) if str(user_id).isdigit() else user_id
+    activity_id = doc.get("activity_id") or doc.get("id")
     return {
         "user_id": uid,
         "date": act_date,
@@ -67,6 +68,7 @@ def calendar_event_from_garmin_activity(user_id: Any, doc: Dict[str, Any]) -> Op
         "status": "completed",
         "created_by": "garmin",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "metrics": {"garmin_activity_id": str(activity_id)} if activity_id not in (None, "") else {},
     }
 
 

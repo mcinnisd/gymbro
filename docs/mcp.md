@@ -184,6 +184,7 @@ credential writes stay off MCP.
 ## Related
 
 - Garmin auto-sync + localhost tool probe: [`docs/garmin-sync.md`](garmin-sync.md)
-- Calendar `created_by=garmin` CHECK: apply
-  `migrations/20260916_training_events_created_by_garmin.sql` on live Supabase
-  (code is on this branch; live still fails until the SQL is applied).
+- Calendar `created_by=garmin` CHECK is applied on live Supabase
+  (`user|coach|agent|garmin|strava`). If `training_events` is still empty after
+  a pre-migration sync, remirror from existing `garmin_activities`:
+  `PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2`

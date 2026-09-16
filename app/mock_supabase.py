@@ -47,6 +47,9 @@ class MockSupabaseClient:
         if table_name not in self.data:
             self.data[table_name] = []
         self.query_filters = []
+        for attr in ("range_start", "range_end", "limit_count", "order_column", "order_desc"):
+            if hasattr(self, attr):
+                delattr(self, attr)
         return self
 
     def select(self, *columns, **kwargs):
@@ -168,6 +171,12 @@ class MockSupabaseClient:
     def limit(self, count):
         self.limit_count = count
         return self
+
+    def range(self, start, end):
+        """Inclusive range, matching PostgREST / supabase-py."""
+        self.range_start = start
+        self.range_end = end
+        return self
         
     def single(self):
         self.single_mode = True
@@ -237,6 +246,13 @@ class MockSupabaseClient:
         if hasattr(self, 'limit_count'):
             rows = rows[:self.limit_count]
             del self.limit_count
+
+        if hasattr(self, "range_start"):
+            start = self.range_start
+            end_exclusive = self.range_end + 1
+            rows = rows[start:end_exclusive]
+            del self.range_start
+            del self.range_end
             
         if hasattr(self, 'single_mode'):
             del self.single_mode
