@@ -37,6 +37,20 @@ class MockSupabaseClient:
         self.query_filters = []
         # table -> column names that should raise Postgres 42703 (undefined column)
         self.missing_columns = {}
+        # table names that should raise PostgREST PGRST205 (missing relation)
+        self.missing_tables = set()
+
+    def _raise_if_missing_table(self):
+        tables = getattr(self, "missing_tables", None) or set()
+        if self.current_table not in tables:
+            return
+        message = (
+            f"Could not find the table 'public.{self.current_table}' in the schema cache"
+        )
+        err = Exception(message)
+        err.code = "PGRST205"
+        err.message = message
+        raise err
 
     def _raise_if_missing_columns(self, names):
         missing = self.missing_columns.get(self.current_table) or set()
@@ -202,6 +216,7 @@ class MockSupabaseClient:
         return self
 
     def execute(self):
+        self._raise_if_missing_table()
         if hasattr(self, 'rpc_fn'):
             fn = self.rpc_fn
             params = self.rpc_params

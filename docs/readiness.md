@@ -27,10 +27,12 @@ Athlete identity is server-bound. The tool never invents missing telemetry.
 | RHR | `resting_hr` | Personal baseline (≥3 other days). Isolated RHR is omitted. |
 | Body Battery | `body_battery` | 0–100 as-is |
 | Stress | `stress_level` | `100 − stress` |
-| Training load | Unified activities (Garmin → Strava → manual) | 7d volume vs **prior** 7d. Prefer Garmin `activityTrainingLoad` when both weeks have it; else duration hours; else km. No prior week → omit (do not treat chronic as 0). |
-| Residual fatigue | Same activity stream | Any session in last 7d. Hard sessions (keywords, ≥90 min, ≥16 km, HR ≥155, or high training load) decay over ~72h. |
-| Journal | `daily_journals.answers` | Last 2 days: `energy_level`, `felt_sore`, `soreness` |
-| Biomarkers | Latest `lab_panels` ≤90d | Soft **penalty** after the weighted average. Not a fake lab value. |
+| Training load | `garmin_activities` (Strava secondary). Does **not** query `public.activities`. | 7d volume vs **prior** 7d. Prefer Garmin `activityTrainingLoad` when both weeks have it; else duration hours; else km. No prior week → omit (do not treat chronic as 0). |
+| Residual fatigue | Same Garmin-first activity stream | Any session in last 7d. Hard sessions (keywords, ≥90 min, ≥16 km, HR ≥155, or high training load) decay over ~72h. |
+| Journal | `daily_journals.answers` (optional) | Last 2 days: `energy_level`, `felt_sore`, `soreness`. Missing table → `missing[]`, not a tool error. |
+| Biomarkers | Latest `lab_panels` ≤90d (optional) | Soft **penalty** after the weighted average. `PGRST205` / schema-cache miss → `missing[]`; the score still computes from Garmin. |
+
+Optional sources (`lab_panels`, `biomarkers`, `daily_journals`, generic `activities`) **fail soft**. A missing PostgREST relation never returns `status=error` for the whole tool.
 
 ## Formula
 

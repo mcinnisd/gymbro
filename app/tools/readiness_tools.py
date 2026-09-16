@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timedelta, timezone, date
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.supabase_client import supabase
+from app.supabase_client import supabase, is_missing_relation_error
 from app.health_hub.ingestion_service import get_unified_activities
 
 logger = logging.getLogger(__name__)
@@ -608,6 +608,12 @@ def _missing_entry(spec: Dict[str, Any], reason: str) -> Dict[str, Any]:
     }
 
 
+def _optional_source_reason(exc: BaseException, table: str) -> str:
+    if is_missing_relation_error(exc, table):
+        return f"Optional table public.{table} is not in the schema cache (PGRST205)"
+    return f"Optional source {table} unavailable ({exc})"
+
+
 def get_readiness(user_id: str, as_of: Optional[str] = None) -> Dict[str, Any]:
     """
     Composite readiness for one athlete. Never invents missing telemetry.
@@ -745,14 +751,20 @@ def get_readiness(user_id: str, as_of: Optional[str] = None) -> Dict[str, Any]:
         else:
             missing.append(_missing_entry(spec_by_id["stress"], "No stress_level in the last 7 days"))
 
-        # Activities (Garmin-first unified stream)
+        # Activities: Garmin-first (garmin_activities + optional Strava). Never query
+        # optional public.activities — that table is often absent (PGRST205) on live.
         start_date = (as_of_date - timedelta(days=ACTIVITY_LOOKBACK_DAYS)).isoformat()
-        activities = get_unified_activities(
-            user_id,
-            start_date=start_date,
-            end_date=(as_of_date + timedelta(days=1)).isoformat(),
-            limit=200,
-        )
+        try:
+            activities = get_unified_activities(
+                user_id,
+                start_date=start_date,
+                end_date=(as_of_date + timedelta(days=1)).isoformat(),
+                limit=200,
+                include_generic=False,
+            )
+        except Exception as exc:
+            logger.debug("Readiness activity fetch failed soft: %s", exc)
+            activities = []
         as_of_end = datetime(as_of_date.year, as_of_date.month, as_of_date.day, 23, 59, 59, tzinfo=timezone.utc)
 
         def _in_window(act: Dict[str, Any], start_days: int, end_days: int) -> bool:
@@ -834,33 +846,52 @@ def get_readiness(user_id: str, as_of: Optional[str] = None) -> Dict[str, Any]:
                 "No unified activities in the last 7 days",
             ))
 
-        # Journal (optional)
-        journal = _load_journal(user_id, as_of_date)
-        journal_score = score_journal((journal or {}).get("answers") if journal else None)
-        if journal_score is not None and journal is not None:
-            jdate = _parse_date(journal.get("date"))
-            present.append({
-                **spec_by_id["journal"],
-                "raw": {
-                    "energy_level": (journal.get("answers") or {}).get("energy_level"),
-                    "felt_sore": (journal.get("answers") or {}).get("felt_sore"),
-                    "soreness": (journal.get("answers") or {}).get("soreness"),
-                },
-                "score": journal_score,
-                "freshness": _journal_freshness(jdate, as_of_date) if jdate else 0.5,
-                "date": jdate.isoformat() if jdate else None,
-            })
+        # Journal (optional — missing table fails soft)
+        journal = None
+        journal_skip = None
+        try:
+            journal = _load_journal(user_id, as_of_date)
+        except Exception as exc:
+            journal_skip = _optional_source_reason(exc, "daily_journals")
+            logger.debug("Readiness journal skipped: %s", journal_skip)
+        if journal_skip:
+            missing.append(_missing_entry(spec_by_id["journal"], journal_skip))
         else:
-            missing.append(_missing_entry(
-                spec_by_id["journal"],
-                "No daily_journals row with energy/soreness in the last 2 days",
-            ))
+            journal_score = score_journal((journal or {}).get("answers") if journal else None)
+            if journal_score is not None and journal is not None:
+                jdate = _parse_date(journal.get("date"))
+                present.append({
+                    **spec_by_id["journal"],
+                    "raw": {
+                        "energy_level": (journal.get("answers") or {}).get("energy_level"),
+                        "felt_sore": (journal.get("answers") or {}).get("felt_sore"),
+                        "soreness": (journal.get("answers") or {}).get("soreness"),
+                    },
+                    "score": journal_score,
+                    "freshness": _journal_freshness(jdate, as_of_date) if jdate else 0.5,
+                    "date": jdate.isoformat() if jdate else None,
+                })
+            else:
+                missing.append(_missing_entry(
+                    spec_by_id["journal"],
+                    "No daily_journals row with energy/soreness in the last 2 days",
+                ))
 
-        # Biomarkers (optional soft penalty)
-        panel, flagged = _load_biomarkers(user_id, as_of_date)
+        # Biomarkers (optional soft penalty — missing lab_panels fails soft, never 500s the tool)
+        panel = None
+        flagged: List[Dict[str, Any]] = []
+        biomarker_skip = None
+        try:
+            panel, flagged = _load_biomarkers(user_id, as_of_date)
+        except Exception as exc:
+            table = "biomarkers" if "biomarkers" in str(exc).lower() and "lab_panels" not in str(exc).lower() else "lab_panels"
+            biomarker_skip = _optional_source_reason(exc, table)
+            logger.debug("Readiness biomarkers skipped: %s", biomarker_skip)
         penalty = 0.0
         penalty_raw = None
-        if panel is None:
+        if biomarker_skip:
+            missing.append(_missing_entry(BIOMARKER_SPEC, biomarker_skip))
+        elif panel is None:
             missing.append(_missing_entry(
                 BIOMARKER_SPEC,
                 "No lab panel in the last 90 days",

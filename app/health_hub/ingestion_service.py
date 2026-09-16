@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import logging
 from typing import Dict, List, Any, Optional
-from app.supabase_client import supabase
+from app.supabase_client import supabase, is_missing_relation_error
 from app.health_hub.deduplication_service import deduplicate_activities, resolve_biometrics_priority
 
 logger = logging.getLogger(__name__)
@@ -154,12 +154,16 @@ def get_unified_activities(
     activity_type: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-    custom_priority: Optional[Dict[str, int]] = None
+    custom_priority: Optional[Dict[str, int]] = None,
+    include_generic: bool = True,
 ) -> List[Dict]:
     """
     Fetches raw activities across garmin_activities, strava_activities, and activities,
     normalizes their data representation, applies deterministic deduplication, and returns
     the unified stream sorted by start time descending.
+
+    ``include_generic=False`` skips the optional ``public.activities`` table (often
+    absent on live Garmin-first schemas). Missing optional tables fail soft.
     """
     uid = int(user_id) if str(user_id).isdigit() else user_id
     raw_activities: List[Dict] = []
@@ -201,7 +205,10 @@ def get_unified_activities(
                 "synced_at": g.get("synced_at")
             })
     except Exception as e:
-        logger.error(f"Error fetching Garmin activities for user {user_id}: {e}")
+        if is_missing_relation_error(e, "garmin_activities"):
+            logger.debug("garmin_activities missing in schema cache; skipping Garmin activities")
+        else:
+            logger.error(f"Error fetching Garmin activities for user {user_id}: {e}")
 
     # 2. Fetch Strava Activities
     try:
@@ -237,42 +244,49 @@ def get_unified_activities(
                 "synced_at": s.get("synced_at")
             })
     except Exception as e:
-        logger.error(f"Error fetching Strava activities for user {user_id}: {e}")
+        if is_missing_relation_error(e, "strava_activities"):
+            logger.debug("Optional table public.strava_activities missing; skipping Strava activities")
+        else:
+            logger.error(f"Error fetching Strava activities for user {user_id}: {e}")
 
-    # 3. Fetch Generic / Apple HealthKit / Manual Activities
-    try:
-        a_query = supabase.table("activities").select("*").eq("user_id", uid)
-        if start_date:
-            a_query = a_query.gte("start_time_local", start_date)
-        if end_date:
-            a_query = a_query.lte("start_time_local", end_date)
-        a_res = a_query.order("start_time_local", desc=True).limit(500).execute()
-        for a in (a_res.data or []):
-            src = "apple_health" if "apple_health" in str(a.get("notes", "")).lower() else "manual"
-            raw_activities.append({
-                "id": a.get("id"),
-                "activity_id": str(a.get("id")),
-                "source": src,
-                "name": a.get("name") or "Workout",
-                "activity_name": a.get("name") or "Workout",
-                "activity_type": a.get("activity_type") or "other",
-                "type": a.get("activity_type") or "other",
-                "start_time_local": a.get("start_time_local"),
-                "start_time": a.get("start_time_local"),
-                "distance": a.get("distance") or 0.0,
-                "distance_m": a.get("distance") or 0.0,
-                "duration": a.get("duration") or 0.0,
-                "duration_s": a.get("duration") or 0.0,
-                "calories": a.get("calories") or 0.0,
-                "average_hr": a.get("average_hr"),
-                "max_hr": a.get("max_hr"),
-                "elevation_gain": a.get("elevation_gain"),
-                "notes": a.get("notes"),
-                "details": {"notes": a.get("notes")},
-                "synced_at": a.get("created_at")
-            })
-    except Exception as e:
-        logger.error(f"Error fetching generic activities for user {user_id}: {e}")
+    # 3. Fetch Generic / Apple HealthKit / Manual Activities (optional table)
+    if include_generic:
+        try:
+            a_query = supabase.table("activities").select("*").eq("user_id", uid)
+            if start_date:
+                a_query = a_query.gte("start_time_local", start_date)
+            if end_date:
+                a_query = a_query.lte("start_time_local", end_date)
+            a_res = a_query.order("start_time_local", desc=True).limit(500).execute()
+            for a in (a_res.data or []):
+                src = "apple_health" if "apple_health" in str(a.get("notes", "")).lower() else "manual"
+                raw_activities.append({
+                    "id": a.get("id"),
+                    "activity_id": str(a.get("id")),
+                    "source": src,
+                    "name": a.get("name") or "Workout",
+                    "activity_name": a.get("name") or "Workout",
+                    "activity_type": a.get("activity_type") or "other",
+                    "type": a.get("activity_type") or "other",
+                    "start_time_local": a.get("start_time_local"),
+                    "start_time": a.get("start_time_local"),
+                    "distance": a.get("distance") or 0.0,
+                    "distance_m": a.get("distance") or 0.0,
+                    "duration": a.get("duration") or 0.0,
+                    "duration_s": a.get("duration") or 0.0,
+                    "calories": a.get("calories") or 0.0,
+                    "average_hr": a.get("average_hr"),
+                    "max_hr": a.get("max_hr"),
+                    "elevation_gain": a.get("elevation_gain"),
+                    "notes": a.get("notes"),
+                    "details": {"notes": a.get("notes")},
+                    "synced_at": a.get("created_at")
+                })
+        except Exception as e:
+            if is_missing_relation_error(e, "activities"):
+                logger.debug("Optional table public.activities missing; skipping generic activities")
+            else:
+                logger.error(f"Error fetching generic activities for user {user_id}: {e}")
 
     # 4. Deduplicate across sources
     deduped = deduplicate_activities(raw_activities, custom_priority=custom_priority)

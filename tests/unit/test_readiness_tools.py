@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone, date
 
-from app.supabase_client import supabase
+from app.supabase_client import supabase, is_missing_relation_error
 from app.tools.readiness_tools import (
     biomarker_penalty,
     compose_readiness,
@@ -22,6 +22,7 @@ def _recent_date(days_ago: int) -> str:
 
 
 def _clear_readiness_tables():
+    supabase.missing_tables = set()
     for table in (
         "biometrics_daily",
         "garmin_activities",
@@ -407,3 +408,94 @@ def test_verify_mcp_tools_includes_readiness():
     snapshot = verify_mcp_tools_for_user("1")
     assert snapshot["readiness"]["score"] == 80
     assert snapshot["readiness"]["band"] == "green"
+
+
+def test_is_missing_relation_error_detects_pgrst205():
+    class ApiError(Exception):
+        code = "PGRST205"
+        message = "Could not find the table 'public.lab_panels' in the schema cache"
+
+    err = ApiError(ApiError.message)
+    assert is_missing_relation_error(err, "lab_panels")
+    assert is_missing_relation_error(err)
+    assert not is_missing_relation_error(ValueError("unrelated"))
+    assert is_missing_relation_error(
+        Exception("Could not find the table 'public.activities' in the schema cache")
+    )
+
+
+def test_get_readiness_lab_panels_pgrst205_still_scores_garmin_sleep_and_load():
+    """Live bug: missing public.lab_panels must not hard-fail the whole tool."""
+    _clear_readiness_tables()
+    supabase.table("biometrics_daily").upsert({
+        "user_id": 1,
+        "date": _recent_date(1),
+        "sleep_score": 82,
+        "sleep_hours": 7.5,
+        "source": "garmin",
+    }, on_conflict="user_id, date").execute()
+    supabase.table("garmin_activities").insert({
+        "user_id": 1,
+        "activity_id": "garmin_pgrst_easy",
+        "activity_name": "Easy Aerobic Run",
+        "start_time_local": _recent_iso(2),
+        "distance": 8000.0,
+        "duration": 2400.0,
+        "activity_type": "running",
+        "average_hr": 138,
+    }).execute()
+    supabase.table("garmin_activities").insert({
+        "user_id": 1,
+        "activity_id": "garmin_pgrst_prior",
+        "activity_name": "Easy Prior Week",
+        "start_time_local": _recent_iso(10),
+        "distance": 8000.0,
+        "duration": 2400.0,
+        "activity_type": "running",
+        "average_hr": 140,
+    }).execute()
+
+    supabase.missing_tables = {"lab_panels", "activities"}
+    try:
+        res = get_readiness(user_id="1")
+    finally:
+        supabase.missing_tables = set()
+
+    assert res["status"] == "success"
+    assert res["score"] is not None
+    assert 0 <= res["score"] <= 100
+    ids = [c["id"] for c in res["components"]]
+    assert "sleep" in ids
+    assert "training_load" in ids or "residual_fatigue" in ids
+    assert "biomarkers" not in ids
+    bio = next(m for m in res["missing"] if m["id"] == "biomarkers")
+    assert bio["optional"] is True
+    assert "PGRST205" in bio["reason"] or "lab_panels" in bio["reason"]
+    assert "Could not find the table" not in (res.get("message") or "")
+    assert res.get("error") is None
+
+
+def test_get_readiness_does_not_query_generic_activities_when_table_missing():
+    """Garmin-first: missing public.activities is skipped, not a tool error."""
+    _clear_readiness_tables()
+    supabase.table("garmin_activities").insert({
+        "user_id": 1,
+        "activity_id": "garmin_no_generic",
+        "activity_name": "Easy Aerobic Run",
+        "start_time_local": _recent_iso(1),
+        "distance": 5000.0,
+        "duration": 1500.0,
+        "activity_type": "running",
+    }).execute()
+    supabase.missing_tables = {"activities", "lab_panels", "daily_journals"}
+    try:
+        res = get_readiness(user_id="1")
+    finally:
+        supabase.missing_tables = set()
+
+    assert res["status"] == "success"
+    assert res["score"] is not None
+    ids = [c["id"] for c in res["components"]]
+    assert "residual_fatigue" in ids
+    assert all("activities" not in (m.get("reason") or "") or m["id"] != "residual_fatigue" for m in res["missing"])
+
