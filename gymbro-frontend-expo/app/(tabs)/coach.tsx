@@ -95,7 +95,7 @@ export default function ChatScreen() {
         setMessages([
           {
             sender: 'bot',
-            content: `👋 Hello! I am your GYMBro AI Athletic Intelligence Agent.\n\nAsk me anything about your recovery, plan a race, adjust your macros, or analyze your HRV.`,
+            content: `Hello! I'm your Coach.\n\nAsk me anything about your recovery, plan a race, adjust your macros, or analyze your HRV.`,
             timestamp: new Date().toISOString(),
           },
         ]);

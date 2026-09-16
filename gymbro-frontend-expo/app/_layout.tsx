@@ -27,8 +27,8 @@ function NavigationGate({ children }: { children: React.ReactNode }) {
         console.log('[NavigationGate] Redirecting un-onboarded athlete to /(onboarding)');
         router.replace('/(onboarding)');
       } else if (isCoachActive && (inOnboarding || isRootOrWelcome)) {
-        console.log('[NavigationGate] Active athlete at root/onboarding -> redirecting to /(tabs)/training');
-        router.replace('/(tabs)/training');
+        console.log('[NavigationGate] Active athlete at root/onboarding -> redirecting to /(tabs)/today');
+        router.replace('/(tabs)/today');
       }
     }
   }, [authToken, user, segments, loading]);

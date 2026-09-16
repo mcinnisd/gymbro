@@ -16,6 +16,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
+import { useRouter } from 'expo-router';
 import { GarminModal } from '../../components/GarminModal';
 import WidgetCustomizeModal, {
   getWidgetPreferences,
@@ -33,6 +34,7 @@ interface ProfileData {
 }
 
 export default function StatsScreen() {
+  const router = useRouter();
   const { authToken, logout, apiUrl } = useContext(AuthContext);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,7 @@ export default function StatsScreen() {
   const [heightInput, setHeightInput] = useState('');
   const [targetWeightInput, setTargetWeightInput] = useState('');
   const [weeklyVolumeInput, setWeeklyVolumeInput] = useState('');
+  const [coachNameInput, setCoachNameInput] = useState('Coach');
 
   // Edit PR Modal
   const [showPRModal, setShowPRModal] = useState(false);
@@ -276,6 +279,11 @@ export default function StatsScreen() {
         const gls = usr.goals || {};
         setTargetWeightInput(gls.target_weight ? String(gls.target_weight) : '');
         setWeeklyVolumeInput(gls.weekly_volume ? String(gls.weekly_volume) : '');
+        setCoachNameInput(
+          typeof gls.coach_name === 'string' && gls.coach_name.trim()
+            ? gls.coach_name.trim()
+            : usr.coach_name || 'Coach'
+        );
 
         const prs = gls.personal_records || {};
         const cycle = gls.cycling_milestones || {};
@@ -422,7 +430,9 @@ export default function StatsScreen() {
         goals: {
           target_weight: targetWeightInput ? Number(targetWeightInput) : null,
           weekly_volume: weeklyVolumeInput ? Number(weeklyVolumeInput) : null,
+          coach_name: (coachNameInput.trim() || 'Coach').slice(0, 32),
         },
+        coach_name: (coachNameInput.trim() || 'Coach').slice(0, 32),
       };
 
       const response = await fetch(`${apiUrl}/auth/profile`, {
@@ -504,9 +514,15 @@ export default function StatsScreen() {
       {/* Header Banner */}
       <View style={styles.headerBanner}>
         <View style={{ flex: 1, marginRight: 10 }}>
-          <Text style={styles.headerTitle}>Athlete Performance & Stats</Text>
+          <Text style={styles.headerTitle}>Analytics</Text>
           <Text style={styles.headerSubtitle}>Personal Records, Garmin/Strava Sync & Dynamic Graphs</Text>
         </View>
+        <TouchableOpacity
+          style={[styles.logoutBtn, { marginRight: 8, borderColor: Colors.light.border }]}
+          onPress={() => router.push('/(tabs)/recovery')}
+        >
+          <Ionicons name="heart-outline" size={18} color={Colors.light.vitality} />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
           <Ionicons name="log-out-outline" size={18} color="#DC2626" />
         </TouchableOpacity>
@@ -1083,6 +1099,12 @@ export default function StatsScreen() {
             <Text style={styles.profileLabel}>Weekly Goal</Text>
             <Text style={styles.profileVal}>{profile?.goals?.weekly_volume ? `${profile.goals.weekly_volume} km` : 'Not set'}</Text>
           </View>
+          <View style={styles.profileItem}>
+            <Text style={styles.profileLabel}>Coach</Text>
+            <Text style={styles.profileVal}>
+              {profile?.goals?.coach_name || (profile as any)?.coach_name || 'Coach'}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -1100,6 +1122,15 @@ export default function StatsScreen() {
 
             <Text style={styles.inputLabel}>Height (cm)</Text>
             <TextInput style={styles.inputField} value={heightInput} onChangeText={setHeightInput} keyboardType="numeric" />
+
+            <Text style={styles.inputLabel}>Coach name</Text>
+            <TextInput
+              style={styles.inputField}
+              value={coachNameInput}
+              onChangeText={setCoachNameInput}
+              placeholder="Coach"
+              maxLength={32}
+            />
 
             <Text style={styles.inputLabel}>Weekly Volume Goal (km)</Text>
             <TextInput style={styles.inputField} value={weeklyVolumeInput} onChangeText={setWeeklyVolumeInput} keyboardType="numeric" />
