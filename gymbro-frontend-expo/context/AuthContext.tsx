@@ -74,6 +74,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.user?.interview_chat_id) {
           setActiveChatId(data.user.interview_chat_id);
         }
+
+        // Non-blocking auto-sync trigger on login / app open
+        fetch(`${apiUrl}/telemetry/sync-if-needed`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${data.access_token}`,
+            'Bypass-Tunnel-Reminder': 'true',
+          },
+        }).catch((err) => {
+          console.log('[AuthContext] Background telemetry auto-sync check triggered');
+        });
+
         setLoading(false);
         return data.user;
       } else {

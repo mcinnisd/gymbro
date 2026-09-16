@@ -86,12 +86,11 @@ GYMBro supports multi-goal composite objectives without rigid archetype lock-in:
 - [ ] Long-term statistical trending (12-month VO2 Max progression, volume distribution).
 - [ ] Morning readiness check-in with automatic daily workout rescheduling.
 - [ ] External calendar integration (Google / Apple / iCal) for smart schedule conflict detection (Ticket #24).
-- [ ] Food log history and dynamic macro goal adjustments based on body weight/age.
 
 ### Phase 3: Wearable Expansion & Graph RAG
 - [ ] Whoop & Oura API integrations.
 - [ ] Direct clinical lab FHIR integrations (Quest Diagnostics, LabCorp).
-- [ ] Knowledge graph ontology linking nutrition, biomarkers, and performance.
+- [x] Knowledge graph ontology linking nutrition, biomarkers, and performance (Research Ticket #13: `docs/research/0001-hybrid-knowledge-graph-rag.md`).
 
 ### Phase 4: Local-First, Voice & End-to-End Encryption
 - [ ] On-device / local network LLM backend mode (Ollama / MLX).

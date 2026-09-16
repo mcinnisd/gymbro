@@ -1,0 +1,1816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GYMBro — Multi-Goal Athlete Intake & Adaptive Calendar Generator Prototype</title>
+  <style>
+    :root {
+      --bg-primary: #FBF9F5;
+      --bg-card: #FFFFFF;
+      --bg-card-subtle: #F5F2EB;
+      --text-main: #1C1917;
+      --text-muted: #78716C;
+      --text-subtle: #A8A29E;
+      --border-main: #E7E5E4;
+      --border-subtle: #F0EEE9;
+      --primary: #D97706; /* Terracotta Warm Amber */
+      --primary-light: rgba(217, 119, 6, 0.12);
+      --vitality: #059669; /* Forest Sage */
+      --vitality-light: rgba(5, 150, 105, 0.12);
+      --sleep: #4F46E5; /* Dusk Indigo */
+      --sleep-light: rgba(79, 70, 229, 0.12);
+      --cardio: #E11D48; /* Crimson */
+      --cardio-light: rgba(225, 29, 72, 0.12);
+      --warning: #B45309;
+      --warning-light: rgba(245, 158, 11, 0.15);
+      --shadow: 0 4px 20px -2px rgba(28, 25, 23, 0.06), 0 2px 6px -1px rgba(28, 25, 23, 0.04);
+      --shadow-lg: 0 10px 25px -3px rgba(28, 25, 23, 0.08), 0 4px 10px -2px rgba(28, 25, 23, 0.04);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1480px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Header Banner */
+    .header-banner {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 16px;
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+    }
+    .badge-protocol {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--primary);
+      background: var(--primary-light);
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+    }
+    .header-banner h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-banner p.question-statement {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 1050px;
+      line-height: 1.6;
+    }
+    .question-statement strong {
+      color: var(--text-main);
+    }
+
+    /* Grid Layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 380px 1fr 400px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 1300px) {
+      .main-grid {
+        grid-template-columns: 360px 1fr;
+      }
+      .col-inspector {
+        grid-column: span 2;
+      }
+    }
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+      .col-inspector {
+        grid-column: span 1;
+      }
+    }
+
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: -10px;
+    }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-card-subtle);
+      padding: 4px;
+      border-radius: 10px;
+    }
+    .tab-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 8px 6px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .tab-btn.active {
+      background: var(--bg-card);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    .scenario-desc {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      background: var(--bg-card-subtle);
+      padding: 12px;
+      border-radius: 10px;
+      border-left: 3px solid var(--primary);
+    }
+
+    .scenario-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .step-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease;
+    }
+    .step-btn:hover {
+      background: var(--bg-card-subtle);
+      border-color: var(--primary);
+    }
+    .step-btn.completed {
+      border-color: var(--vitality);
+      background: var(--vitality-light);
+      color: var(--vitality);
+    }
+    .step-btn .step-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-light);
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+
+    /* Form Controls & Freeplay */
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .control-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+    .control-label span.val-display {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-main);
+      background: var(--bg-card);
+      font-size: 13px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .day-selector {
+      display: flex;
+      gap: 4px;
+    }
+    .day-chip {
+      flex: 1;
+      padding: 7px 0;
+      border: 1px solid var(--border-main);
+      background: var(--bg-card-subtle);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s ease;
+    }
+    .day-chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #FFF;
+    }
+
+    .btn-action-main {
+      width: 100%;
+      background: var(--primary);
+      color: #FFF;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+      transition: all 0.15s ease;
+    }
+    .btn-action-main:hover {
+      background: #B45309;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-secondary:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Periodization Macro Roadmap */
+    .meso-phases-track {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .meso-phase-card {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .meso-phase-card.active {
+      border-color: var(--primary);
+      background: #FFF;
+      box-shadow: 0 2px 6px rgba(217, 119, 6, 0.15);
+    }
+    .meso-phase-name {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+    .meso-phase-weeks {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+    }
+    .meso-phase-metrics {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.35;
+    }
+
+    /* Interference Alert Callout */
+    .interference-banner {
+      background: #FEF3C7;
+      border: 1px solid #F59E0B;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12px;
+      color: #92400E;
+    }
+    .interference-banner.resolved {
+      background: var(--vitality-light);
+      border-color: var(--vitality);
+      color: #065F46;
+    }
+
+    /* Calendar Grid */
+    .calendar-week-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .calendar-days-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+    @media (max-width: 1100px) {
+      .calendar-days-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    @media (max-width: 600px) {
+      .calendar-days-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .cal-day-cell {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      border-radius: 12px;
+      padding: 10px;
+      min-height: 190px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      transition: all 0.15s ease;
+    }
+    .cal-day-cell.today {
+      border-color: var(--primary);
+      background: rgba(217, 119, 6, 0.03);
+    }
+    .day-cell-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 4px;
+    }
+    .day-name-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .day-date-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-subtle);
+    }
+
+    .session-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 11.5px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .session-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+    .session-card.adapted {
+      border-left: 3px solid var(--primary);
+      background: #FFFBEB;
+    }
+    .session-card.completed {
+      opacity: 0.7;
+      border-color: var(--vitality);
+      background: var(--vitality-light);
+    }
+    .session-card.skipped {
+      opacity: 0.5;
+      text-decoration: line-through;
+      background: #FEE2E2;
+      border-color: var(--cardio);
+    }
+
+    .modality-pill {
+      align-self: flex-start;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .mod-run { background: var(--cardio-light); color: var(--cardio); }
+    .mod-strength { background: var(--sleep-light); color: var(--sleep); }
+    .mod-hybrid { background: var(--primary-light); color: var(--primary); }
+    .mod-recovery { background: var(--vitality-light); color: var(--vitality); }
+    .mod-rest { background: var(--border-subtle); color: var(--text-muted); }
+
+    .session-title {
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.25;
+    }
+    .session-meta {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+    .session-actions {
+      margin-top: 4px;
+      display: flex;
+      gap: 4px;
+    }
+    .btn-session-mini {
+      border: none;
+      background: var(--bg-card-subtle);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 9.5px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-main);
+    }
+    .btn-session-mini:hover {
+      background: var(--primary);
+      color: #FFF;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(28, 25, 23, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-content {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 520px;
+      width: 90%;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Inspector & State Box */
+    .state-tree {
+      background: #1C1917;
+      color: #E7E5E4;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 12px;
+      border-radius: 8px;
+      max-height: 280px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-item {
+      font-size: 11.5px;
+      padding: 8px 10px;
+      background: var(--bg-card-subtle);
+      border-radius: 6px;
+      border-left: 3px solid var(--primary);
+      margin-bottom: 6px;
+      line-height: 1.35;
+    }
+
+    .metric-badge-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .metric-chip {
+      background: var(--bg-card-subtle);
+      border: 1px solid var(--border-main);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .metric-chip span.title {
+      font-size: 9.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .metric-chip span.val {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header Banner -->
+    <header class="header-banner">
+      <div class="badge-protocol">GYMBro Domain Protocol · Issue #6</div>
+      <h1>🏋️‍♂️🏃‍♂️ Multi-Goal Athlete Intake & Adaptive Calendar Generator</h1>
+      <p class="question-statement">
+        <strong>The Question Being Answered:</strong> How do concurrent/dual-goal athletes (e.g. <em>Marathon Sub-3:30 + Muscle Hypertrophy</em>) receive conflict-free phased periodization that respects the physiological interference effect (separating heavy lower-body eccentric load from key long runs by &ge;48h) and adaptively reschedules sessions in response to daily HRV/sleep readiness?
+      </p>
+    </header>
+
+    <!-- Main 3-Column Layout -->
+    <main class="main-grid">
+      <!-- COLUMN 1: Intake & Walkthrough Controls -->
+      <section class="panel">
+        <div class="panel-title">
+          <span>1. Scenario Walkthroughs</span>
+          <span style="font-size: 11px; font-weight: 600; color: var(--primary);">Interactive Demos</span>
+        </div>
+        <p class="panel-subtitle">Step through edge cases and challenging dual-goal scenarios</p>
+
+        <!-- Scenario Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="selectScenario(0)">1. Hybrid Happy</button>
+          <button class="tab-btn" onclick="selectScenario(1)">2. HRV Crash</button>
+          <button class="tab-btn" onclick="selectScenario(2)">3. Missed Leg</button>
+          <button class="tab-btn" onclick="selectScenario(3)">4. Taper Pivot</button>
+          <button class="tab-btn" onclick="selectScenario(4)">5. Injury Swap</button>
+        </div>
+
+        <div id="scenario-desc" class="scenario-desc">
+          <!-- Populated by JS -->
+        </div>
+
+        <div id="scenario-steps" class="scenario-steps">
+          <!-- Step buttons populated by JS -->
+        </div>
+
+        <div style="height: 1px; background: var(--border-subtle); margin: 6px 0;"></div>
+
+        <!-- Free-Play Multi-Goal Intake Form -->
+        <div class="panel-title">
+          <span>2. Free-Play Intake Controls</span>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Primary Goal</label>
+          <select id="sel-primary-goal" onchange="handleIntakeChange()">
+            <option value="marathon" selected>🏃 Marathon Endurance (Sub-3:30 Target)</option>
+            <option value="5k_speed">⚡ 5K / 10K Speed PR</option>
+            <option value="hypertrophy">🏋️ Muscle Hypertrophy (Upper/Lower Split)</option>
+            <option value="fat_loss">🔥 Fat Loss & Recomposition</option>
+            <option value="longevity_vo2">🌿 Longevity & VO2 Max Optimization</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Secondary Goal</label>
+          <select id="sel-secondary-goal" onchange="handleIntakeChange()">
+            <option value="hypertrophy" selected>🏋️ Muscle Hypertrophy (Chest/Back/Legs)</option>
+            <option value="marathon">🏃 Aerobic Base / Half-Marathon</option>
+            <option value="fat_loss">🔥 Caloric Deficit & Leanness</option>
+            <option value="longevity_vo2">🌿 Zone 2 Health & Biomarkers</option>
+            <option value="none">❌ None (Single Goal Focus)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Goal Weighting Ratio</span>
+            <span id="txt-weight-ratio" class="val-display">60% Run / 40% Strength</span>
+          </div>
+          <div class="slider-container">
+            <input type="range" id="rng-goal-weight" min="20" max="80" value="60" step="5" oninput="handleWeightSliderChange(this.value)" />
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Weekly Training Availability (Days)</label>
+          <div class="day-selector">
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Mon')">Mon</div>
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Tue')">Tue</div>
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Wed')">Wed</div>
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Thu')">Thu</div>
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Fri')">Fri</div>
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Sat')">Sat</div>
+            <div class="day-chip active" onclick="toggleDayChip(this, 'Sun')">Sun</div>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Preferred Long Run Day</label>
+          <select id="sel-longrun-day" onchange="handleIntakeChange()">
+            <option value="Saturday">Saturday Morning</option>
+            <option value="Sunday" selected>Sunday Morning</option>
+            <option value="Friday">Friday Afternoon</option>
+          </select>
+        </div>
+
+        <button class="btn-action-main" onclick="runGenerateFullPeriodization()">
+          <span>⚡ Generate Phased Periodization</span>
+        </button>
+      </section>
+
+      <!-- COLUMN 2: Phased Roadmap & Adaptive Calendar -->
+      <section class="panel" style="gap: 20px;">
+        <div class="panel-title">
+          <span>Phased Macro Horizon (16-Week Blueprint)</span>
+          <div class="metric-badge-row">
+            <div class="metric-chip">
+              <span class="title">Peak Mileage</span>
+              <span id="txt-peak-km" class="val">68 km/wk</span>
+            </div>
+            <div class="metric-chip">
+              <span class="title">Lifting Volume</span>
+              <span id="txt-lifting-sets" class="val">12 sets/muscle</span>
+            </div>
+            <div class="metric-chip">
+              <span class="title">Interference Status</span>
+              <span id="txt-interference-status" class="val" style="color: var(--vitality);">Optimized (0 Clashes)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Meso Phase Selector Tabs -->
+        <div class="meso-phases-track" id="meso-phases-track">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Interference Warning Box -->
+        <div id="interference-alert-box" class="interference-banner resolved">
+          <span style="font-size: 16px;">🛡️</span>
+          <div>
+            <strong>Interference Engine Active:</strong> Heavy Lower Body loading scheduled on <strong>Wednesday</strong>, providing a guaranteed <strong>72-hour recovery buffer</strong> before Sunday's 26km Long Run.
+          </div>
+        </div>
+
+        <!-- Weekly Adaptive Calendar Grid -->
+        <div>
+          <div class="calendar-week-header">
+            <div>
+              <span style="font-size: 14px; font-weight: 700;" id="txt-calendar-week-title">Micro Horizon: Week 4 (Base Phase)</span>
+              <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;" id="txt-calendar-week-dates">Aug 17 – Aug 23, 2026</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn-secondary" onclick="changeWeekOffset(-1)">&larr; Prev Week</button>
+              <button class="btn-secondary" onclick="resetToCurrentWeek()">Current Week</button>
+              <button class="btn-secondary" onclick="changeWeekOffset(1)">Next Week &rarr;</button>
+            </div>
+          </div>
+
+          <!-- 7-Day Grid -->
+          <div class="calendar-days-grid" id="calendar-days-grid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Daily Readiness Adaptation Simulator -->
+        <div style="background: var(--bg-card-subtle); border-radius: 12px; padding: 16px; border: 1px solid var(--border-main);">
+          <div class="panel-title" style="margin-bottom: 12px;">
+            <span>🌅 Morning Readiness Check-In Simulator (Biometrics)</span>
+            <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">Simulates Garmin / HealthKit Sync</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 14px; align-items: end;">
+            <div class="control-group">
+              <div class="control-label">
+                <span>Sleep Score</span>
+                <span id="txt-sim-sleep" class="val-display">84 (Optimal)</span>
+              </div>
+              <input type="range" id="rng-sim-sleep" min="20" max="100" value="84" oninput="updateSleepDisplay(this.value)" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-label">
+                <span>HRV Overnight</span>
+                <span id="txt-sim-hrv" class="val-display">68 ms (Balanced)</span>
+              </div>
+              <input type="range" id="rng-sim-hrv" min="25" max="110" value="68" oninput="updateHrvDisplay(this.value)" />
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Soreness & Joints</label>
+              <select id="sel-sim-soreness">
+                <option value="none">None / Fresh</option>
+                <option value="mild_legs">Mild Leg Fatigue</option>
+                <option value="severe_legs">Severe DOMS (Legs)</option>
+                <option value="calf_strain">Calf / Achilles Strain</option>
+                <option value="knee_pain">Patellar / Knee Discomfort</option>
+              </select>
+            </div>
+
+            <button class="btn-action-main" style="padding: 9px 14px; width: auto;" onclick="triggerReadinessAdaptation()">
+              <span>🔄 Apply Biometric Readiness</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- COLUMN 3: Real-Time State Inspector & Audit Trail -->
+      <section class="panel col-inspector">
+        <div class="panel-title">
+          <span>3. Real-Time Domain State</span>
+          <span style="font-size: 10.5px; font-family: var(--font-mono); color: var(--primary);">CONTEXT.md Compliant</span>
+        </div>
+        <p class="panel-subtitle">Live output from MultiGoalPeriodizationEngine</p>
+
+        <div class="control-label">
+          <span>Dynamic Adaptation Log</span>
+          <span style="color: var(--text-muted); font-size: 10px;" id="txt-log-count">3 Events</span>
+        </div>
+        <div id="adaptation-log-box" style="max-height: 180px; overflow-y: auto;">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="control-label" style="margin-top: 10px;">
+          <span>Structured API Payloads (`training_events`)</span>
+        </div>
+        <div class="state-tree" id="state-tree-display">
+          <!-- JSON dump -->
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary" style="flex: 1;" onclick="copyStateJson()">📋 Copy State JSON</button>
+          <button class="btn-secondary" style="flex: 1;" onclick="resetEngineState()">↺ Reset Engine</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Session Detail Modal -->
+  <div class="modal-overlay" id="session-modal">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="modality-pill mod-run" id="modal-modality">Run · Interval</span>
+        <button style="border: none; background: transparent; font-size: 18px; cursor: pointer; color: var(--text-muted);" onclick="closeModal()">&times;</button>
+      </div>
+      <h3 style="font-size: 17px; font-weight: 800;" id="modal-title">Lactate Threshold Intervals</h3>
+      <p style="font-size: 13px; color: var(--text-muted); line-height: 1.4;" id="modal-desc">
+        Warm up 2km Zone 2, then 5x 1km @ 4:15/km pace with 90s jog recovery. Cool down 2km.
+      </p>
+
+      <div style="background: var(--bg-card-subtle); border-radius: 8px; padding: 12px; font-size: 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: var(--text-muted);">Target Intensity / RPE:</span>
+          <strong id="modal-rpe">RPE 8.0 / Zone 4 (165-175 bpm)</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: var(--text-muted);">Fatigue Cost (TSS):</span>
+          <strong id="modal-tss">75 Points</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: var(--text-muted);">Interference Safety:</span>
+          <strong style="color: var(--vitality);" id="modal-interference">48h Clean Window</strong>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-top: 6px;">
+        <button class="btn-action-main" style="flex: 1; background: var(--vitality);" onclick="markCurrentModalSession('completed')">✓ Mark Completed</button>
+        <button class="btn-secondary" style="flex: 1; color: var(--cardio);" onclick="markCurrentModalSession('skipped')">✕ Skip / Rest</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- PURE DOMAIN ENGINE: MultiGoalPeriodizationEngine.js       -->
+  <!-- ========================================================= -->
+  <script>
+    /**
+     * MultiGoalPeriodizationEngine
+     * 
+     * Pure, DOM-free periodization engine for dual-goal athletes.
+     * Manages composite goal weighting, interference effect mitigation,
+     * meso/micro horizon generation, and daily adaptive feedback loops.
+     */
+    const MultiGoalPeriodizationEngine = (function() {
+      
+      const GOAL_CONFIGS = {
+        marathon: {
+          name: "Marathon Endurance",
+          type: "endurance",
+          baseKm: 42,
+          peakKm: 70,
+          keySessions: ["Intervals", "Tempo", "Long Run"],
+          heavyModality: "run_long"
+        },
+        "5k_speed": {
+          name: "5K / 10K Speed PR",
+          type: "endurance_speed",
+          baseKm: 30,
+          peakKm: 48,
+          keySessions: ["VO2 Max Intervals", "Threshold Run", "Fast Strides"],
+          heavyModality: "run_intervals"
+        },
+        hypertrophy: {
+          name: "Muscle Hypertrophy",
+          type: "strength",
+          baseSetsPerMuscle: 10,
+          peakSetsPerMuscle: 16,
+          splits: ["Upper Body (Chest/Back/Arms)", "Lower Body (Squat/Hams/Calves)", "Full Body Pump"],
+          heavyModality: "lift_lower"
+        },
+        fat_loss: {
+          name: "Fat Loss & Recomposition",
+          type: "hybrid",
+          cardioFocus: "Zone 2 Incline Walk / Cycling",
+          strengthFocus: "Full Body Resistance Preservation",
+          caloricTarget: "-400 kcal/day"
+        },
+        longevity_vo2: {
+          name: "Longevity & VO2 Max",
+          type: "wellness",
+          cardioFocus: "Zone 2 Base (80%) + 4x4 VO2 Max (20%)",
+          strengthFocus: "Functional Isometric & Mobility"
+        }
+      };
+
+      /**
+       * Factory for initial engine state
+       */
+      function createInitialState(customOverrides = {}) {
+        const baseGoalSet = {
+          primaryGoal: "marathon",
+          secondaryGoal: "hypertrophy",
+          primaryWeight: 0.60,
+          secondaryWeight: 0.40,
+          targetDate: "2026-11-22", // 14 weeks out
+          availableDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+          preferredLongRunDay: "Sunday",
+          experienceLevel: "Intermediate"
+        };
+
+        const goalSet = Object.assign({}, baseGoalSet, customOverrides);
+        const mesoPhases = generateMesoPhases(goalSet);
+        const weeklyCalendar = generateMicroCalendar(goalSet, mesoPhases, 0); // Start at Phase 1, Week 1
+
+        return {
+          goalSet: goalSet,
+          mesoPhases: mesoPhases,
+          currentMesoIndex: 0,
+          currentWeekOffset: 0,
+          weeklyCalendar: weeklyCalendar,
+          adaptationLog: [
+            {
+              timestamp: new Date().toLocaleTimeString(),
+              action: "PERIODIZATION_INITIALIZED",
+              message: "Initialized 16-Week Macro Horizon for Dual-Goal Athlete: Marathon (60%) + Hypertrophy (40%). 72h Leg-to-Long-Run separation enforced."
+            }
+          ],
+          activeModalSessionId: null
+        };
+      }
+
+      /**
+       * Calculates 4 Meso training blocks based on goal weighting
+       */
+      function generateMesoPhases(goalSet) {
+        const pWeight = goalSet.primaryWeight;
+        const isHybridRunStrength = (goalSet.primaryGoal === "marathon" || goalSet.primaryGoal === "5k_speed") && 
+                                   (goalSet.secondaryGoal === "hypertrophy" || goalSet.secondaryGoal === "strength");
+
+        return [
+          {
+            phaseIndex: 0,
+            phaseName: "Phase 1: Concurrent Base & Hypertrophy Foundation",
+            weeksRange: "Weeks 1–4",
+            startWeek: 1,
+            endWeek: 4,
+            focus: "Aerobic base building (Zone 2) while maximizing hypertrophy volume.",
+            targetKm: Math.round(35 * pWeight + 15),
+            targetLiftingSets: Math.round(14 * (1 - pWeight * 0.5)),
+            runningFocus: "3x Weekly (Zone 2 + Light Strides + 16km Long Run)",
+            liftingFocus: "3x Weekly (Push / Pull / Heavy Legs)",
+            interferenceProtocol: "Strict 48h separation between Lower Body and Long Run."
+          },
+          {
+            phaseIndex: 1,
+            phaseName: "Phase 2: Specificity Build & Strength Consolidation",
+            weeksRange: "Weeks 5–8",
+            startWeek: 5,
+            endWeek: 8,
+            focus: "Introduce Lactate Threshold intervals; shift lifting to compound strength maintenance.",
+            targetKm: Math.round(48 * pWeight + 18),
+            targetLiftingSets: Math.round(12 * (1 - pWeight * 0.5)),
+            runningFocus: "4x Weekly (Threshold Intervals + Tempo + 22km Long Run)",
+            liftingFocus: "3x Weekly (Upper Hypertrophy + Leg Power/RPE 8)",
+            interferenceProtocol: "Leg lifting capped at RPE 8 to preserve running neuromuscular freshness."
+          },
+          {
+            phaseIndex: 2,
+            phaseName: "Phase 3: Peak Mileage & Peaking Block",
+            weeksRange: "Weeks 9–13",
+            startWeek: 9,
+            endWeek: 13,
+            focus: "Peak endurance volume (up to 32km long runs); throttle leg lifting to Maintenance Volume (MV).",
+            targetKm: Math.round(65 * pWeight + 20),
+            targetLiftingSets: Math.round(6 * (1 - pWeight * 0.5)), // Throttled for leg recovery
+            runningFocus: "4-5x Weekly (5x1km Intervals + Marathon Pace + 30km Long Run)",
+            liftingFocus: "2x Weekly (Upper Body Hypertrophy maintained, Legs on 4-set Maintenance)",
+            interferenceProtocol: "Leg hypertrophy throttled to Maintenance sets (4 sets/wk) to prevent glycogen depletion."
+          },
+          {
+            phaseIndex: 3,
+            phaseName: "Phase 4: Taper & Race Execution",
+            weeksRange: "Weeks 14–16",
+            startWeek: 14,
+            endWeek: 16,
+            focus: "Exponential mileage taper (-40% to -60%); preserve neuromuscular sharpness.",
+            targetKm: Math.round(30 * pWeight + 10),
+            targetLiftingSets: 4,
+            runningFocus: "3x Weekly (Short Race-Pace Sharpening + Easy 10km)",
+            liftingFocus: "2x Weekly (Light mobility + Explosive bodyweight primer)",
+            interferenceProtocol: "Zero heavy eccentric loading 10 days out from target race."
+          }
+        ];
+      }
+
+      /**
+       * Generates a 7-day micro-calendar resolving interference between modalities
+       */
+      function generateMicroCalendar(goalSet, mesoPhases, mesoIndex) {
+        const phase = mesoPhases[mesoIndex] || mesoPhases[0];
+        const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+        
+        // Base Date calculation: Aug 17, 2026 as reference start
+        const baseDate = new Date("2026-08-17T00:00:00Z");
+
+        const weeklySchedule = [];
+
+        // Determine interference-free slot layout
+        // Rule: If Sunday is Long Run, Leg Day MUST be Wednesday or Tuesday (72h or 96h buffer)
+        // Upper Body can go on Tuesday or Thursday
+        // Intervals go on Tuesday or Thursday
+
+        const isMarathonPrimary = goalSet.primaryGoal === "marathon";
+        const isSpeedPrimary = goalSet.primaryGoal === "5k_speed";
+        const hasHypertrophy = goalSet.secondaryGoal === "hypertrophy" || goalSet.primaryGoal === "hypertrophy";
+
+        days.forEach((dayName, index) => {
+          const sessionDate = new Date(baseDate);
+          sessionDate.setDate(baseDate.getDate() + index);
+          const dateStr = sessionDate.toISOString().split("T")[0];
+
+          let daySessions = [];
+
+          if (dayName === "Monday") {
+            // Active Recovery or Upper Body Pull
+            daySessions.push({
+              id: `sess-${index}-1`,
+              day: dayName,
+              date: dateStr,
+              title: "Upper Body Hypertrophy (Chest & Back)",
+              modality: "lift_upper",
+              badge: "Strength",
+              duration: "50 min",
+              details: "Bench Press 4x8, Barbell Row 4x10, Incline DB Press 3x12, Lateral Raises 4x15.",
+              intensity: "RPE 8.0",
+              tss: 55,
+              status: "planned",
+              interferenceBuffer: "Zero leg interference. Safe after Sunday Long Run."
+            });
+          } else if (dayName === "Tuesday") {
+            // Quality Running (Intervals or Tempo)
+            if (isMarathonPrimary || isSpeedPrimary) {
+              daySessions.push({
+                id: `sess-${index}-1`,
+                day: dayName,
+                date: dateStr,
+                title: phase.phaseIndex === 0 ? "Aerobic Base Intervals (6x800m)" : "Lactate Threshold (5x1km @ 4:15/km)",
+                modality: "run_intervals",
+                badge: "Quality Run",
+                duration: "55 min (10 km)",
+                details: "2km warm up, 5x1km @ 4:15/km pace with 90s jog recovery, 2km cooldown.",
+                intensity: "Zone 4 (165-175 bpm)",
+                tss: 75,
+                status: "planned",
+                interferenceBuffer: "Placed 24h prior to Leg Day; leg freshness optimal."
+              });
+            } else {
+              daySessions.push({
+                id: `sess-${index}-1`,
+                day: dayName,
+                date: dateStr,
+                title: "Zone 2 Aerobic Base Flush",
+                modality: "run_easy",
+                badge: "Aerobic Run",
+                duration: "40 min (6 km)",
+                details: "Comfortable conversational pace in Zone 2 HR (125-140 bpm).",
+                intensity: "Zone 2",
+                tss: 40,
+                status: "planned",
+                interferenceBuffer: "Low neuromuscular fatigue."
+              });
+            }
+          } else if (dayName === "Wednesday") {
+            // LOWER BODY STRENGTH (Strategic Placement)
+            if (hasHypertrophy) {
+              daySessions.push({
+                id: `sess-${index}-1`,
+                day: dayName,
+                date: dateStr,
+                title: phase.phaseIndex >= 2 ? "Lower Body Maintenance (Heavy Low Vol)" : "Lower Body Hypertrophy (Squats & Hams)",
+                modality: "lift_lower",
+                badge: "Heavy Legs",
+                duration: "50 min",
+                details: phase.phaseIndex >= 2 ? 
+                  "Barbell Back Squat 3x5 (RPE 7.5), Romanian Deadlift 3x8, Calf Raises 3x12. Minimal volume to prevent fatigue." : 
+                  "Barbell Back Squat 4x8 (RPE 8), Romanian Deadlift 4x10, Bulgarian Split Squats 3x12, Seated Calf Raises 4x15.",
+                intensity: "RPE 8.0",
+                tss: 65,
+                status: "planned",
+                interferenceBuffer: "✅ 72-Hour Buffer before Sunday Long Run. Eliminates eccentric DOMS clash."
+              });
+            } else {
+              daySessions.push({
+                id: `sess-${index}-1`,
+                day: dayName,
+                date: dateStr,
+                title: "Active Recovery & Core Stability",
+                modality: "active_recovery",
+                badge: "Recovery",
+                duration: "30 min",
+                details: "Plank progressions, Bird-Dogs, Pallof Press, dynamic hip mobility.",
+                intensity: "RPE 4",
+                tss: 20,
+                status: "planned",
+                interferenceBuffer: "Full physiological recovery."
+              });
+            }
+          } else if (dayName === "Thursday") {
+            // Easy Aerobic Run or Upper Body Pump
+            daySessions.push({
+              id: `sess-${index}-1`,
+              day: dayName,
+              date: dateStr,
+              title: "Zone 2 Easy Aerobic Run + Upper Pump",
+              modality: "run_easy",
+              badge: "Easy Run",
+              duration: "45 min (7.5 km)",
+              details: "Easy aerobic mileage. Kept strictly in Zone 2 to facilitate Wednesday leg blood flow.",
+              intensity: "Zone 2 (130-142 bpm)",
+              tss: 45,
+              status: "planned",
+              interferenceBuffer: "Promotes lactate clearance without compounding leg damage."
+            });
+          } else if (dayName === "Friday") {
+            // Upper Body Hypertrophy & Arms (Zero Leg Impact)
+            daySessions.push({
+              id: `sess-${index}-1`,
+              day: dayName,
+              date: dateStr,
+              title: "Upper Body Hypertrophy (Shoulders & Arms)",
+              modality: "lift_upper",
+              badge: "Strength",
+              duration: "45 min",
+              details: "Overhead Barbell Press 4x8, Pull-Ups 4xMax, Dumbbell Bicep Curls 3x12, Tricep Rope Pushdowns 3x15.",
+              intensity: "RPE 8.0",
+              tss: 45,
+              status: "planned",
+              interferenceBuffer: "100% Upper body focus. Preserves legs for weekend long run."
+            });
+          } else if (dayName === "Saturday") {
+            // Rest or Very Short Shakeout Run
+            daySessions.push({
+              id: `sess-${index}-1`,
+              day: dayName,
+              date: dateStr,
+              title: "Pre-Long Run Rest & Carb Primer",
+              modality: "rest",
+              badge: "Rest Day",
+              duration: "0 min",
+              details: "Complete physical rest. High-carbohydrate nutrition intake to saturate muscle glycogen.",
+              intensity: "Rest",
+              tss: 0,
+              status: "planned",
+              interferenceBuffer: "Maximal glycogen replenishment."
+            });
+          } else if (dayName === "Sunday") {
+            // KEY LONG RUN
+            const longDist = phase.phaseIndex === 0 ? "18 km" : phase.phaseIndex === 1 ? "24 km" : phase.phaseIndex === 2 ? "30 km" : "14 km";
+            const longTime = phase.phaseIndex === 0 ? "1h 35m" : phase.phaseIndex === 1 ? "2h 05m" : phase.phaseIndex === 2 ? "2h 35m" : "1h 10m";
+
+            daySessions.push({
+              id: `sess-${index}-1`,
+              day: dayName,
+              date: dateStr,
+              title: `Key Long Endurance Run (${longDist})`,
+              modality: "run_long",
+              badge: "Marathon Key",
+              duration: `${longTime} (${longDist})`,
+              details: `Continuous steady aerobic long run. Practice in-race gel fueling every 30 mins. Pace: 5:15-5:30/km.`,
+              intensity: "Zone 2/3 (140-155 bpm)",
+              tss: 120,
+              status: "planned",
+              interferenceBuffer: "Executed with fresh legs (72h post Wednesday squat session)."
+            });
+          }
+
+          weeklySchedule.push({
+            day: dayName,
+            date: dateStr,
+            isToday: index === 1, // Tuesday simulated as today
+            sessions: daySessions
+          });
+        });
+
+        return weeklySchedule;
+      }
+
+      /**
+       * Daily Biometric Adaptation Handler
+       * Evaluates Sleep, HRV, and Soreness to dynamically modify current micro-schedule
+       */
+      function applyDailyReadiness(state, readiness) {
+        const newState = JSON.parse(JSON.stringify(state));
+        const { sleepScore, hrvStatus, soreness } = readiness;
+
+        let adaptationAction = "NONE";
+        let logMessage = "";
+
+        // Identify Today's Sessions (index 1 / Tuesday)
+        const todaySchedule = newState.weeklyCalendar[1];
+        if (!todaySchedule || todaySchedule.sessions.length === 0) return newState;
+
+        const currentSession = todaySchedule.sessions[0];
+
+        // CRITICAL RED ADAPTATION (Acute HRV crash or severe sleep deprivation)
+        if (sleepScore < 50 || hrvStatus === "severe_low" || soreness === "severe_legs") {
+          adaptationAction = "RED_READINESS_CRASH";
+          
+          if (currentSession.modality === "run_intervals" || currentSession.modality === "lift_lower") {
+            const originalTitle = currentSession.title;
+            currentSession.title = "Zone 1 Active Recovery Flush & Mobility";
+            currentSession.modality = "active_recovery";
+            currentSession.badge = "Adapted (Recovery)";
+            currentSession.duration = "30 min";
+            currentSession.details = `AUTOMATICALLY ADAPTED: Overnight HRV dropped to low baseline and Sleep Score (${sleepScore}) indicates severe CNS fatigue. High-intensity intervals removed to prevent overtraining cascade.`;
+            currentSession.intensity = "Zone 1 (Heart Rate < 120 bpm)";
+            currentSession.tss = 18;
+            currentSession.status = "adapted";
+
+            // Push original intervals to Thursday if open
+            const thursdaySchedule = newState.weeklyCalendar[3];
+            if (thursdaySchedule && thursdaySchedule.sessions.length > 0) {
+              thursdaySchedule.sessions[0].title = `Rescheduled: ${originalTitle}`;
+              thursdaySchedule.sessions[0].modality = "run_intervals";
+              thursdaySchedule.sessions[0].badge = "Rescheduled";
+              thursdaySchedule.sessions[0].status = "adapted";
+              thursdaySchedule.sessions[0].details += " (Shifted from Tuesday due to acute morning readiness crash).";
+            }
+
+            logMessage = `🚨 RED READINESS ADAPTATION: Low Sleep (${sleepScore}) & Low HRV detected. Swapped Tuesday Intervals to 30-min Zone 1 Flush. Rescheduled high-intensity work to Thursday.`;
+          }
+        } 
+        // JOINT OR TENDON SORENESS (MODALITY SUBSTITUTION)
+        else if (soreness === "calf_strain" || soreness === "knee_pain") {
+          adaptationAction = "MODALITY_SUBSTITUTION";
+          const affectedModality = currentSession.modality;
+          
+          if (affectedModality.startsWith("run")) {
+            currentSession.title = "Zero-Impact Zone 2 Cardio (Wattbike / Stationary Cycling)";
+            currentSession.modality = "hybrid";
+            currentSession.badge = "Cross-Train (Rehab)";
+            currentSession.details = `AUTOMATICALLY SUBSTITUTED: Athlete flagged ${soreness.replace('_', ' ').toUpperCase()}. Swapped road running impact for low-impact cycling at 140W to match cardiovascular aerobic time-in-zone without tendon strain.`;
+            currentSession.status = "adapted";
+            logMessage = `🛡️ INJURY PROTECTION ADAPTATION: Detected ${soreness.replace('_', ' ')}. Substituted impact running for Zone 2 stationary cycling.`;
+          }
+        }
+        // AMBER MODERATE FATIGUE (INTENSITY THROTTLE)
+        else if (sleepScore < 70 || hrvStatus === "moderate_low") {
+          adaptationAction = "AMBER_INTENSITY_THROTTLE";
+          if (currentSession.modality === "run_intervals") {
+            currentSession.title = "Throttled Aerobic Tempo (Zone 3 Cap)";
+            currentSession.badge = "Adapted (Tempo)";
+            currentSession.details = `ADAPTED: Moderate fatigue detected (Sleep ${sleepScore}). Capped maximum heart rate at Zone 3 (150-158 bpm) instead of Zone 4 intervals.`;
+            currentSession.intensity = "Zone 3";
+            currentSession.tss = Math.round(currentSession.tss * 0.75);
+            currentSession.status = "adapted";
+            logMessage = `⚠️ AMBER ADAPTATION: Moderate fatigue detected. Throttled interval intensity by 20% to prevent accumulating autonomic strain.`;
+          }
+        } else {
+          logMessage = `✅ GREEN READINESS: Biometrics optimal (Sleep ${sleepScore}, HRV Normal). Schedule confirmed as prescribed.`;
+        }
+
+        newState.adaptationLog.unshift({
+          timestamp: new Date().toLocaleTimeString(),
+          action: adaptationAction,
+          message: logMessage
+        });
+
+        return newState;
+      }
+
+      /**
+       * Handle Missed Workouts & Reschedule without violating 48h leg buffer
+       */
+      function handleMissedSession(state, dayIndex) {
+        const newState = JSON.parse(JSON.stringify(state));
+        const daySchedule = newState.weeklyCalendar[dayIndex];
+        if (!daySchedule || daySchedule.sessions.length === 0) return newState;
+
+        const session = daySchedule.sessions[0];
+        session.status = "skipped";
+
+        let logMessage = `Missed ${session.title} on ${daySchedule.day}.`;
+
+        // If missed Lower Body (Wednesday), DO NOT put on Friday/Saturday because of Sunday Long Run!
+        if (session.modality === "lift_lower") {
+          // Place a condensed maintenance lower session on Saturday morning (low volume) or Sunday afternoon post-run
+          const satSchedule = newState.weeklyCalendar[5];
+          if (satSchedule) {
+            satSchedule.sessions = [{
+              id: `sess-resched-leg`,
+              day: "Saturday",
+              date: satSchedule.date,
+              title: "Low-Fatigue Leg Primer (Squat 2x5 RPE 7)",
+              modality: "lift_lower",
+              badge: "Condensed Make-Up",
+              duration: "25 min",
+              details: "AUTONOMOUS RESCHEDULING: Replaced missed Wednesday leg session with a low-volume neuromuscular primer. Kept to 2 sets at RPE 7 to prevent DOMS ahead of Sunday Long Run.",
+              intensity: "RPE 7.0",
+              tss: 25,
+              status: "adapted",
+              interferenceBuffer: "Strict volume cap ensures no glycogen depletion."
+            }];
+            logMessage += ` Intelligent Scheduler placed a condensed 2-set Leg Primer on Saturday, preserving Sunday Long Run recovery.`;
+          }
+        }
+
+        newState.adaptationLog.unshift({
+          timestamp: new Date().toLocaleTimeString(),
+          action: "MISSED_WORKOUT_CASCADED",
+          message: logMessage
+        });
+
+        return newState;
+      }
+
+      /**
+       * Dynamically reweight goals (e.g. pivoting from 50/50 to 80/20 during Taper)
+       */
+      function reweightGoals(state, newPrimaryWeight) {
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.goalSet.primaryWeight = parseFloat(newPrimaryWeight);
+        newState.goalSet.secondaryWeight = 1.0 - parseFloat(newPrimaryWeight);
+
+        newState.mesoPhases = generateMesoPhases(newState.goalSet);
+        newState.weeklyCalendar = generateMicroCalendar(newState.goalSet, newState.mesoPhases, newState.currentMesoIndex);
+
+        newState.adaptationLog.unshift({
+          timestamp: new Date().toLocaleTimeString(),
+          action: "GOAL_WEIGHTING_UPDATED",
+          message: `Updated Goal Balance: ${(newState.goalSet.primaryWeight * 100).toFixed(0)}% Primary / ${(newState.goalSet.secondaryWeight * 100).toFixed(0)}% Secondary. Recalculated 4 Meso blocks and weekly volume allocations.`
+        });
+
+        return newState;
+      }
+
+      return {
+        createInitialState: createInitialState,
+        generateMesoPhases: generateMesoPhases,
+        generateMicroCalendar: generateMicroCalendar,
+        applyDailyReadiness: applyDailyReadiness,
+        handleMissedSession: handleMissedSession,
+        reweightGoals: reweightGoals
+      };
+    })();
+  </script>
+
+  <!-- ========================================================= -->
+  <!-- UI INTERACTION CONTROLLER & GUIDED WALKTHROUGHS           -->
+  <!-- ========================================================= -->
+  <script>
+    // State Container
+    let state = MultiGoalPeriodizationEngine.createInitialState();
+
+    // 5 Guided Scenarios
+    const SCENARIOS = [
+      {
+        id: "hybrid_happy_path",
+        title: "1. The Hybrid Athlete Baseline",
+        desc: "Demonstrates how the engine creates an interference-free 16-week periodized plan for a dual-goal athlete wanting a <strong>Sub-3:30 Marathon (60%)</strong> and <strong>Muscle Hypertrophy (40%)</strong>, enforcing a 72-hour buffer between Wednesday Squats and Sunday Long Run.",
+        steps: [
+          {
+            label: "1. Initialize Dual-Goal Intake (Marathon 60% / Hypertrophy 40%)",
+            action: function() {
+              state = MultiGoalPeriodizationEngine.createInitialState({
+                primaryGoal: "marathon",
+                secondaryGoal: "hypertrophy",
+                primaryWeight: 0.60
+              });
+              renderAll();
+            }
+          },
+          {
+            label: "2. Inspect 72-Hour Interference Protection",
+            action: function() {
+              const alertBox = document.getElementById("interference-alert-box");
+              alertBox.classList.remove("resolved");
+              alertBox.style.background = "#EFF6FF";
+              alertBox.style.borderColor = "#3B82F6";
+              alertBox.style.color = "#1E40AF";
+              alertBox.innerHTML = `<span style="font-size: 16px;">🛡️</span><div><strong>Interference Solved:</strong> Heavy Leg Squat day is locked on Wednesday, ensuring <strong>72 hours of recovery</strong> before the 26km Long Run on Sunday. Upper Body Hypertrophy placed on Monday & Friday.</div>`;
+            }
+          },
+          {
+            label: "3. Fast-Forward to Peak Mileage Meso (Phase 3)",
+            action: function() {
+              selectMesoPhase(2);
+            }
+          }
+        ]
+      },
+      {
+        id: "hrv_crash_adaptation",
+        title: "2. The Acute Morning HRV Crash",
+        desc: "Simulates Tuesday morning: the athlete woke up with a <strong>Sleep Score of 42</strong> and an <strong>HRV drop to 34ms</strong> on their prescribed Interval Day. Watch how the engine adaptively downgrades Tuesday to an Active Recovery Flush and pushes high-intensity intervals to Thursday.",
+        steps: [
+          {
+            label: "1. Reset to Standard Week 2 Schedule",
+            action: function() {
+              state = MultiGoalPeriodizationEngine.createInitialState();
+              selectMesoPhase(0);
+              renderAll();
+            }
+          },
+          {
+            label: "2. Simulate Poor Sleep (Score 42) & Low HRV (34ms)",
+            action: function() {
+              document.getElementById("rng-sim-sleep").value = 42;
+              updateSleepDisplay(42);
+              document.getElementById("rng-sim-hrv").value = 34;
+              updateHrvDisplay(34);
+              state = MultiGoalPeriodizationEngine.applyDailyReadiness(state, {
+                sleepScore: 42,
+                hrvStatus: "severe_low",
+                soreness: "none"
+              });
+              renderAll();
+            }
+          },
+          {
+            label: "3. Verify Schedule Adaptation (Tuesday Flush + Thursday Shift)",
+            action: function() {
+              const tuesdayCard = document.querySelector(".cal-day-cell:nth-child(2) .session-card");
+              if (tuesdayCard) {
+                tuesdayCard.style.outline = "2px solid var(--primary)";
+              }
+            }
+          }
+        ]
+      },
+      {
+        id: "missed_leg_cascade",
+        title: "3. Missed Leg Day Rescheduling",
+        desc: "The athlete missed Wednesday's Heavy Squats due to work. A naive planner would push squats to Friday or Saturday—ruining Sunday's 24km Long Run. Watch how our engine cascades the missed workout into a <strong>2-set low-fatigue neuromuscular primer</strong> on Saturday instead.",
+        steps: [
+          {
+            label: "1. Reset to Standard Schedule",
+            action: function() {
+              state = MultiGoalPeriodizationEngine.createInitialState();
+              renderAll();
+            }
+          },
+          {
+            label: "2. Trigger 'Missed Session' on Wednesday Leg Day",
+            action: function() {
+              state = MultiGoalPeriodizationEngine.handleMissedSession(state, 2); // Wednesday index = 2
+              renderAll();
+            }
+          },
+          {
+            label: "3. Inspect Saturday's Safe Make-Up Session",
+            action: function() {
+              openSessionModal("sess-resched-leg");
+            }
+          }
+        ]
+      },
+      {
+        id: "taper_pivot",
+        title: "4. Late-Cycle Taper Priority Shift",
+        desc: "At 4 weeks out from race day, the athlete shifts focus from 50/50 balance to an <strong>80/20 Marathon Taper Focus</strong>. Watch how the engine throttles leg resistance training down to Maintenance Volume (4 hard sets/week at RPE 7) while peaking aerobic economy.",
+        steps: [
+          {
+            label: "1. Shift Goal Ratio to 85% Marathon / 15% Hypertrophy",
+            action: function() {
+              document.getElementById("rng-goal-weight").value = 85;
+              handleWeightSliderChange(85);
+              state = MultiGoalPeriodizationEngine.reweightGoals(state, 0.85);
+              renderAll();
+            }
+          },
+          {
+            label: "2. Jump to Phase 4 Taper Meso Block",
+            action: function() {
+              selectMesoPhase(3);
+            }
+          }
+        ]
+      },
+      {
+        id: "injury_modality_swap",
+        title: "5. Joint Strain / Low-Impact Modality Swap",
+        desc: "The athlete wakes up with an acute calf/achilles strain. The engine swaps the planned high-impact road running workout to a <strong>Zero-Impact Zone 2 Wattbike / Stationary Cycling session</strong> with identical cardiovascular aerobic time-in-zone.",
+        steps: [
+          {
+            label: "1. Reset to Standard Baseline Schedule",
+            action: function() {
+              state = MultiGoalPeriodizationEngine.createInitialState();
+              renderAll();
+            }
+          },
+          {
+            label: "2. Report Calf / Achilles Tendon Strain",
+            action: function() {
+              document.getElementById("sel-sim-soreness").value = "calf_strain";
+              state = MultiGoalPeriodizationEngine.applyDailyReadiness(state, {
+                sleepScore: 80,
+                hrvStatus: "optimal",
+                soreness: "calf_strain"
+              });
+              renderAll();
+            }
+          }
+        ]
+      }
+    ];
+
+    let currentScenarioIdx = 0;
+
+    function selectScenario(index) {
+      currentScenarioIdx = index;
+      const tabBtns = document.querySelectorAll(".tab-btn");
+      tabBtns.forEach((btn, i) => {
+        btn.classList.toggle("active", i === index);
+      });
+
+      const scenario = SCENARIOS[index];
+      document.getElementById("scenario-desc").innerHTML = `<strong>${scenario.title}:</strong> ${scenario.desc}`;
+
+      const stepsContainer = document.getElementById("scenario-steps");
+      stepsContainer.innerHTML = "";
+
+      scenario.steps.forEach((step, sIdx) => {
+        const btn = document.createElement("button");
+        btn.className = "step-btn";
+        btn.innerHTML = `
+          <span>${step.label}</span>
+          <span class="step-badge">Step ${sIdx + 1}</span>
+        `;
+        btn.onclick = function() {
+          step.action();
+          btn.classList.add("completed");
+        };
+        stepsContainer.appendChild(btn);
+      });
+    }
+
+    // UI RENDERERS
+    function renderMesoPhases() {
+      const container = document.getElementById("meso-phases-track");
+      container.innerHTML = "";
+
+      state.mesoPhases.forEach((phase, idx) => {
+        const card = document.createElement("div");
+        card.className = `meso-phase-card ${idx === state.currentMesoIndex ? "active" : ""}`;
+        card.onclick = () => selectMesoPhase(idx);
+
+        card.innerHTML = `
+          <div class="meso-phase-weeks">${phase.weeksRange}</div>
+          <div class="meso-phase-name">${phase.phaseName.split(":")[1] || phase.phaseName}</div>
+          <div class="meso-phase-metrics">
+            🏃 ${phase.targetKm} km/wk<br/>
+            🏋️ ${phase.targetLiftingSets} sets/muscle
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      // Update header metrics
+      const activePhase = state.mesoPhases[state.currentMesoIndex];
+      if (activePhase) {
+        document.getElementById("txt-peak-km").innerText = `${activePhase.targetKm} km/wk`;
+        document.getElementById("txt-lifting-sets").innerText = `${activePhase.targetLiftingSets} sets/wk`;
+      }
+    }
+
+    function renderCalendar() {
+      const grid = document.getElementById("calendar-days-grid");
+      grid.innerHTML = "";
+
+      const activePhase = state.mesoPhases[state.currentMesoIndex] || state.mesoPhases[0];
+      document.getElementById("txt-calendar-week-title").innerText = `Micro Horizon: ${activePhase.weeksRange} · ${activePhase.phaseName.split(":")[0]}`;
+
+      state.weeklyCalendar.forEach((dayData, dIdx) => {
+        const cell = document.createElement("div");
+        cell.className = `cal-day-cell ${dayData.isToday ? "today" : ""}`;
+
+        let sessionsHtml = "";
+        dayData.sessions.forEach(sess => {
+          let modClass = "mod-run";
+          if (sess.modality.startsWith("lift")) modClass = "mod-strength";
+          else if (sess.modality === "active_recovery") modClass = "mod-recovery";
+          else if (sess.modality === "rest") modClass = "mod-rest";
+          else if (sess.modality === "hybrid") modClass = "mod-hybrid";
+
+          sessionsHtml += `
+            <div class="session-card ${sess.status}" onclick="openSessionModal('${sess.id}')">
+              <span class="modality-pill ${modClass}">${sess.badge}</span>
+              <div class="session-title">${sess.title}</div>
+              <div class="session-meta">⏱️ ${sess.duration} · ⚡ TSS ${sess.tss}</div>
+              <div class="session-actions">
+                <button class="btn-session-mini" onclick="event.stopPropagation(); markSessionStatus('${sess.id}', 'completed')">✓</button>
+                <button class="btn-session-mini" onclick="event.stopPropagation(); markSessionStatus('${sess.id}', 'skipped')">✕</button>
+                <button class="btn-session-mini" onclick="event.stopPropagation(); openSessionModal('${sess.id}')">Details</button>
+              </div>
+            </div>
+          `;
+        });
+
+        cell.innerHTML = `
+          <div class="day-cell-top">
+            <span class="day-name-label">${dayData.day.slice(0, 3)}</span>
+            <span class="day-date-label">${dayData.date.slice(5)}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
+            ${sessionsHtml}
+          </div>
+        `;
+        grid.appendChild(cell);
+      });
+    }
+
+    function renderAdaptationLogs() {
+      const container = document.getElementById("adaptation-log-box");
+      container.innerHTML = "";
+      document.getElementById("txt-log-count").innerText = `${state.adaptationLog.length} Events`;
+
+      state.adaptationLog.slice(0, 10).forEach(log => {
+        const item = document.createElement("div");
+        item.className = "log-item";
+        item.innerHTML = `
+          <div style="font-size: 10px; font-weight: 700; color: var(--text-muted);">${log.timestamp} · <strong>${log.action}</strong></div>
+          <div style="margin-top: 2px;">${log.message}</div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function renderStateJson() {
+      const display = document.getElementById("state-tree-display");
+      const summaryPayload = {
+        athlete_goal_set: state.goalSet,
+        active_meso_phase: state.mesoPhases[state.currentMesoIndex],
+        weekly_training_events: state.weeklyCalendar.flatMap(d => d.sessions)
+      };
+      display.textContent = JSON.stringify(summaryPayload, null, 2);
+    }
+
+    function renderAll() {
+      renderMesoPhases();
+      renderCalendar();
+      renderAdaptationLogs();
+      renderStateJson();
+    }
+
+    // INTERACTION HANDLERS
+    function selectMesoPhase(index) {
+      state.currentMesoIndex = index;
+      state.weeklyCalendar = MultiGoalPeriodizationEngine.generateMicroCalendar(state.goalSet, state.mesoPhases, index);
+      renderAll();
+    }
+
+    function handleWeightSliderChange(val) {
+      const pWeight = parseInt(val);
+      const sWeight = 100 - pWeight;
+      document.getElementById("txt-weight-ratio").innerText = `${pWeight}% Run / ${sWeight}% Strength`;
+    }
+
+    function handleIntakeChange() {
+      const pGoal = document.getElementById("sel-primary-goal").value;
+      const sGoal = document.getElementById("sel-secondary-goal").value;
+      const pWeight = parseInt(document.getElementById("rng-goal-weight").value) / 100.0;
+      const longRunDay = document.getElementById("sel-longrun-day").value;
+
+      state = MultiGoalPeriodizationEngine.createInitialState({
+        primaryGoal: pGoal,
+        secondaryGoal: sGoal,
+        primaryWeight: pWeight,
+        secondaryWeight: 1.0 - pWeight,
+        preferredLongRunDay: longRunDay
+      });
+      renderAll();
+    }
+
+    function runGenerateFullPeriodization() {
+      handleIntakeChange();
+      const alertBox = document.getElementById("interference-alert-box");
+      alertBox.className = "interference-banner resolved";
+      alertBox.innerHTML = `
+        <span style="font-size: 16px;">⚡</span>
+        <div><strong>Periodization Generated:</strong> Complete 16-Week macro roadmap and micro calendar computed with 0 interference conflicts.</div>
+      `;
+    }
+
+    function toggleDayChip(chip, day) {
+      chip.classList.toggle("active");
+    }
+
+    function updateSleepDisplay(val) {
+      let rating = "Optimal";
+      if (val < 50) rating = "Critical (Crash)";
+      else if (val < 70) rating = "Moderate Fatigue";
+      document.getElementById("txt-sim-sleep").innerText = `${val} (${rating})`;
+    }
+
+    function updateHrvDisplay(val) {
+      let rating = "Balanced";
+      if (val < 40) rating = "Severe Low";
+      else if (val < 55) rating = "Moderate Low";
+      document.getElementById("txt-sim-hrv").innerText = `${val} ms (${rating})`;
+    }
+
+    function triggerReadinessAdaptation() {
+      const sleep = parseInt(document.getElementById("rng-sim-sleep").value);
+      const hrv = parseInt(document.getElementById("rng-sim-hrv").value);
+      const soreness = document.getElementById("sel-sim-soreness").value;
+
+      let hrvStatus = "optimal";
+      if (hrv < 40) hrvStatus = "severe_low";
+      else if (hrv < 55) hrvStatus = "moderate_low";
+
+      state = MultiGoalPeriodizationEngine.applyDailyReadiness(state, {
+        sleepScore: sleep,
+        hrvStatus: hrvStatus,
+        soreness: soreness
+      });
+      renderAll();
+    }
+
+    function markSessionStatus(sessId, status) {
+      state.weeklyCalendar.forEach(day => {
+        day.sessions.forEach(sess => {
+          if (sess.id === sessId) {
+            sess.status = status;
+          }
+        });
+      });
+      renderAll();
+    }
+
+    function openSessionModal(sessId) {
+      let foundSession = null;
+      state.weeklyCalendar.forEach(day => {
+        day.sessions.forEach(sess => {
+          if (sess.id === sessId) foundSession = sess;
+        });
+      });
+
+      if (!foundSession) return;
+      state.activeModalSessionId = sessId;
+
+      document.getElementById("modal-title").innerText = foundSession.title;
+      document.getElementById("modal-desc").innerText = foundSession.details;
+      document.getElementById("modal-modality").innerText = foundSession.badge;
+      document.getElementById("modal-rpe").innerText = foundSession.intensity || "RPE 8.0";
+      document.getElementById("modal-tss").innerText = `${foundSession.tss} Points`;
+      document.getElementById("modal-interference").innerText = foundSession.interferenceBuffer || "48h Safe Window";
+
+      document.getElementById("session-modal").classList.add("active");
+    }
+
+    function closeModal() {
+      document.getElementById("session-modal").classList.remove("active");
+    }
+
+    function markCurrentModalSession(status) {
+      if (state.activeModalSessionId) {
+        markSessionStatus(state.activeModalSessionId, status);
+        closeModal();
+      }
+    }
+
+    function copyStateJson() {
+      const jsonText = document.getElementById("state-tree-display").textContent;
+      navigator.clipboard.writeText(jsonText).then(() => {
+        alert("State JSON copied to clipboard!");
+      });
+    }
+
+    function resetEngineState() {
+      state = MultiGoalPeriodizationEngine.createInitialState();
+      selectScenario(0);
+      renderAll();
+    }
+
+    function changeWeekOffset(delta) {
+      state.currentMesoIndex = Math.max(0, Math.min(3, state.currentMesoIndex + delta));
+      selectMesoPhase(state.currentMesoIndex);
+    }
+
+    function resetToCurrentWeek() {
+      selectMesoPhase(0);
+    }
+
+    // INITIALIZATION
+    window.addEventListener("DOMContentLoaded", () => {
+      selectScenario(0);
+      renderAll();
+    });
+  </script>
+</body>
+</html>

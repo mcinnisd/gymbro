@@ -26,6 +26,8 @@ export const GarminModal: React.FC<GarminModalProps> = ({ visible, onClose, onSu
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [syncMode, setSyncMode] = useState<'all_time' | 'deep_365' | 'incremental'>('all_time');
+
   const handleConnect = async () => {
     if (!email.trim() || !password.trim()) {
       setErrorMsg('Please enter both Garmin email and password.');
@@ -42,13 +44,26 @@ export const GarminModal: React.FC<GarminModalProps> = ({ visible, onClose, onSu
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password.trim(),
+          mode: syncMode,
+          deep_backfill: syncMode !== 'incremental',
+          days_back: syncMode === 'all_time' ? 3650 : (syncMode === 'deep_365' ? 365 : 30)
+        }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        Alert.alert('Garmin Connected!', 'Garmin credentials stored. Background sync initiated.');
+        Alert.alert(
+          'Garmin Connected!',
+          syncMode === 'all_time'
+            ? 'Credentials saved! All-Time Lifetime Archive backfill (multi-year sleep architecture, HRV, and workouts) initiated in background.'
+            : syncMode === 'deep_365'
+            ? 'Credentials saved! 365-day historical deep backfill initiated in background.'
+            : 'Credentials saved! Background sync initiated.'
+        );
         if (onSuccess) onSuccess();
         onClose();
       } else {
@@ -76,7 +91,7 @@ export const GarminModal: React.FC<GarminModalProps> = ({ visible, onClose, onSu
           </View>
 
           <Text style={styles.subtitle}>
-            Enter your official Garmin Connect credentials to sync your activities, sleep stages, HRV, and daily health biometrics.
+            Enter your Garmin credentials to auto-sync sleep stages (Deep/REM/Light), HRV, Resting HR, and multi-year activity archive.
           </Text>
 
           {errorMsg ? (
@@ -107,11 +122,76 @@ export const GarminModal: React.FC<GarminModalProps> = ({ visible, onClose, onSu
             secureTextEntry
           />
 
+          <Text style={styles.label}>Historical Sync Depth</Text>
+
+          {/* All-Time Lifetime Archive */}
+          <TouchableOpacity
+            style={[styles.backfillRow, syncMode === 'all_time' && styles.backfillRowActive]}
+            onPress={() => setSyncMode('all_time')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={syncMode === 'all_time' ? 'radio-button-on' : 'radio-button-off'}
+              size={20}
+              color={syncMode === 'all_time' ? Colors.light.primary : Colors.light.subtext}
+            />
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text style={styles.backfillTitle}>All-Time Lifetime Archive (Recommended)</Text>
+              <Text style={styles.backfillDesc}>
+                Discovers account inception date and backfills complete multi-year archive with monthly chunks.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 1-Year Deep Backfill */}
+          <TouchableOpacity
+            style={[styles.backfillRow, syncMode === 'deep_365' && styles.backfillRowActive]}
+            onPress={() => setSyncMode('deep_365')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={syncMode === 'deep_365' ? 'radio-button-on' : 'radio-button-off'}
+              size={20}
+              color={syncMode === 'deep_365' ? Colors.light.primary : Colors.light.subtext}
+            />
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text style={styles.backfillTitle}>1-Year Deep Backfill (365 Days)</Text>
+              <Text style={styles.backfillDesc}>
+                Backfills past 365 days of sleep architecture, daily HRV, and workouts.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 30-Day Snapshot */}
+          <TouchableOpacity
+            style={[styles.backfillRow, syncMode === 'incremental' && styles.backfillRowActive]}
+            onPress={() => setSyncMode('incremental')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={syncMode === 'incremental' ? 'radio-button-on' : 'radio-button-off'}
+              size={20}
+              color={syncMode === 'incremental' ? Colors.light.primary : Colors.light.subtext}
+            />
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text style={styles.backfillTitle}>Recent Snapshot (30 Days)</Text>
+              <Text style={styles.backfillDesc}>
+                Quick initial sync of the last 30 days.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.connectBtn} onPress={handleConnect} disabled={loading}>
             {loading ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.connectBtnText}>Connect & Initiate Sync</Text>
+              <Text style={styles.connectBtnText}>
+                {syncMode === 'all_time'
+                  ? 'Connect & Start Lifetime Archive'
+                  : syncMode === 'deep_365'
+                  ? 'Connect & Start 1-Year Backfill'
+                  : 'Connect & Initiate Sync'}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
@@ -210,11 +290,37 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 12,
   },
   connectBtnText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 15,
   },
+  backfillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.background,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  backfillRowActive: {
+    borderColor: Colors.light.primary,
+    backgroundColor: 'rgba(217, 119, 6, 0.05)',
+  },
+  backfillTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  backfillDesc: {
+    fontSize: 11,
+    color: Colors.light.subtext,
+    marginTop: 2,
+    lineHeight: 14,
+  },
 });
+

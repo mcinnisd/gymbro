@@ -44,7 +44,7 @@ else
   PYTHON_BIN="python3"
 fi
 
-PYTHONPATH="$PROJECT_ROOT" "$PYTHON_BIN" app/main.py &
+PYTHONPATH="$PROJECT_ROOT" "$PYTHON_BIN" app.py &
 BACKEND_PID=$!
 
 # Wait for Flask to boot

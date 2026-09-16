@@ -80,13 +80,13 @@ def login():
 
     access_token = create_access_token(identity=str(user["id"]), expires_delta=timedelta(minutes=Config.TOKEN_EXPIRATION_MINUTES))
     
-    # Background sync removed from login to prevent database gridlock
-    # try:
-    #     from threading import Thread
-    #     from app.garmin.sync import sync_all_garmin_data_for_user
-    #     ...
-    # except Exception as e:
-    #     current_app.logger.error(f"Failed to trigger background sync for user {user['id']}: {e}")
+    # Safe non-blocking background auto-sync trigger on login
+    try:
+        from app.garmin.routes import sync_if_needed
+        sync_if_needed(str(user["id"]))
+    except Exception as e:
+        current_app.logger.warning(f"Auto-sync on login check failed for user {user['id']}: {e}")
+
 
     return jsonify({
         "token": access_token,

@@ -7,7 +7,7 @@
     "dev:tunnel": "./scripts/dev.sh --tunnel",
     "dev:clean": "./scripts/dev.sh --clean",
     "dev:tunnel:clean": "./scripts/dev.sh --tunnel --clean",
-    "backend": "PYTHONPATH=. venv/bin/python app/main.py",
+    "backend": "PYTHONPATH=. venv/bin/python app.py",
     "frontend": "cd gymbro-frontend-expo && npx expo start",
     "frontend:tunnel": "cd gymbro-frontend-expo && npx expo start --tunnel"
   },

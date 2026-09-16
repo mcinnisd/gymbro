@@ -9,7 +9,7 @@ This repository uses **Matt Pocock's agentic engineering skills** suite (`~/.gem
 - **Code Review**: Use `/code-review` — perform two-axis review (Standards vs. Spec) using parallel sub-agents.
 - **Architecture & Modeling**: Use `/codebase-design`, `/domain-modeling`, and `/prototype` for structural decisions and throwaway explorations.
 - **Repository Health & Audit**: Use `/deep-audit` — multi-axis codebase audit (deduplication, streamlining, domain alignment) integrated with human alignment and Wayfinder map creation.
-- **Deep Testing & Flow Verification**: Use `/deep-test` — test suite meta-audit (pruning shallow tests, public seam rigor) + dynamic suite execution + automated issue creation.
+- **Deep Testing & Suite Streamlining**: Use `/deep-test` — dual-mandate test engine: aggressively prunes test suite bloat/redundant mocks while discovering and fixing critical public seam gaps + automated issue creation.
 - **Planning & Execution**: Use native planning mode and `/implement`, `/to-tickets`, `/to-spec`.
 
 ## Superpowers Skills

@@ -43,6 +43,7 @@ export default function StatsScreen() {
   const [widgetPrefs, setWidgetPrefs] = useState<WidgetPreferences>(DEFAULT_WIDGET_PREFS);
   const [liveActivities, setLiveActivities] = useState<any[]>([]);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [telemetryStatus, setTelemetryStatus] = useState<any>(null);
 
   // Device Integration States
   const [garminEmail, setGarminEmail] = useState('');
@@ -52,7 +53,7 @@ export default function StatsScreen() {
   const [stravaConnected, setStravaConnected] = useState(false);
   const [healthkitConnected, setHealthkitConnected] = useState(false);
 
-  // Graph Metric & Range Selectors (7D, 30D, 90D, 6M, 1Y)
+  // Graph Metric & Range Selectors (7D, 30D, 90D, 6M, 1Y, ALL)
   const [selectedMetric, setSelectedMetric] = useState<'pace' | 'distance' | 'heart_rate' | 'cadence'>('pace');
   const [periodDays, setPeriodDays] = useState<number>(30);
 
@@ -66,10 +67,14 @@ export default function StatsScreen() {
 
   // Edit PR Modal
   const [showPRModal, setShowPRModal] = useState(false);
+  const [pr1k, setPr1k] = useState('');
+  const [pr1Mile, setPr1Mile] = useState('');
   const [pr5k, setPr5k] = useState('');
   const [pr10k, setPr10k] = useState('');
   const [prHalf, setPrHalf] = useState('');
+  const [prMarathon, setPrMarathon] = useState('');
   const [prBikeLongest, setPrBikeLongest] = useState('');
+  const [prBikeElevation, setPrBikeElevation] = useState('');
   const [prSwim100m, setPrSwim100m] = useState('');
   const [prHikePeak, setPrHikePeak] = useState('');
 
@@ -206,8 +211,42 @@ export default function StatsScreen() {
     getWidgetPreferences().then(setWidgetPrefs);
     if (authToken) {
       fetchProfile(periodDays);
+      fetchTelemetryStatus();
     }
   }, [authToken]);
+
+  const fetchTelemetryStatus = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/telemetry/status`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTelemetryStatus(data);
+        if (data.garmin_sync_status === 'syncing' || (data.sync_progress > 0 && data.sync_progress < 100)) {
+          setGarminSyncing(true);
+        } else if (data.garmin_sync_status === 'synced' && data.sync_progress >= 95) {
+          setGarminSyncing(false);
+          setSyncingAll(false);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching telemetry status:', e);
+    }
+  };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (garminSyncing || syncingAll) {
+      interval = setInterval(() => {
+        fetchTelemetryStatus();
+      }, 3000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [garminSyncing, syncingAll]);
 
   const handleRangeSelect = (days: number) => {
     setPeriodDays(days);
@@ -239,10 +278,23 @@ export default function StatsScreen() {
         setWeeklyVolumeInput(gls.weekly_volume ? String(gls.weekly_volume) : '');
 
         const prs = gls.personal_records || {};
-        setPr5k(prs.run_5k || '');
-        setPr10k(prs.run_10k || '');
-        setPrHalf(prs.run_half || '');
-        setPrBikeLongest(prs.bike_longest || '');
+        const cycle = gls.cycling_milestones || {};
+        const formatPr = (v: any) => {
+          if (!v) return '';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'object' && v.formatted_time) return v.formatted_time;
+          if (typeof v === 'number') return String(v);
+          return '';
+        };
+
+        setPr1k(formatPr(prs['1k']));
+        setPr1Mile(formatPr(prs['1 Mile'] || prs.run_1mi));
+        setPr5k(formatPr(prs['5k'] || prs.run_5k));
+        setPr10k(formatPr(prs['10k'] || prs.run_10k));
+        setPrHalf(formatPr(prs['Half Marathon'] || prs.run_half));
+        setPrMarathon(formatPr(prs['Marathon'] || prs.run_marathon));
+        setPrBikeLongest(cycle.longest_ride_km ? `${cycle.longest_ride_km} km` : (prs.bike_longest || ''));
+        setPrBikeElevation(cycle.max_elevation_m ? `${cycle.max_elevation_m} m` : '');
         setPrSwim100m(prs.swim_100m || '');
         setPrHikePeak(prs.hike_peak || '');
       }
@@ -285,12 +337,13 @@ export default function StatsScreen() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ email: garminEmail, password: garminPassword }),
+        body: JSON.stringify({ email: garminEmail, password: garminPassword, mode: 'all_time' }),
       });
       if (response.ok) {
         setGarminConnected(true);
         Alert.alert('Garmin Connected!', 'Garmin sync has been initiated. Your workout & wellness history is now syncing.');
         fetchProfile(periodDays);
+        fetchTelemetryStatus();
       } else {
         const err = await response.json();
         Alert.alert('Garmin Error', err.error || 'Failed to connect Garmin account.');
@@ -333,20 +386,31 @@ export default function StatsScreen() {
     }
   };
 
-  const handleForceReSyncAll = async () => {
+  const handleForceReSyncAll = async (mode: 'all_time' | 'deep_365' = 'all_time') => {
     setSyncingAll(true);
+    setGarminSyncing(true);
     try {
-      await Promise.all([
-        fetch(`${apiUrl}/garmin/sync`, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } }).catch(() => {}),
-        fetch(`${apiUrl}/strava/sync`, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } }).catch(() => {}),
-      ]);
-      Alert.alert('Re-Sync Complete', 'All connected device data has been updated!');
+      await fetch(`${apiUrl}/telemetry/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ provider: 'all', force: true, mode: mode, days_back: mode === 'all_time' ? 3650 : 365 }),
+      }).catch(() => {});
+      Alert.alert(
+        mode === 'all_time' ? 'All-Time Lifetime Archive Initiated' : '365-Day Re-Sync Initiated',
+        mode === 'all_time'
+          ? 'Scanning account inception date and backfilling complete multi-year archive in background.'
+          : '1-year historical backfill initiated in background.'
+      );
       fetchProfile(periodDays);
+      fetchTelemetryStatus();
     } catch (err) {
       console.error('Error re-syncing device data:', err);
     }
-    setSyncingAll(false);
   };
+
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -389,6 +453,12 @@ export default function StatsScreen() {
       const bodyPayload = {
         goals: {
           personal_records: {
+            '1k': pr1k || null,
+            '1 Mile': pr1Mile || null,
+            '5k': pr5k || null,
+            '10k': pr10k || null,
+            'Half Marathon': prHalf || null,
+            'Marathon': prMarathon || null,
             run_5k: pr5k || null,
             run_10k: pr10k || null,
             run_half: prHalf || null,
@@ -442,7 +512,7 @@ export default function StatsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 1-Year Range Filter Pills Bar */}
+      {/* Range Filter Pills Bar */}
       <View style={styles.rangeFilterRow}>
         <Text style={styles.rangeFilterTitle}>Range:</Text>
         {[
@@ -451,6 +521,7 @@ export default function StatsScreen() {
           { label: '90D', days: 90 },
           { label: '6M', days: 180 },
           { label: '1Y', days: 365 },
+          { label: 'ALL', days: 3650 },
         ].map((r) => {
           const isSelected = periodDays === r.days;
           return (
@@ -467,6 +538,40 @@ export default function StatsScreen() {
         })}
       </View>
 
+      {/* Live Sync Stage & Progress Banner */}
+      {(garminSyncing || telemetryStatus?.garmin_sync_status === 'syncing') && (
+        <View style={styles.syncBannerCard}>
+          <View style={styles.syncBannerHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+              <ActivityIndicator size="small" color={Colors.light.primary} style={{ marginRight: 8 }} />
+              <Text style={styles.syncBannerTitle}>Historical Backfill in Progress</Text>
+            </View>
+            <View style={styles.syncStageBadge}>
+              <Text style={styles.syncStageBadgeText}>
+                {telemetryStatus?.stage === 'snapshot_30d'
+                  ? 'Snapshot (30D)'
+                  : telemetryStatus?.stage === 'deep_365d'
+                  ? '1-Year Deep'
+                  : telemetryStatus?.stage === 'lifetime_archive'
+                  ? 'Lifetime Archive'
+                  : 'Syncing'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.progressBarContainer}>
+            <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(8, telemetryStatus?.sync_progress || 10))}%` }]} />
+          </View>
+          <View style={styles.syncBannerFooter}>
+            <Text style={styles.syncBannerSub}>
+              {telemetryStatus?.archive_inception_date
+                ? `Scanning archive back to ${telemetryStatus.archive_inception_date}`
+                : 'Mining historical biometrics & PRs'}
+            </Text>
+            <Text style={styles.syncBannerPct}>{telemetryStatus?.sync_progress || 0}%</Text>
+          </View>
+        </View>
+      )}
+
       {/* Connected Devices & Integration Settings */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
@@ -479,12 +584,15 @@ export default function StatsScreen() {
               <Ionicons name="options-outline" size={14} color={Colors.light.primary} style={{ marginRight: 4 }} />
               <Text style={styles.outlineBtnText}>Widgets</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.resyncBtn} onPress={handleForceReSyncAll} disabled={syncingAll}>
+            <TouchableOpacity style={styles.allTimeBtn} onPress={() => handleForceReSyncAll('all_time')} disabled={syncingAll}>
               {syncingAll ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.resyncBtnText}>🔄 Re-Sync All</Text>
+                <Text style={styles.allTimeBtnText}>⚡ Lifetime Re-Sync</Text>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.resyncBtn} onPress={() => handleForceReSyncAll('deep_365')} disabled={syncingAll}>
+              <Text style={styles.resyncBtnText}>🔄 1-Year</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -496,7 +604,11 @@ export default function StatsScreen() {
             <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={styles.deviceName}>Garmin Connect</Text>
               <Text style={styles.deviceSub}>
-                {garminConnected ? 'Status: Connected & Auto-Syncing' : 'Status: Disconnected'}
+                {garminConnected
+                  ? garminSyncing
+                    ? `Syncing (${telemetryStatus?.sync_progress || 0}%)`
+                    : 'Status: Connected & Synced'
+                  : 'Status: Disconnected'}
               </Text>
             </View>
           </View>
@@ -870,7 +982,10 @@ export default function StatsScreen() {
       {/* Personal Records (PRs) */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>Personal Records (PRs)</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+            <Ionicons name="trophy-outline" size={18} color={Colors.light.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.cardTitle}>All-Time Personal Records (PRs)</Text>
+          </View>
           <TouchableOpacity style={styles.editBtn} onPress={() => setShowPRModal(true)}>
             <Ionicons name="pencil" size={16} color={Colors.light.primary} />
             <Text style={styles.editBtnText}>Edit PRs</Text>
@@ -878,6 +993,10 @@ export default function StatsScreen() {
         </View>
 
         <View style={styles.prGrid}>
+          <View style={styles.prTile}>
+            <Text style={styles.prLabel}>1 Mile</Text>
+            <Text style={styles.prValue}>{pr1Mile || 'Not Set'}</Text>
+          </View>
           <View style={styles.prTile}>
             <Text style={styles.prLabel}>5K Run</Text>
             <Text style={styles.prValue}>{pr5k || 'Not Set'}</Text>
@@ -891,8 +1010,20 @@ export default function StatsScreen() {
             <Text style={styles.prValue}>{prHalf || 'Not Set'}</Text>
           </View>
           <View style={styles.prTile}>
+            <Text style={styles.prLabel}>Marathon</Text>
+            <Text style={styles.prValue}>{prMarathon || 'Not Set'}</Text>
+          </View>
+          <View style={styles.prTile}>
+            <Text style={styles.prLabel}>1K Speed</Text>
+            <Text style={styles.prValue}>{pr1k || 'Not Set'}</Text>
+          </View>
+          <View style={styles.prTile}>
             <Text style={styles.prLabel}>Longest Ride</Text>
             <Text style={styles.prValue}>{prBikeLongest || 'Not Set'}</Text>
+          </View>
+          <View style={styles.prTile}>
+            <Text style={styles.prLabel}>Max Elevation</Text>
+            <Text style={styles.prValue}>{prBikeElevation || 'Not Set'}</Text>
           </View>
         </View>
       </View>
@@ -988,8 +1119,11 @@ export default function StatsScreen() {
       {/* Edit PRs Modal */}
       <Modal visible={showPRModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <ScrollView style={styles.modalContent}>
             <Text style={styles.modalTitle}>Edit Personal Records</Text>
+
+            <Text style={styles.inputLabel}>1 Mile Run (e.g. 5:45)</Text>
+            <TextInput style={styles.inputField} value={pr1Mile} onChangeText={setPr1Mile} />
 
             <Text style={styles.inputLabel}>5K Run (e.g. 21:30)</Text>
             <TextInput style={styles.inputField} value={pr5k} onChangeText={setPr5k} />
@@ -999,6 +1133,12 @@ export default function StatsScreen() {
 
             <Text style={styles.inputLabel}>Half Marathon (e.g. 1:38:00)</Text>
             <TextInput style={styles.inputField} value={prHalf} onChangeText={setPrHalf} />
+
+            <Text style={styles.inputLabel}>Marathon (e.g. 3:28:00)</Text>
+            <TextInput style={styles.inputField} value={prMarathon} onChangeText={setPrMarathon} />
+
+            <Text style={styles.inputLabel}>1K Speed (e.g. 3:30)</Text>
+            <TextInput style={styles.inputField} value={pr1k} onChangeText={setPr1k} />
 
             <Text style={styles.inputLabel}>Longest Bike Ride (e.g. 85 km)</Text>
             <TextInput style={styles.inputField} value={prBikeLongest} onChangeText={setPrBikeLongest} />
@@ -1011,7 +1151,7 @@ export default function StatsScreen() {
                 {saving ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.modalSaveText}>Save PRs</Text>}
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </ScrollView>
@@ -1161,9 +1301,76 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
+  syncBannerCard: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  syncBannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  syncBannerTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#92400E',
+  },
+  syncStageBadge: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  syncStageBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: '#FDE68A',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#D97706',
+    borderRadius: 4,
+  },
+  syncBannerFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  syncBannerSub: {
+    fontSize: 11,
+    color: '#B45309',
+  },
+  syncBannerPct: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#92400E',
+  },
+  allTimeBtn: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  allTimeBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   resyncBtn: {
     backgroundColor: Colors.light.primary,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
   },

@@ -114,7 +114,24 @@ def generate_baseline_plan(user_id: str, context: str = None, archetype: str = N
         )
 
         # Parse JSON
-        plan_json = extract_json_from_text(response_text) or {"raw_text": response_text}
+        plan_json = extract_json_from_text(response_text)
+        if not plan_json or not isinstance(plan_json, dict) or ("weeks" not in plan_json and "phases" not in plan_json):
+            plan_json = {
+                "plan_name": f"{target_archetype.replace('_', ' ').title()} Baseline Plan",
+                "archetype": target_archetype,
+                "weeks": [
+                    {
+                        "week_number": 1,
+                        "days": [
+                            {"day": "Monday", "activity": "Upper Body Strength / Zone 2 Run", "details": "45 min steady workout"},
+                            {"day": "Tuesday", "activity": "Lower Body Focus", "details": "Squats, Lunges, Core stability"},
+                            {"day": "Thursday", "activity": "Tempo Cardio / Push Split", "details": "Moderate intensity intervals"},
+                            {"day": "Saturday", "activity": "Long Endurance / Full Body", "details": "Long steady aerobic session"}
+                        ]
+                    }
+                ],
+                "raw_text": response_text
+            }
         
         # Store in DB
         supabase.table("users").update({
@@ -160,7 +177,30 @@ def organize_phased_plan(user_id: str):
             model_name=model_name
         )
 
-        phases_json = extract_json_from_text(response_text) or {"raw_text": response_text}
+        phases_json = extract_json_from_text(response_text)
+        if not phases_json or not isinstance(phases_json, dict) or "phases" not in phases_json:
+            weeks_source = baseline_plan.get("weeks", []) if isinstance(baseline_plan, dict) else []
+            if not weeks_source:
+                weeks_source = [
+                    {
+                        "week_number": 1,
+                        "days": [
+                            {"day": "Monday", "activity": "Foundation Run / Lift", "details": "45 min workout"},
+                            {"day": "Wednesday", "activity": "Progressive Intervals", "details": "Tempo session"},
+                            {"day": "Friday", "activity": "Recovery Strength", "details": "Mobility & Core"}
+                        ]
+                    }
+                ]
+            phases_json = {
+                "phases": [
+                    {
+                        "phase_name": "Phase 1: Foundation & Aerobic Base",
+                        "duration_weeks": 4,
+                        "weeks": weeks_source
+                    }
+                ],
+                "raw_text": response_text
+            }
         
         supabase.table("users").update({
             "training_plan_phased": phases_json,

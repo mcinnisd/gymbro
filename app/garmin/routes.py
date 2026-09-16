@@ -57,69 +57,85 @@ def connect_garmin():
         logger.error(f"Error storing Garmin credentials for user {user_id}: {e}")
         return jsonify({"error": f"Failed to connect: {str(e)}"}), 500
 
-def sync_if_needed(user_id: str):
+def sync_if_needed(user_id: str, debounce_minutes: int = 15) -> bool:
     """
-    Checks if a sync is needed (>24h since last sync) and triggers it if so.
+    Checks if a Garmin sync is needed (>15m since last sync or never completed) and triggers it non-blockingly.
+    Returns True if sync was initiated, False otherwise.
     """
     try:
-        res = supabase.table("users").select("garmin_sync_status, garmin_sync_completed_at").eq("id", user_id).execute()
+        res = supabase.table("users").select("garmin_email, garmin_password, garmin_sync_status, garmin_sync_completed_at").eq("id", user_id).execute()
         if not res.data:
-            return
+            return False
 
-        status = res.data[0].get("garmin_sync_status")
-        last_completed = res.data[0].get("garmin_sync_completed_at")
+        u = res.data[0]
+        if not u.get("garmin_email") or not u.get("garmin_password"):
+            return False
+
+        status = u.get("garmin_sync_status")
+        last_completed = u.get("garmin_sync_completed_at")
 
         if status == "syncing":
-            return # Already in progress
+            return False # Already in progress
 
         should_sync = False
-        if not last_completed:
+        is_first_sync = not bool(last_completed)
+        if is_first_sync:
             should_sync = True
         else:
             from datetime import datetime, timezone, timedelta
             last_dt = datetime.fromisoformat(last_completed.replace("Z", "+00:00"))
-            if datetime.now(timezone.utc) - last_dt > timedelta(hours=24):
+            if datetime.now(timezone.utc) - last_dt > timedelta(minutes=debounce_minutes):
                 should_sync = True
 
         if should_sync:
-            logger.info(f"Auto-triggering Garmin sync for user {user_id}")
-            # We don't have request context here, so we must rely on manual env var or robust code.
-            # However, sync_if_needed is usually called from a request?! No, likely scheduled task or login hook.
-            # If called from login hook (auth route), we HAVE app context.
+            logger.info(f"Auto-triggering Garmin sync for user {user_id} (first_sync={is_first_sync})")
             try:
                 enc_key = current_app.config.get("ENCRYPTION_KEY")
-            except:
+            except Exception:
                 import os
                 enc_key = os.environ.get("ENCRYPTION_KEY")
 
+            days_to_sync = 365 if is_first_sync else 7
             import threading
-            thread = threading.Thread(target=sync_all_garmin_data_for_user, args=(user_id, 7, enc_key))
+            def _garmin_auto_worker(uid, key, days):
+                try:
+                    sync_all_garmin_data_for_user(uid, days_back=days, encryption_key=key)
+                    from app.analytics.analytics_service import AnalyticsService
+                    AnalyticsService.calculate_baselines(uid)
+                except Exception as g_err:
+                    logger.error(f"Background auto-sync error for user {uid}: {g_err}")
+
+            thread = threading.Thread(target=_garmin_auto_worker, args=(user_id, enc_key, days_to_sync))
             thread.daemon = True
             thread.start()
+            return True
+
+        return False
 
     except Exception as e:
-        logger.error(f"Error checking if sync needed for user {user_id}: {e}")
+        logger.error(f"Error checking if Garmin sync needed for user {user_id}: {e}")
+        return False
 
 @garmin_bp.route("/sync", methods=["POST"])
 @jwt_required()
 def trigger_garmin_sync():
     """
     Initiates Garmin data synchronization for the authenticated user in the background.
-    Accepts { "force": true } to force a full 5-year resync.
+    Accepts { "force": true, "days_back": 365 } to force a full backfill.
     """
     user_id = get_jwt_identity()
     
-    # Check body for force flag
     force_resync = False
+    days_back = 365
     if request.is_json:
-        data = request.get_json()
+        data = request.get_json() or {}
         force_resync = data.get("force", False)
+        days_back = data.get("days_back", 365 if force_resync else 7)
 
     try:
         # Check if already syncing
         res = supabase.table("users").select("garmin_sync_status").eq("id", user_id).execute()
-        if res.data and res.data[0].get("garmin_sync_status") == "syncing":
-             # Optional: If force=True, maybe override? For now, stick to 'wait'.
+        if res.data and res.data[0].get("garmin_sync_status") == "syncing" and not force_resync:
             return jsonify({
                 "message": "Sync already in progress.",
                 "status": "syncing"
@@ -130,28 +146,30 @@ def trigger_garmin_sync():
 
         import threading
         # Run sync in background thread
-        def _background_sync_wrapper(uid, key, force):
+        def _background_sync_wrapper(uid, key, days, force):
             from app.analytics.analytics_service import AnalyticsService
-            sync_all_garmin_data_for_user(uid, encryption_key=key, force_resync=force)
+            sync_all_garmin_data_for_user(uid, days_back=days, encryption_key=key, force_resync=force)
             try:
                 AnalyticsService.calculate_baselines(uid)
             except Exception as e:
                 logger.error(f"Error running analytics after sync: {e}")
 
-        # Pass force_resync to args
-        thread = threading.Thread(target=_background_sync_wrapper, args=(user_id, enc_key, force_resync))
+        thread = threading.Thread(target=_background_sync_wrapper, args=(user_id, enc_key, days_back, force_resync))
         thread.daemon = True
         thread.start()
         
-        msg = "Full resync initiated." if force_resync else "Garmin data sync initiated."
+        msg = f"Full {days_back}-day resync initiated." if force_resync else "Garmin data sync initiated."
         logger.info(f"{msg} for user {user_id}.")
         return jsonify({
             "message": msg,
-            "status": "syncing"
+            "status": "syncing",
+            "days_back": days_back,
+            "force_resync": force_resync
         }), 200
     except Exception as e:
         logger.error(f"Error initiating Garmin sync for user {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
+
 @garmin_bp.route("/status", methods=["GET"])
 @jwt_required()
 @limiter.exempt

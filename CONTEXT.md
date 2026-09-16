@@ -34,3 +34,11 @@ This document defines the canonical domain vocabulary for GYMBro. All codebase s
 
 - **Interactive Chat Widget**: A structured JSON payload returned by Agent tools that renders native client-side interactive UI components (dynamic interactive charts, plan approval modals, macro calculators, session editors) directly in the conversation stream.
 - **Health Lake**: The centralized, deduplicated repository of raw and normalized telemetry spanning all hardware and lab sources.
+
+---
+
+### Onboarding & Setup Lifecycle
+
+- **Onboarding Setup Flow**: The initial hard-gated setup sequence that captures the Athlete Profile, links biometric hardware, executes Telemetry Prepopulation, calibrates baselines, and commits the initial training horizon to the calendar.
+- **Telemetry Prepopulation**: The automated extraction of demographic and baseline metrics (age, weight, height, resting HR, HRV, historical volume) from connected hardware providers to populate the Athlete Profile with zero manual data entry.
+- **Data Reality Check**: The automated agent audit comparing an athlete's stated Goal Set against their historical 14-to-30 day acute training load and physiological readiness to establish realistic, injury-preventing progression rates.

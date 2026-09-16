@@ -38,6 +38,8 @@ def sync_telemetry():
     # Case 2: Provider background sync trigger
     provider = data.get("provider", "all").lower()
     force_resync = data.get("force", False)
+    mode = data.get("mode", "all_time" if force_resync else "deep_365")
+    days_back = data.get("days_back", 365 if (force_resync or mode == "deep_365") else 7)
     synced_providers = []
 
     try:
@@ -46,15 +48,15 @@ def sync_telemetry():
         # Garmin sync
         if provider in ["all", "garmin"]:
             from app.garmin.sync import sync_all_garmin_data_for_user
-            def _garmin_worker(uid, key, force):
+            def _garmin_worker(uid, key, days, force, sync_mode):
                 try:
-                    sync_all_garmin_data_for_user(uid, encryption_key=key, force_resync=force)
+                    sync_all_garmin_data_for_user(uid, days_back=days, encryption_key=key, force_resync=force, mode=sync_mode)
                     from app.analytics.analytics_service import AnalyticsService
                     AnalyticsService.calculate_baselines(uid)
                 except Exception as g_err:
                     logger.error(f"Garmin background sync error: {g_err}")
 
-            t_garmin = threading.Thread(target=_garmin_worker, args=(user_id, enc_key, force_resync))
+            t_garmin = threading.Thread(target=_garmin_worker, args=(user_id, enc_key, days_back, force_resync, mode))
             t_garmin.daemon = True
             t_garmin.start()
             synced_providers.append("garmin")
@@ -78,13 +80,127 @@ def sync_telemetry():
         return jsonify({
             "message": "Telemetry synchronization initiated.",
             "status": "syncing",
+            "mode": mode,
             "providers": synced_providers,
+            "days_back": days_back,
             "force_resync": force_resync
         }), 200
 
     except Exception as e:
         logger.error(f"Error initiating provider sync for user {user_id}: {e}")
         return jsonify({"error": f"Failed to trigger sync: {str(e)}"}), 500
+
+@telemetry_bp.route("/sync-if-needed", methods=["POST"])
+@jwt_required()
+def check_and_sync_if_needed():
+    """
+    Checks if telemetry data for any connected provider (Garmin, Strava) is stale (>15 mins)
+    or has never been synced, and initiates non-blocking background synchronization.
+    """
+    user_id = get_jwt_identity()
+    uid = int(user_id) if str(user_id).isdigit() else user_id
+    triggered_providers = []
+
+    try:
+        # Check user integration status
+        res = supabase.table("users").select(
+            "id, garmin_email, garmin_password, garmin_sync_status, garmin_sync_completed_at, "
+            "strava_access_token, strava_last_updated"
+        ).eq("id", uid).execute()
+
+        if not res.data:
+            return jsonify({"status": "error", "error": "User not found"}), 404
+
+        u = res.data[0]
+        now = datetime.now(timezone.utc)
+        debounce_window = timedelta(minutes=15)
+
+        enc_key = current_app.config.get("ENCRYPTION_KEY")
+
+        # 1. Garmin check
+        garmin_email = u.get("garmin_email")
+        garmin_pass = u.get("garmin_password")
+        g_status = u.get("garmin_sync_status")
+        g_completed = u.get("garmin_sync_completed_at")
+
+        if garmin_email and garmin_pass and g_status != "syncing":
+            should_sync_garmin = False
+            is_first_sync = not bool(g_completed)
+            if is_first_sync:
+                should_sync_garmin = True
+            else:
+                try:
+                    last_g_dt = datetime.fromisoformat(g_completed.replace("Z", "+00:00"))
+                    if now - last_g_dt > debounce_window:
+                        should_sync_garmin = True
+                except Exception:
+                    should_sync_garmin = True
+
+            if should_sync_garmin:
+                from app.garmin.sync import sync_all_garmin_data_for_user
+                days_to_sync = 365 if is_first_sync else 7
+                def _garmin_auto(u_id, key, days):
+                    try:
+                        sync_all_garmin_data_for_user(u_id, days_back=days, encryption_key=key)
+                        from app.analytics.analytics_service import AnalyticsService
+                        AnalyticsService.calculate_baselines(u_id)
+                    except Exception as err:
+                        logger.error(f"Auto-sync Garmin error for user {u_id}: {err}")
+
+                t = threading.Thread(target=_garmin_auto, args=(user_id, enc_key, days_to_sync))
+                t.daemon = True
+                t.start()
+                triggered_providers.append("garmin")
+
+        # 2. Strava check
+        strava_token = u.get("strava_access_token")
+        strava_updated = u.get("strava_last_updated")
+        if strava_token:
+            should_sync_strava = False
+            if not strava_updated:
+                should_sync_strava = True
+            else:
+                try:
+                    last_s_dt = datetime.fromisoformat(strava_updated.replace("Z", "+00:00"))
+                    if now - last_s_dt > debounce_window:
+                        should_sync_strava = True
+                except Exception:
+                    should_sync_strava = True
+
+            if should_sync_strava:
+                from app.strava.sync import sync_strava_activities
+                def _strava_auto(u_id):
+                    try:
+                        sync_strava_activities(u_id)
+                        from app.analytics.analytics_service import AnalyticsService
+                        AnalyticsService.calculate_baselines(u_id)
+                    except Exception as err:
+                        logger.error(f"Auto-sync Strava error for user {u_id}: {err}")
+
+                t = threading.Thread(target=_strava_auto, args=(user_id,))
+                t.daemon = True
+                t.start()
+                triggered_providers.append("strava")
+
+        if triggered_providers:
+            return jsonify({
+                "status": "syncing",
+                "triggered": True,
+                "providers": triggered_providers,
+                "message": f"Auto-sync triggered for {', '.join(triggered_providers)}"
+            }), 200
+        else:
+            return jsonify({
+                "status": "fresh",
+                "triggered": False,
+                "providers": [],
+                "message": "Telemetry data is already fresh and up to date."
+            }), 200
+
+    except Exception as e:
+        logger.error(f"Error checking auto-sync for user {user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @telemetry_bp.route("/status", methods=["GET"])
 @jwt_required()

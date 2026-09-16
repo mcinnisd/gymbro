@@ -399,6 +399,7 @@ export default function RecoveryScreen() {
             { label: '90D', days: 90 },
             { label: '6M', days: 180 },
             { label: '1Y', days: 365 },
+            { label: 'ALL', days: 3650 },
           ].map((r) => {
             const isSelected = rangeDays === r.days;
             return (

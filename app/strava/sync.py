@@ -9,6 +9,30 @@ from app.supabase_client import supabase
 
 logger = logging.getLogger(__name__)
 
+def discover_strava_inception_date(access_token: str):
+    """
+    Retrieves the athlete's account creation date from Strava.
+    Falls back to 5 years ago if unavailable.
+    """
+    from datetime import date, timedelta
+    fallback_date = (datetime.now(timezone.utc) - timedelta(days=1825)).date()
+    if not access_token:
+        return fallback_date
+    try:
+        url = "https://www.strava.com/api/v3/athlete"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            created_at_str = data.get("created_at")
+            if created_at_str:
+                clean_str = created_at_str.replace("Z", "").split("+")[0]
+                return datetime.fromisoformat(clean_str).date()
+        return fallback_date
+    except Exception as e:
+        logger.warning(f"Failed to discover Strava inception date: {e}")
+        return fallback_date
+
 def refresh_strava_access_token(user_id):
     """
     Use the stored refresh token to get a short-lived access token from Strava.
@@ -71,9 +95,41 @@ def fetch_strava_activities(access_token, page=1, per_page=30):
         logger.error(f"Failed to fetch Strava activities: {e}")
         return []
 
+def _sync_strava_activities_to_calendar(user_id: str, activities: list):
+    """
+    Populates Strava activities into the training_events table for calendar strip display.
+    """
+    if not supabase or not activities:
+        return
+    try:
+        calendar_batch = []
+        uid = int(user_id) if str(user_id).isdigit() else user_id
+        for doc in activities:
+            act_date = str(doc.get("start_date_local", ""))[:10]
+            if act_date:
+                raw_dist = doc.get("distance") or 0
+                dist_km = round(raw_dist / 1000, 2) if raw_dist > 100 else round(raw_dist, 2)
+                raw_dur = doc.get("moving_time") or doc.get("elapsed_time") or 0
+                dur_min = round(raw_dur / 60, 1) if raw_dur > 300 else round(raw_dur, 1)
+                calendar_batch.append({
+                    "user_id": uid,
+                    "date": act_date,
+                    "title": doc.get("name") or "Strava Activity",
+                    "description": f"Distance: {dist_km}km, Duration: {dur_min}min, Avg HR: {doc.get('average_hr', 'N/A')} bpm",
+                    "event_type": doc.get("type", "run").lower(),
+                    "status": "completed",
+                    "created_by": "strava",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+        if calendar_batch:
+            supabase.table("training_events").upsert(calendar_batch).execute()
+            logger.info(f"Synced {len(calendar_batch)} Strava activities to training_events calendar for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to sync Strava activities to training_events calendar: {e}")
+
 def sync_strava_activities(user_id):
     """
-    Pulls Strava activities for the user, storing/updating them in Supabase.
+    Pulls Strava activities for the user, storing/updating them in Supabase and training calendar.
     """
     access_token = refresh_strava_access_token(user_id)
     if not access_token:
@@ -92,12 +148,15 @@ def sync_strava_activities(user_id):
     page = 1
     total_inserted = 0
     while True:
-        activities = fetch_strava_activities(access_token, page=page, per_page=30)
+        activities = fetch_strava_activities(access_token, page=page, per_page=100)
         if not activities:
             break  # No more data or error
 
         new_activities = [act for act in activities if str(act["id"]) not in existing_ids]
         if not new_activities:
+            # If we've reached a full page of already-synced activities, we can stop pagination
+            if len(activities) < 100:
+                break
             page += 1
             continue
 
@@ -132,6 +191,7 @@ def sync_strava_activities(user_id):
         if batch_to_insert:
             try:
                 supabase.table("strava_activities").upsert(batch_to_insert, on_conflict="activity_id").execute()
+                _sync_strava_activities_to_calendar(user_id, batch_to_insert)
                 total_inserted += len(batch_to_insert)
                 for doc in batch_to_insert:
                     existing_ids.add(doc["activity_id"])
@@ -139,6 +199,9 @@ def sync_strava_activities(user_id):
                 logger.error(f"Failed to upsert Strava activities: {e}")
                 break
 
+        if len(activities) < 100:
+            break
         page += 1
 
     logger.info(f"Strava sync finished. Synced {total_inserted} new activities for user {user_id}.")
+

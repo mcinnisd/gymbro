@@ -10,4 +10,4 @@ fi
 
 # Run tests
 echo "Running tests..."
-PYTHONPATH=. ./venv/bin/python -m pytest tests/ -v
+MOCK_DB=true PYTHONPATH=. ./venv/bin/python -m pytest tests/ -v "$@"

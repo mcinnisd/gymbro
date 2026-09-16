@@ -12,75 +12,131 @@ class AnalyticsService:
     @staticmethod
     def calculate_baselines(user_id: str):
         """
-        Main entry point to calculate and store all baselines for a user.
+        Main entry point to calculate and store all multi-year baselines, PRs, and efficiency curves for a user.
         """
         logger.info(f"Starting baseline calculation for user {user_id}...")
         try:
-            # 1. Fetch Activities
-            # Fetch essential fields for analysis
-            res = supabase.table("garmin_activities")\
-                .select("start_time_local, distance, duration, activity_type, average_hr")\
-                .eq("user_id", user_id)\
-                .order("start_time_local", desc=True)\
-                .limit(1000)\
-                .execute()
+            uid_parsed = int(user_id) if str(user_id).isdigit() else user_id
             
-            raw_activities = res.data if res.data else []
+            # 1. Fetch All Historical Activities from Garmin and Strava
+            raw_activities = []
+            
+            # Garmin activities
+            try:
+                g_res = supabase.table("garmin_activities")\
+                    .select("start_time_local, distance, duration, activity_type, average_hr, elevation_gain")\
+                    .eq("user_id", uid_parsed)\
+                    .order("start_time_local", desc=True)\
+                    .limit(5000)\
+                    .execute()
+                if g_res.data:
+                    raw_activities.extend(g_res.data)
+            except Exception as ge:
+                logger.warning(f"Failed fetching Garmin activities for baseline calc: {ge}")
+
+            # Strava activities
+            try:
+                s_res = supabase.table("strava_activities")\
+                    .select("start_date_local, distance, moving_time, elapsed_time, type, average_hr, elevation_gain")\
+                    .eq("user_id", uid_parsed)\
+                    .order("start_date_local", desc=True)\
+                    .limit(5000)\
+                    .execute()
+                if s_res.data:
+                    for s in s_res.data:
+                        raw_activities.append({
+                            "start_time_local": s.get("start_date_local"),
+                            "distance": s.get("distance"),
+                            "duration": s.get("moving_time") or s.get("elapsed_time"),
+                            "activity_type": s.get("type"),
+                            "average_hr": s.get("average_hr"),
+                            "elevation_gain": s.get("elevation_gain")
+                        })
+            except Exception as se:
+                logger.warning(f"Failed fetching Strava activities for baseline calc: {se}")
+            
             if not raw_activities:
                 logger.info(f"No activities found for user {user_id} to analyze.")
-                return
+                return None
 
-            # Filter for running only (STRICT)
-            # Garmin types: 'running', 'treadmill_running', 'trail_running', etc.
-            valid_types = ['running', 'treadmill_running', 'trail_running', 'street_running', 'track_running']
+            # Filter for running only
+            valid_run_types = ['running', 'treadmill_running', 'trail_running', 'street_running', 'track_running', 'run']
             run_activities = [
                 a for a in raw_activities 
-                if a.get('activity_type') in valid_types
+                if str(a.get('activity_type', '')).lower() in valid_run_types
                 and a.get('distance') and a.get('duration')
             ]
-            
-            if not run_activities:
-                logger.info(f"No running activities found for user {user_id}.")
-                # Should we clear baselines? For now just return.
-                return
 
-            # 2. Calculate Metrics
-            pbs = AnalyticsService._calculate_pbs(run_activities)
-            volume = AnalyticsService._calculate_volume_metrics(run_activities)
-            longest_run = AnalyticsService._find_longest_run(run_activities)
+            # Filter for cycling
+            valid_cycle_types = ['cycling', 'biking', 'ride', 'virtualride', 'gravel_cycling', 'road_biking', 'mountain_biking']
+            cycle_activities = [
+                a for a in raw_activities
+                if str(a.get('activity_type', '')).lower() in valid_cycle_types
+                and a.get('distance') and a.get('duration')
+            ]
+
+            # 2. Calculate Running Metrics & PRs
+            pbs = AnalyticsService._calculate_pbs(run_activities) if run_activities else {}
+            volume = AnalyticsService._calculate_volume_metrics(run_activities) if run_activities else {}
+            longest_run = AnalyticsService._find_longest_run(run_activities) if run_activities else None
             
-            # 3. Store Results
+            # 3. Calculate Cycling Milestones
+            cycling_milestones = AnalyticsService._calculate_cycling_milestones(cycle_activities) if cycle_activities else None
+
+            # 4. Calculate Multi-Year Aerobic Efficiency Curves
+            aerobic_efficiency = AnalyticsService._calculate_aerobic_efficiency_by_year(run_activities) if run_activities else {}
+
+            # 5. Store Results in user_baselines table
             baselines = {
                 "pbs": pbs,
                 "volume": volume,
                 "longest_run": longest_run,
-                "dataset_size": len(run_activities),
+                "cycling": cycling_milestones,
+                "aerobic_efficiency_by_year": aerobic_efficiency,
+                "dataset_size": len(raw_activities),
                 "last_processed_date": datetime.now(timezone.utc).isoformat()
             }
 
             supabase.table("user_baselines").upsert({
-                "user_id": user_id,
+                "user_id": uid_parsed,
                 "metric_category": "running",
                 "baselines": baselines,
                 "computed_at": datetime.now(timezone.utc).isoformat()
             }, on_conflict="user_id, metric_category").execute()
 
-            logger.info(f"Successfully calculated and stored baselines for user {user_id}.")
+            # 6. Update user's goals JSON with discovered PRs and Milestones for immediate profile access
+            try:
+                user_res = supabase.table("users").select("goals").eq("id", uid_parsed).execute()
+                if user_res.data:
+                    goals = user_res.data[0].get("goals") or {}
+                    if pbs:
+                        goals["personal_records"] = pbs
+                    if cycling_milestones:
+                        goals["cycling_milestones"] = cycling_milestones
+                    if aerobic_efficiency:
+                        goals["aerobic_efficiency_by_year"] = aerobic_efficiency
+                    supabase.table("users").update({"goals": goals}).eq("id", uid_parsed).execute()
+            except Exception as ue:
+                logger.warning(f"Could not update user goals with PRs: {ue}")
+
+            logger.info(f"Successfully calculated and stored longitudinal baselines for user {user_id}.")
             return baselines
 
         except Exception as e:
             logger.error(f"Error calculating baselines for user {user_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     @staticmethod
     def _calculate_pbs(activities):
         """
         Find best efforts for standard distances based on Average Pace.
-        Logic: If activity distance >= target distance, calculate time at avg pace.
-        This captures '5k in a 10k' (conservatively) and '5.1km race'.
+        Includes 1k, 1 Mile, 5k, 10k, Half Marathon, and Marathon.
         """
         best_efforts = {
             "1k": None,
+            "1 Mile": None,
             "5k": None,
             "10k": None,
             "Half Marathon": None,
@@ -90,44 +146,99 @@ class AnalyticsService:
         # Target distances in meters
         targets = {
             "1k": 1000,
+            "1 Mile": 1609.34,
             "5k": 5000,
             "10k": 10000,
-            "Half Marathon": 21097,
+            "Half Marathon": 21097.5,
             "Marathon": 42195
         }
 
         for act in activities:
             dist = act.get('distance', 0)
             dur = act.get('duration', 0)
-            date = act.get('start_time_local', '')[:10]
+            date_str = str(act.get('start_time_local', ''))[:10]
             
-            if not dist or dist <= 0 or not dur:
+            if not dist or dist <= 0 or not dur or dur <= 0:
                 continue
 
             for label, target_dist in targets.items():
-                # Allow a tiny margin for GPS error undershoot? (e.g. 4.99km counting as 5k?)
-                # Let's say 98% of distance is required to count as that "effort" if we project.
-                # Actually, standard practice: you must cover the distance.
-                # But for a casual app, 5.0km on a 5k race is rare, usually 5.01 or 4.98.
-                # Let's use 0.97 factor (3% short is okay to project up).
                 if dist >= (target_dist * 0.97):
-                    # Calculate estimated time for exactly the target distance at this average pace
-                    # Pace = dur / dist
-                    # Est Time = Pace * target_dist
                     est_seconds = (dur / dist) * target_dist
-                    
                     current_best = best_efforts[label]
                     
                     if current_best is None or est_seconds < current_best['time_seconds']:
                         best_efforts[label] = {
                             "time_seconds": round(est_seconds, 2),
-                            "date": date,
-                            "source_dist": dist, # debug info
+                            "date": date_str,
+                            "source_dist": dist,
                             "formatted_time": AnalyticsService._format_duration(est_seconds)
                         }
         
-        # Remove None values
         return {k: v for k, v in best_efforts.items() if v}
+
+    @staticmethod
+    def _calculate_cycling_milestones(activities):
+        """
+        Extracts cycling milestones (longest ride km, max elevation gain, longest duration).
+        """
+        if not activities:
+            return None
+        max_dist = max((a.get('distance') or 0) for a in activities)
+        max_elev = max((a.get('elevation_gain') or 0) for a in activities)
+        max_dur = max((a.get('duration') or 0) for a in activities)
+        return {
+            "longest_ride_km": round(max_dist / 1000.0, 2),
+            "max_elevation_m": round(float(max_elev), 2),
+            "longest_duration_hours": round(max_dur / 3600.0, 2),
+            "total_rides": len(activities)
+        }
+
+    @staticmethod
+    def _calculate_aerobic_efficiency_by_year(activities):
+        """
+        Calculates multi-year aerobic efficiency trends (speed m/s / avg_hr * 1000, pace min/km vs HR).
+        """
+        yearly_data = {}
+        for act in activities:
+            dist = act.get('distance') or 0
+            dur = act.get('duration') or 0
+            hr = act.get('average_hr') or 0
+            date_str = str(act.get('start_time_local') or '')
+            if dist > 500 and dur > 180 and hr > 80 and date_str:
+                year = date_str[:4]
+                if year not in yearly_data:
+                    yearly_data[year] = {
+                        "efficiency_scores": [],
+                        "paces": [],
+                        "hrs": [],
+                        "total_distance_m": 0,
+                        "total_duration_s": 0,
+                        "count": 0
+                    }
+                speed_m_s = dist / dur
+                eff_score = (speed_m_s / hr) * 1000.0
+                pace_min_km = (dur / (dist / 1000.0)) / 60.0
+                yearly_data[year]["efficiency_scores"].append(eff_score)
+                yearly_data[year]["paces"].append(pace_min_km)
+                yearly_data[year]["hrs"].append(hr)
+                yearly_data[year]["total_distance_m"] += dist
+                yearly_data[year]["total_duration_s"] += dur
+                yearly_data[year]["count"] += 1
+        
+        result = {}
+        for yr, d in sorted(yearly_data.items()):
+            cnt = d["count"]
+            if cnt > 0:
+                result[yr] = {
+                    "efficiency_score": round(sum(d["efficiency_scores"]) / cnt, 2),
+                    "avg_pace_min_km": round(sum(d["paces"]) / cnt, 2),
+                    "avg_hr": round(sum(d["hrs"]) / cnt, 1),
+                    "total_km": round(d["total_distance_m"] / 1000.0, 1),
+                    "total_hours": round(d["total_duration_s"] / 3600.0, 1),
+                    "activity_count": cnt
+                }
+        return result
+
 
     @staticmethod
     def _find_longest_run(activities):
@@ -239,17 +350,6 @@ class AnalyticsService:
     def _calculate_streak(weekly_series):
        # Deprecated helper, logic moved inline
        pass
-
-    @staticmethod
-    def calculate_baselines(user_id: str):
-        """
-        Main entry point to calculate and store all baselines for a user.
-        Currently focuses on RUNNING for the 'user_baselines' table. 
-        Future: Genericize this or create 'user_baselines_cycling' etc.
-        """
-        # ... (Existing logic for running baselines, kept for backward compatibility/specific table)
-        # For the dashboard API, we will use separate aggregation methods below.
-        pass
 
     @staticmethod
     def get_aggregated_metrics(user_id: str, days=90):
