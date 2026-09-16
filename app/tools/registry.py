@@ -11,6 +11,7 @@ from app.tools.nutrition_tools import log_meal
 from app.tools.workout_tools import reschedule_workout, log_manual_workout
 from app.tools.activity_tools import get_recent_activities, get_wellness_metrics
 from app.tools.biomarker_tools import get_biomarkers, get_biomarker_trends_tool
+from app.tools.readiness_tools import get_readiness
 
 TOOLS_REGISTRY = [
     {
@@ -311,6 +312,28 @@ TOOLS_REGISTRY = [
     {
         "type": "function",
         "function": {
+            "name": "get_readiness",
+            "description": (
+                "Compute a sparse-aware athlete readiness score (0–100) from available signals only: "
+                "sleep, HRV, resting HR, body battery, stress, 7d training load vs baseline, residual "
+                "fatigue, optional journal, and flagged biomarkers as a soft penalty. Does not invent "
+                "missing values; renormalizes weights over present components. Returns null score when "
+                "data is insufficient."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "as_of": {
+                        "type": "string",
+                        "description": "Optional as-of date (YYYY-MM-DD). Defaults to today UTC."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_biomarkers",
             "description": "Retrieve clinical lab bloodwork biomarkers, reference corridors, and abnormal flags for an athlete.",
             "parameters": {
@@ -369,6 +392,7 @@ TOOL_IMPLEMENTATIONS = {
     "log_manual_workout": log_manual_workout,
     "get_recent_activities": get_recent_activities,
     "get_wellness_metrics": get_wellness_metrics,
+    "get_readiness": get_readiness,
     "get_biomarkers": get_biomarkers,
     "get_biomarker_trends": get_biomarker_trends_tool
 }

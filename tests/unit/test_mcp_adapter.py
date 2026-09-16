@@ -91,6 +91,7 @@ def test_requires_confirm_policy():
     assert requires_confirm("generate_training_plan")
     assert requires_confirm("delete_calendar_event")
     assert not requires_confirm("get_wellness_metrics")
+    assert not requires_confirm("get_readiness")
     assert not requires_confirm("log_meal")
 
 
