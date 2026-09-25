@@ -5,6 +5,8 @@ without changing domain tool cores.
 
 **ADR:** [0003 — Agent MCP protocol & tool surface](adr/0003-agent-mcp-protocol-and-tool-surface-design.md)
 
+Grok Bot coaching: [Grok Bot agents](#grok-bot-agents).
+
 Verify and connect on **localhost**. Do not use Cloudflare quick tunnel / trycloudflare
 for tests — it rate-limits at ~50 requests/hour (those 429s are the tunnel, not empty
 athlete data). `cloudflared` is not required.
@@ -183,6 +185,32 @@ From `TOOL_IMPLEMENTATIONS`:
 composite over those signals plus optional journal/biomarkers
 (see [`docs/readiness.md`](readiness.md)). Widget-only Expo envelopes and Garmin
 credential writes stay off MCP.
+
+## Grok Bot agents
+
+David's Grok Bot team coaches the sole athlete: `users.id` **2**
+(`mcinnisdw@gmail.com`). Tools bind that id server-side (JWT or
+`GYMBRO_MCP_API_KEY` → `GYMBRO_MCP_USER_ID`). Omit `user_id` on calls.
+
+Prefer the **stdio** server `gymbro-stdio` (`python -m app.mcp` on the
+machine that holds `.env`). The HTTP connector `user-gymbro` may be
+`failed_to_load`. Do not rely on it for coaching.
+
+Read `get_readiness` first, then `get_wellness_metrics` and
+`get_recent_activities` ([`docs/readiness.md`](readiness.md)).
+
+Live Garmin sync runs on the Hephaestus Grok Bot VM (`/workspace/gymbro`
+plus that VM's `.env`). A routine runs daily at **6:20** `America/Los_Angeles`.
+`remirror-biometrics` rebuilds `biometrics_daily` from rows already in
+Supabase and does not call the Garmin API:
+
+```bash
+PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
+```
+
+Keep `.env` on that VM. Never copy `.env` secrets into cloud agents or chat.
+Cloud Run and public HTTP stay deferred. Sync details:
+[`docs/garmin-sync.md`](garmin-sync.md).
 
 ## Related
 
