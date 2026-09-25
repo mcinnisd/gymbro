@@ -193,3 +193,7 @@ credential writes stay off MCP.
   `PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2`
   (retries without `metrics` if that column is undeployed; apply
   `migrations/20260916_training_events_metrics.sql` to add `metrics jsonb`).
+- If `garmin_daily` / `garmin_sleep` are ahead of `biometrics_daily` (wellness
+  and readiness stay stale), remirror without calling Garmin:
+  `PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2`
+  then `verify-tools --user-id 2 --days-wellness 30`.

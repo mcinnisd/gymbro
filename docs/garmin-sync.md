@@ -47,6 +47,7 @@ curl -X POST "$API_URL/internal/jobs/telemetry-sync" \
 PYTHONPATH=. python -m app.garmin.cli status
 PYTHONPATH=. python -m app.garmin.cli sync --user-id 2 --mode incremental
 PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
+PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
 ```
 
 If `status` shows `garmin_connected: false`, reconnect Garmin in the Expo Stats
@@ -64,6 +65,7 @@ when `garmin_activities` is populated. Remirror from rows already in Supabase
 
 ```bash
 PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
+PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
 PYTHONPATH=. python -m app.garmin.cli verify-tools --user-id 2 --days-wellness 30 --days-activities 90
 ```
 
@@ -75,6 +77,41 @@ jsonb exists (canonical schema). Remirror stays idempotent via a
 
 A later `sync --user-id 2 --force` also remirrors as it re-upserts activities.
 Prefer `remirror-calendar` when `garmin_activities` is already current.
+
+## Wellness remirror (`biometrics_daily`)
+
+`get_wellness_metrics` and `get_readiness` read `biometrics_daily`, not
+`garmin_daily` / `garmin_sleep`. Those raw tables can move ahead of the
+athlete-facing table: sync upserts them in batches, and a failed
+`biometrics_daily` upsert used to be logged and ignored.
+
+Verified on the live project for user 2: every `garmin_daily.resting_hr` value
+is a JSON number with a decimal (`48.0`, four characters). Days that had that
+value and were written on the 2026-09-16 sync have no matching
+`biometrics_daily` row. Days with a null resting heart rate from that same sync
+do. `resting_hr` (and `hrv_ms`, `sleep_score`, `body_battery`) are integers.
+Sending `48.0` makes PostgREST reject the row (`22P02`) while `garmin_daily` /
+`garmin_sleep`, which store JSON, still commit. Sync now coerces those fields
+to integers before upsert. If a day still fails, the user row is
+`garmin_sync_status=error` instead of `synced` with an empty `garmin_last_sync_error`.
+
+Catch up from rows already in Supabase (no Garmin API, no passwords):
+
+```bash
+PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
+PYTHONPATH=. python -m app.garmin.cli verify-tools --user-id 2 --days-wellness 30
+```
+
+Remirror is idempotent. It rebuilds each date from `garmin_daily` (resting heart
+rate, stress, summed steps) and `garmin_sleep` (sleep score, hours, stages,
+overnight HRV, respiration, end-of-sleep body battery). It does not null out
+`vo2_max` or other fields those raw tables do not store. Duplicate
+`(user_id, date)` rows are collapsed to the fullest row before upsert.
+
+Run this locally with `SUPABASE_URL` and `SUPABASE_KEY` pointed at the project.
+It does not call Garmin and does not need `ENCRYPTION_KEY`. Apply it from the
+operator environment after merge; do not run it against production from a
+cloud agent.
 
 **User-scoped sync:** `garmin_activities.activity_id` used to be UNIQUE globally.
 Syncing a second account (user 100) with the same Garmin workouts **moved** those
@@ -110,7 +147,8 @@ MOCK_DB=true PYTHONPATH=. python -m pytest \
   tests/unit/test_activity_tools.py \
   tests/unit/test_scheduler_wiring.py \
   tests/unit/test_mcp_adapter.py \
-  tests/unit/test_mcp_http.py -v
+  tests/unit/test_mcp_http.py \
+  tests/unit/test_garmin_biometrics_mirror.py -v
 ```
 
 These seed **fixture** Garmin rows in the in-memory mock DB only. They prove the
