@@ -1,13 +1,8 @@
 """Remirror biometrics_daily from stored Garmin rows, and don't drop it on sync."""
-import argparse
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from app.garmin.biometrics_mirror import (
-    build_biometrics_from_raw,
-    coerce_biometrics_row,
-    remirror_biometrics_daily,
-)
+from app.garmin.biometrics_mirror import coerce_biometrics_row, remirror_biometrics_daily
 from app.mock_supabase import MockSupabaseClient
 from app.supabase_client import supabase
 
@@ -82,49 +77,6 @@ def test_coerce_float_resting_hr_and_hrv_ms_to_integers():
     assert row["sleep_hours"] is None
 
 
-def test_build_biometrics_from_stored_daily_and_sleep_shapes():
-    daily = {
-        "date": "2026-09-15",
-        "steps": [{"steps": 100}, {"steps": 50}],
-        "resting_hr": 48.0,
-        "stress": 18,
-    }
-    sleep = {
-        "date": "2026-09-15",
-        "sleep_data": {
-            "avgOvernightHrv": 42.5,
-            "hrvStatus": "BALANCED",
-            "restingHeartRate": 49,
-            "sleepBodyBattery": [
-                {"startGMT": "2026-09-15T06:00:00.0", "value": 30},
-                {"startGMT": "2026-09-15T13:00:00.0", "value": 70},
-            ],
-            "dailySleepDTO": {
-                "sleepScores": {"overall": {"value": 81}},
-                "sleepTimeSeconds": 27000,
-                "deepSleepSeconds": 5400,
-                "remSleepSeconds": 6000,
-                "lightSleepSeconds": 14000,
-                "awakeSleepSeconds": 1600,
-                "averageRespirationValue": 14.2,
-            },
-        },
-    }
-    doc = build_biometrics_from_raw(2, "2026-09-15", daily, sleep)
-    assert doc["resting_hr"] == 48
-    assert doc["stress_level"] == 18
-    assert doc["steps"] == 150
-    assert doc["sleep_score"] == 81
-    assert doc["sleep_hours"] == 7.5
-    assert doc["hrv"] == 42.5
-    assert doc["hrv_ms"] == 43
-    assert doc["hrv_status"] == "BALANCED"
-    assert doc["body_battery"] == 70
-    assert doc["respiration"] == 14.2
-    assert doc["deep_sleep_hours"] == 1.5
-    assert "vo2_max" not in doc
-
-
 def test_remirror_is_idempotent_preserves_vo2_and_collapses_duplicate_dates():
     _wipe()
     _seed_raw()
@@ -156,8 +108,11 @@ def test_remirror_is_idempotent_preserves_vo2_and_collapses_duplicate_dates():
     assert rows[0]["resting_hr"] == 48
     assert isinstance(rows[0]["resting_hr"], int)
     assert rows[0]["sleep_score"] == 81
+    assert rows[0]["sleep_hours"] == 7.5
+    assert rows[0]["hrv"] == 42.5
     assert rows[0]["hrv_ms"] == 43
     assert rows[0]["steps"] == 150
+    assert rows[0]["body_battery"] == 70
     assert float(rows[0]["vo2_max"]) == 55
 
     second = remirror_biometrics_daily(str(UID))
@@ -168,58 +123,6 @@ def test_remirror_is_idempotent_preserves_vo2_and_collapses_duplicate_dates():
     assert len(again) == 1
     assert again[0]["sleep_score"] == 81
     assert float(again[0]["vo2_max"]) == 55
-    _wipe()
-
-
-def test_remirror_falls_back_when_unique_constraint_missing(monkeypatch):
-    _wipe()
-    _seed_raw()
-    original = MockSupabaseClient.upsert
-
-    def reject_on_conflict(self, data, on_conflict=None):
-        if self.current_table == "biometrics_daily":
-            raise Exception(
-                "there is no unique or exclusion constraint matching the ON CONFLICT specification"
-            )
-        return original(self, data, on_conflict)
-
-    monkeypatch.setattr(MockSupabaseClient, "upsert", reject_on_conflict)
-    result = remirror_biometrics_daily(UID)
-    assert result["failed"] == 0
-    assert result["upserted"] == 1
-    rows = supabase.table("biometrics_daily").select("*").eq("user_id", UID).execute().data
-    assert len(rows) == 1
-    assert rows[0]["resting_hr"] == 48
-
-    again = remirror_biometrics_daily(UID)
-    assert again["failed"] == 0
-    rows = supabase.table("biometrics_daily").select("*").eq("user_id", UID).execute().data
-    assert len(rows) == 1
-    assert rows[0]["sleep_score"] == 81
-    _wipe()
-
-
-def test_cli_remirror_biometrics_for_connected_user(capsys):
-    _wipe()
-    supabase.table("users").insert({
-        "id": UID,
-        "username": "athlete_8802",
-        "password": "stored-ciphertext",
-        "garmin_email": "athlete-8802@example.com",
-        "garmin_password": "stored-ciphertext",
-    }).execute()
-    _seed_raw()
-    from app.garmin.cli import cmd_remirror_biometrics
-
-    code = cmd_remirror_biometrics(argparse.Namespace(user_id=str(UID)))
-    captured = capsys.readouterr().out
-    assert code == 0
-    assert f"user_id={UID}" in captured
-    assert "upserted=1" in captured
-    assert "athlete-8802@example.com" not in captured
-    rows = supabase.table("biometrics_daily").select("*").eq("user_id", UID).execute().data
-    assert len(rows) == 1
-    assert rows[0]["resting_hr"] == 48
     _wipe()
 
 

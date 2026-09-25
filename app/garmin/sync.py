@@ -648,9 +648,7 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                 supabase.table("garmin_sleep").upsert(sleep_batch, on_conflict="user_id, date").execute()
                 sleep_batch = []
             if bio_batch:
-                # Coerced in upsert_biometrics_daily. A float resting_hr (48.0)
-                # used to 22P02 the int column; that error was swallowed and
-                # garmin_daily/garmin_sleep still committed.
+                # Coerce 48.0 → int before upsert; a swallowed 22P02 left raw tables ahead.
                 biometrics_failures += upsert_biometrics_daily(bio_batch)
                 bio_batch = []
 
