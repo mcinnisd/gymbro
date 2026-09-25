@@ -1,12 +1,13 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Platform, StyleSheet } from 'react-native';
+import { Platform } from 'react-native';
 import { Colors } from '../../constants/Colors';
 
 export default function TabsLayout() {
   return (
     <Tabs
+      initialRouteName="today"
       screenOptions={{
         tabBarActiveTintColor: Colors.light.primary,
         tabBarInactiveTintColor: Colors.light.mutedText,
@@ -44,9 +45,19 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="today"
+        options={{
+          title: 'Today',
+          tabBarLabel: 'Today',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'sunny' : 'sunny-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="training"
         options={{
-          title: 'Training & Plan',
+          title: 'Training',
           tabBarLabel: 'Training',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'barbell' : 'barbell-outline'} size={22} color={color} />
@@ -54,43 +65,41 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="coach"
+        options={{
+          title: 'Coach',
+          tabBarLabel: 'Coach',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="nutrition"
         options={{
-          title: 'Daily Fuel & Macros',
-          tabBarLabel: 'Fuel',
+          title: 'Nutrition',
+          tabBarLabel: 'Nutrition',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'nutrition' : 'nutrition-outline'} size={22} color={color} />
           ),
         }}
       />
       <Tabs.Screen
+        name="analytics"
+        options={{
+          title: 'Analytics',
+          tabBarLabel: 'Analytics',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'analytics' : 'analytics-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      {/* Recovery kept as a secondary screen (journal / deep biometrics) — not a primary hub */}
+      <Tabs.Screen
         name="recovery"
         options={{
-          title: 'Recovery & Sleep',
-          tabBarLabel: 'Recovery',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'heart-circle' : 'heart-circle-outline'} size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="stats"
-        options={{
-          title: 'Biometrics & Trends',
-          tabBarLabel: 'Trends',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'pulse' : 'pulse-outline'} size={22} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Agent Intelligence',
-          tabBarLabel: 'Agent',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'sparkles' : 'sparkles-outline'} size={22} color={color} />
-          ),
+          href: null,
+          title: 'Recovery & Journal',
         }}
       />
     </Tabs>

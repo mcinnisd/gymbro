@@ -121,7 +121,7 @@ export default function RecoveryChart({ dataPoints, onConsultCoach }: RecoveryCh
       onConsultCoach(summary);
     } else {
       router.push({
-        pathname: '/(tabs)/chat',
+        pathname: '/(tabs)/coach',
         params: { initialPrompt: summary },
       });
     }

@@ -278,7 +278,7 @@ export default function RecoveryScreen() {
 
       if (response.ok) {
         setJournalSaved(true);
-        Alert.alert('Journal Saved', 'Coach Bro has updated your training recovery context!');
+        Alert.alert('Journal Saved', 'Coach has updated your training recovery context!');
       } else {
         const err = await response.json();
         Alert.alert('Save Failed', err.error || 'Could not save journal.');
@@ -335,7 +335,7 @@ export default function RecoveryScreen() {
 
   const handleConsultCoachFromChart = (promptText: string) => {
     router.push({
-      pathname: '/(tabs)/chat',
+      pathname: '/(tabs)/coach',
       params: { initialPrompt: promptText },
     });
   };
@@ -751,7 +751,7 @@ export default function RecoveryScreen() {
             <Text style={{ color: Colors.light.secondaryText, fontSize: 12, textAlign: 'center', marginVertical: 6 }}>
               Connect Apple Health or Garmin to automatically stream Resting HR, HRV, and Sleep scores.
             </Text>
-            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => router.push('/(tabs)/chat')}>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => router.push('/(tabs)/coach')}>
               <Text style={styles.emptyActionBtnText}>⌚ Sync Device in Agent Chat</Text>
             </TouchableOpacity>
           </View>

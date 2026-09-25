@@ -91,7 +91,7 @@ export default function OnboardingStepperScreen() {
         if (user) {
           setUser({ ...user, coach_status: 'active' });
         }
-        router.replace('/(tabs)/training');
+        router.replace('/(tabs)/today');
         return;
       }
 
@@ -190,7 +190,7 @@ export default function OnboardingStepperScreen() {
         if (user) {
           setUser({ ...user, coach_status: 'active' });
         }
-        router.replace('/(tabs)/training');
+        router.replace('/(tabs)/today');
         return;
       }
 
