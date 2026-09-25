@@ -8,6 +8,7 @@ Usage:
   PYTHONPATH=. python -m app.garmin.cli verify-tools
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 2
   PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
+  PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
 """
 from __future__ import annotations
 
@@ -208,6 +209,51 @@ def cmd_verify_tools(args):
     return 0
 
 
+def cmd_remirror_biometrics(args):
+    """Rebuild biometrics_daily from garmin_daily + garmin_sleep. No Garmin API."""
+    from app.supabase_client import supabase
+    from app.garmin.biometrics_mirror import remirror_biometrics_daily
+
+    if not supabase:
+        print("remirror-biometrics: supabase client is not configured")
+        return 1
+
+    rows = _users_with_garmin(supabase)
+    from app.garmin.scope import select_users_for_garmin_sync
+
+    rows, err = select_users_for_garmin_sync(
+        rows, user_id=args.user_id, all_users=args.user_id is None
+    )
+    if err:
+        print(f"remirror-biometrics: {err}")
+        return 1
+    user_ids = [str(u["id"]) for u in rows]
+    if not user_ids:
+        print("remirror-biometrics: no Garmin-connected users.")
+        return 1
+
+    failures = 0
+    for uid in user_ids:
+        result = remirror_biometrics_daily(uid)
+        err = result.get("error")
+        print(
+            "user_id={uid} source_days={source} upserted={upserted} "
+            "duplicates_removed={dupes} failed={failed}{err}".format(
+                uid=result.get("user_id", uid),
+                source=result.get("source_days", 0),
+                upserted=result.get("upserted", 0),
+                dupes=result.get("duplicates_removed", 0),
+                failed=result.get("failed", 0),
+                err=f" error={err}" if err else "",
+            )
+        )
+        if err:
+            failures += 1
+        elif result.get("source_days", 0) == 0:
+            print(f"user_id={uid} no garmin_daily or garmin_sleep rows to remirror")
+    return 1 if failures else 0
+
+
 def cmd_remirror_calendar(args):
     """Mirror garmin_activities → training_events without calling Garmin."""
     from app.supabase_client import supabase
@@ -282,6 +328,12 @@ def main(argv=None):
     )
     remirror_p.add_argument("--user-id", default=None, help="Athlete id (from the users table)")
 
+    bio_p = sub.add_parser(
+        "remirror-biometrics",
+        help="Write biometrics_daily from existing garmin_daily and garmin_sleep (no Garmin API)",
+    )
+    bio_p.add_argument("--user-id", default=None, help="Athlete id (from the users table)")
+
     args = parser.parse_args(argv)
     app = _load_app()
     with app.app_context():
@@ -293,6 +345,8 @@ def main(argv=None):
             return cmd_verify_tools(args)
         if args.command == "remirror-calendar":
             return cmd_remirror_calendar(args)
+        if args.command == "remirror-biometrics":
+            return cmd_remirror_biometrics(args)
         parser.error(f"unknown command {args.command}")
         return 2
 

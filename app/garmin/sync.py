@@ -15,6 +15,7 @@ from garminconnect import (
 )
 
 from app.utils.encryption import encrypt_data, decrypt_data
+from app.garmin.biometrics_mirror import upsert_biometrics_daily
 from app.garmin.scope import normalize_garmin_user_id
 
 logger = logging.getLogger(__name__)
@@ -420,7 +421,8 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
     - Updates sync_stage, archive_inception_date, and progress in users.goals.
     """
     log_to_file(f"Starting unified sync for user {user_id} (Mode: {mode}, Force Resync: {force_resync}, Days Back: {days_back})")
-    
+    biometrics_failures = 0
+
     try:
         # 1. Initialization and Mode Detection
         user_response = supabase.table("users").select("goals").eq("id", user_id).execute()
@@ -635,6 +637,20 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
         
         daily_batch = []
         sleep_batch = []
+        bio_batch = []
+
+        def _flush_raw_and_biometrics():
+            nonlocal biometrics_failures, daily_batch, sleep_batch, bio_batch
+            if daily_batch:
+                supabase.table("garmin_daily").upsert(daily_batch, on_conflict="user_id, date").execute()
+                daily_batch = []
+            if sleep_batch:
+                supabase.table("garmin_sleep").upsert(sleep_batch, on_conflict="user_id, date").execute()
+                sleep_batch = []
+            if bio_batch:
+                # Coerce 48.0 → int before upsert; a swallowed 22P02 left raw tables ahead.
+                biometrics_failures += upsert_biometrics_daily(bio_batch)
+                bio_batch = []
 
         for c_idx, (chunk_start, chunk_end) in enumerate(chunks):
             # Determine active stage
@@ -828,9 +844,9 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                         "stress": stress_val,
                         "synced_at": datetime.now(timezone.utc).isoformat()
                     }
-                    daily_batch.append(daily_doc)
 
-                    # Save parsed scalars into biometrics_daily
+                    # Build the athlete-facing row before queueing raw rows so a
+                    # parse error cannot commit garmin_daily without biometrics.
                     bio_doc = {
                         "user_id": uid_parsed,
                         "date": day_str,
@@ -855,10 +871,8 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                         "source": "garmin",
                         "updated_at": datetime.now(timezone.utc).isoformat()
                     }
-                    try:
-                        supabase.table("biometrics_daily").upsert(bio_doc, on_conflict="user_id, date").execute()
-                    except Exception as bio_err:
-                        log_to_file(f"Failed biometrics_daily upsert for {day_str}: {bio_err}")
+                    daily_batch.append(daily_doc)
+                    bio_batch.append(bio_doc)
 
                     if sleep:
                         sleep_doc = {
@@ -872,19 +886,12 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                 except Exception as e:
                     log_to_file(f"Failed daily {day_str}: {e}")
 
-                # Upsert batches of 7 (weekly)
-                if len(daily_batch) >= 7:
-                    supabase.table("garmin_daily").upsert(daily_batch, on_conflict="user_id, date").execute()
-                    daily_batch = []
-                if len(sleep_batch) >= 7:
-                    supabase.table("garmin_sleep").upsert(sleep_batch, on_conflict="user_id, date").execute()
-                    sleep_batch = []
+                # Upsert batches of 7 (weekly). Biometrics flush with the raw rows.
+                if len(daily_batch) >= 7 or len(sleep_batch) >= 7 or len(bio_batch) >= 7:
+                    _flush_raw_and_biometrics()
 
         # Final flush
-        if daily_batch:
-            supabase.table("garmin_daily").upsert(daily_batch, on_conflict="user_id, date").execute()
-        if sleep_batch:
-            supabase.table("garmin_sleep").upsert(sleep_batch, on_conflict="user_id, date").execute()
+        _flush_raw_and_biometrics()
 
 
         # 5. Finalize and Analytics
@@ -917,16 +924,29 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
         except Exception as e:
             log_to_file(f"Analytics failed: {e}")
 
-        # Complete
+        # Complete. Do not report synced when athlete-facing rows were dropped.
         update_progress(user_id, 100)
-        supabase.table("users").update({
-            "garmin_sync_status": "synced",
-            "garmin_sync_progress": 100,
-            "garmin_last_sync_error": None,
-            "garmin_sync_completed_at": datetime.now(timezone.utc).isoformat()
-        }).eq("id", user_id).execute()
-        
-        log_to_file("Sync Complete.")
+        completed_at = datetime.now(timezone.utc).isoformat()
+        if biometrics_failures:
+            log_to_file(f"Biometrics upsert failures: {biometrics_failures}")
+            supabase.table("users").update({
+                "garmin_sync_status": "error",
+                "garmin_sync_progress": 100,
+                "garmin_last_sync_error": (
+                    f"biometrics_daily upsert failed for {biometrics_failures} day(s) "
+                    "while garmin_daily and garmin_sleep were written. "
+                    "Run remirror-biometrics for this user."
+                ),
+                "garmin_sync_completed_at": completed_at,
+            }).eq("id", user_id).execute()
+        else:
+            supabase.table("users").update({
+                "garmin_sync_status": "synced",
+                "garmin_sync_progress": 100,
+                "garmin_last_sync_error": None,
+                "garmin_sync_completed_at": completed_at,
+            }).eq("id", user_id).execute()
+            log_to_file("Sync Complete.")
 
     except Exception as e:
         log_to_file(f"CRITICAL SYNC ERROR: {e}")
