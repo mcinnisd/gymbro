@@ -33,6 +33,24 @@ TELEMETRY_SYNC_INTERVAL_HOURS=6
 GYMBRO_GARMIN_SYNC_USER_IDS=2   # optional; scopes scheduler/CLI when several users have Garmin
 ```
 
+## Hephaestus Grok Bot VM
+
+Stdio MCP and the Garmin CLI run with the repo-local interpreter
+`.venv/bin/python` (`python -m app.mcp`). A computer reset wipes
+`/workspace/gymbro/.venv`. Agents then see `spawn …/.venv/bin/python ENOENT`
+and fall back away from `get_readiness`. Before sync or MCP, recreate the venv
+(idempotent; safe when it is already present):
+
+```bash
+scripts/ensure_venv.sh
+PYTHONPATH=. .venv/bin/python -m app.garmin.cli sync --user-id 2 --mode incremental
+```
+
+Evening and morning sync should call `scripts/ensure_venv.sh` when
+`.venv/bin/python` is missing. The script upgrades pip, installs
+`requirements.txt` (including `mcp>=1.28,<2`), and exits non-zero on failure.
+Keep `.env` on the VM. Never commit `.env`, `ENCRYPTION_KEY`, or Garmin passwords.
+
 ## Manual / cron trigger
 
 ```bash
