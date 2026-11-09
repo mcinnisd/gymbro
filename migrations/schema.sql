@@ -119,8 +119,14 @@ CREATE TABLE IF NOT EXISTS public.biometrics_daily (
   calories_burned INT,
   
   -- Source & Provenance
-  source TEXT DEFAULT 'garmin', -- 'garmin' | 'apple_health' | 'manual'
+  -- Field-level merge, not one winner for the whole day. For each metric, keep
+  -- the highest-priority source that has a non-null value. Priority:
+  -- garmin > strava > apple_health|healthkit > fitbit (reserved, no API) > manual.
+  -- Sleep and HRV prefer Garmin when Garmin has them. Steps and other daytime
+  -- gaps fill from the next source. A later null write must not clear a filled value.
+  source TEXT DEFAULT 'garmin', -- highest-priority contributor: garmin | strava | apple_health | healthkit | fitbit | manual
   raw_source VARCHAR(50),
+  field_sources JSONB, -- metric field -> source that supplied the stored value
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   UNIQUE(user_id, date)

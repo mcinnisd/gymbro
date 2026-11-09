@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from app.supabase_client import supabase
 from app.health_hub.ingestion_service import get_unified_activities, get_telemetry_status
@@ -73,14 +75,17 @@ def test_telemetry_status_endpoint(client, auth_headers):
     assert "garmin" in data
     assert "strava" in data
     assert "apple_health" in data
-    assert "primary_source_priority" in data
-    assert data["primary_source_priority"][0] == "garmin"
+    assert "fitbit" in data
+    assert data["fitbit"]["status"] == "reserved"
+    assert data["fitbit"]["connected"] is False
+    assert data["primary_source_priority"] == ["garmin", "strava", "apple_health", "fitbit", "manual"]
 
 def test_telemetry_daily_endpoint(client, auth_headers):
-    # Seed biometrics_daily
+    # Inside the default 30-day window. A fixed August date falls out of that window later in the year.
+    day = (datetime.now(timezone.utc) - timedelta(days=2)).date().isoformat()
     supabase.table("biometrics_daily").upsert({
         "user_id": 1,
-        "date": "2026-08-10",
+        "date": day,
         "resting_hr": 55,
         "hrv": 68,
         "sleep_hours": 7.5,
@@ -94,12 +99,12 @@ def test_telemetry_daily_endpoint(client, auth_headers):
     assert res.status_code == 200
     daily_list = res.json.get("daily_biometrics", [])
     assert len(daily_list) >= 1
-    assert any(d["date"] == "2026-08-10" for d in daily_list)
+    assert any(d["date"] == day for d in daily_list)
 
     # Query single date
-    res_single = client.get("/telemetry/daily?date=2026-08-10", headers=auth_headers)
+    res_single = client.get(f"/telemetry/daily?date={day}", headers=auth_headers)
     assert res_single.status_code == 200
-    assert res_single.json["date"] == "2026-08-10"
+    assert res_single.json["date"] == day
     assert res_single.json["resting_hr"] == 55
 
 def test_unified_activities_deduplication_garmin_strava_healthkit(client, auth_headers):

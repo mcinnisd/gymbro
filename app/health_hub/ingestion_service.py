@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 import logging
 from typing import Dict, List, Any, Optional
 from app.supabase_client import supabase, is_missing_relation_error
-from app.health_hub.deduplication_service import deduplicate_activities, resolve_biometrics_priority
+from app.health_hub.deduplication_service import (
+    SOURCE_PRIORITY_ORDER,
+    deduplicate_activities,
+    is_undefined_column_error,
+    merge_daily_biometrics,
+    persistable_biometrics_row,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,21 +50,76 @@ def record_daily_biometrics(user_id: Any, payload: dict) -> dict:
         'raw_source': payload.get('raw_source') or payload.get('source', 'manual'),
         'updated_at': datetime.now(timezone.utc).isoformat()
     }
-    
-    # Filter out None values to avoid overwriting existing non-null fields during merge
-    clean_record = {k: v for k, v in record.items() if v is not None}
+
+    day = str(date_val)[:10]
+    merged = merge_daily_biometrics(_load_daily_biometrics(uid, day), record)
+    clean_record = persistable_biometrics_row(merged)
     clean_record['user_id'] = uid
-    clean_record['date'] = str(date_val)[:10]
+    clean_record['date'] = day
 
     if supabase:
-        try:
-            res = supabase.table('biometrics_daily').upsert(clean_record, on_conflict="user_id, date").execute()
-            if res and hasattr(res, 'data') and res.data and len(res.data) > 0:
-                return res.data[0]
-        except Exception as e:
-            logger.warning(f"Error upserting biometrics_daily for user {user_id} on {date_val}: {e}")
-            
+        saved = _upsert_daily_biometrics(clean_record)
+        if saved:
+            return saved
+
     return clean_record
+
+
+def _load_daily_biometrics(user_id: Any, day: str) -> Optional[dict]:
+    """Stored day, or None when the table is empty or unreadable."""
+    if not supabase:
+        return None
+    try:
+        res = (
+            supabase.table('biometrics_daily')
+            .select('*')
+            .eq('user_id', user_id)
+            .eq('date', day)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning(
+            "Could not load biometrics_daily for merge user=%s date=%s (%s)",
+            user_id,
+            day,
+            type(exc).__name__,
+        )
+        return None
+
+
+def _upsert_daily_biometrics(row: dict) -> Optional[dict]:
+    """Upsert one merged day. Retry without field_sources if that column is not migrated yet."""
+    payload = row
+    try:
+        res = supabase.table('biometrics_daily').upsert(payload, on_conflict="user_id, date").execute()
+    except Exception as exc:
+        if 'field_sources' in payload and is_undefined_column_error(exc, 'field_sources'):
+            logger.warning("biometrics_daily.field_sources is missing; upsert continues without provenance")
+            payload = {k: v for k, v in payload.items() if k != 'field_sources'}
+            try:
+                res = supabase.table('biometrics_daily').upsert(payload, on_conflict="user_id, date").execute()
+            except Exception as retry_exc:
+                logger.warning(
+                    "Error upserting biometrics_daily for user %s on %s: %s",
+                    row.get('user_id'),
+                    row.get('date'),
+                    retry_exc,
+                )
+                return payload
+        else:
+            logger.warning(
+                "Error upserting biometrics_daily for user %s on %s: %s",
+                row.get('user_id'),
+                row.get('date'),
+                exc,
+            )
+            return payload
+    if res and hasattr(res, 'data') and res.data:
+        return res.data[0]
+    return payload
 
 def ingest_telemetry_payload(user_id: Any, payload: dict) -> dict:
     """
@@ -306,9 +367,46 @@ def get_unified_activities(
     # 7. Apply pagination
     return deduped[offset:offset + limit]
 
+def _row_sources(row: Dict) -> set:
+    found = set()
+    for key in ("source", "raw_source"):
+        if row.get(key):
+            found.add(str(row.get(key)).strip().lower())
+    provenance = row.get("field_sources") or {}
+    if isinstance(provenance, dict):
+        found.update(str(value).strip().lower() for value in provenance.values() if value)
+    return found
+
+
+def _recent_biometrics_for_status(user_id: Any) -> List[Dict]:
+    columns = "date, source, raw_source, updated_at, field_sources"
+    try:
+        res = (
+            supabase.table("biometrics_daily")
+            .select(columns)
+            .eq("user_id", user_id)
+            .order("date", desc=True)
+            .limit(5)
+            .execute()
+        )
+        return res.data or []
+    except Exception as exc:
+        if not is_undefined_column_error(exc, "field_sources"):
+            raise
+        res = (
+            supabase.table("biometrics_daily")
+            .select("date, source, updated_at")
+            .eq("user_id", user_id)
+            .order("date", desc=True)
+            .limit(5)
+            .execute()
+        )
+        return res.data or []
+
+
 def get_telemetry_status(user_id: Any) -> Dict[str, Any]:
     """
-    Returns connection and synchronization status across Garmin, Strava, and Apple HealthKit.
+    Returns connection and synchronization status across Garmin, Strava, Apple Health, and the reserved Fitbit slot.
     """
     uid = int(user_id) if str(user_id).isdigit() else user_id
     status_summary = {
@@ -330,7 +428,12 @@ def get_telemetry_status(user_id: Any) -> Dict[str, Any]:
             "connected": False,
             "last_synced": None
         },
-        "primary_source_priority": ["garmin", "strava", "apple_health", "manual"],
+        "fitbit": {
+            "connected": False,
+            "status": "reserved",
+            "last_synced": None
+        },
+        "primary_source_priority": list(SOURCE_PRIORITY_ORDER),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
@@ -365,11 +468,11 @@ def get_telemetry_status(user_id: Any) -> Dict[str, Any]:
             status_summary["strava"]["last_updated"] = u.get("strava_last_updated")
             status_summary["strava"]["athlete"] = goals.get("strava_athlete")
 
-        # Check latest biometrics_daily for Apple Health activity
-        bio_res = supabase.table("biometrics_daily").select("date, source, updated_at").eq("user_id", uid).order("date", desc=True).limit(5).execute()
-        if bio_res.data:
-            for b in bio_res.data:
-                if b.get("source") in ["apple_health", "healthkit"]:
+        # Apple Health may only own some fields of a Garmin-primary day.
+        bio_res = _recent_biometrics_for_status(uid)
+        if bio_res:
+            for b in bio_res:
+                if _row_sources(b) & {"apple_health", "healthkit"}:
                     status_summary["apple_health"]["connected"] = True
                     status_summary["apple_health"]["last_synced"] = b.get("updated_at") or b.get("date")
                     break
