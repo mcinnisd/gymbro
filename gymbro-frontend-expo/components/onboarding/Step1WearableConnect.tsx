@@ -13,6 +13,7 @@ import { Colors } from '../../constants/Colors';
 import { AuthContext } from '../../context/AuthContext';
 import { GarminModal } from '../GarminModal';
 import { prepopulateTelemetry, PrepopulatedBiometrics } from '../../services/onboardingApi';
+import { readAppleHealthDaily, rememberAppleHealthConnected } from '../../services/healthkit';
 
 interface Step1WearableConnectProps {
   connectedProviders: string[];
@@ -37,41 +38,41 @@ export const Step1WearableConnect: React.FC<Step1WearableConnectProps> = ({
 
   // Handle Apple HealthKit connection & telemetry ingestion
   const handleConnectAppleHealth = async () => {
+    if (!authToken) {
+      Alert.alert('Apple Health', 'Sign in before connecting Apple Health.');
+      return;
+    }
     setSyncingProvider('apple_health');
     try {
-      const simulatedHealthKitPayload = {
-        source: 'apple_health',
-        biometrics: {
-          resting_heart_rate: 56,
-          hrv_sdnn: 68.0,
-          sleep_hours: 8.0,
-          weight_kg: 76.5,
-          height_cm: 182.0,
-          age: 29,
-          biological_sex: 'male',
-        },
-        activities: [
-          {
-            type: 'running',
-            distance_km: 10.0,
-            duration_min: 50.0,
-            timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-          },
-          {
-            type: 'running',
-            distance_km: 12.5,
-            duration_min: 62.0,
-            timestamp: new Date(Date.now() - 86400000 * 5).toISOString(),
-          },
-        ],
-      };
+      const reading = await readAppleHealthDaily();
+      if (!reading.ok) {
+        Alert.alert('Apple Health', reading.message);
+        return;
+      }
 
-      const prepop = await prepopulateTelemetry(simulatedHealthKitPayload);
+      const response = await fetch(`${apiUrl}/onboarding/prepopulate`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          'Bypass-Tunnel-Reminder': 'true',
+        },
+        body: JSON.stringify(reading.payload),
+      });
+      if (!response.ok) {
+        throw new Error(`Apple Health prepopulate failed (${response.status})`);
+      }
+      const prepop = (await response.json()) as PrepopulatedBiometrics;
+      try {
+        await rememberAppleHealthConnected();
+      } catch (error) {
+        console.warn('[Step1] Could not persist Apple Health preference', error);
+      }
       onProviderLinked('apple_health', prepop);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Step1] HealthKit sync error:', err);
-      Alert.alert('HealthKit Sync', 'Could not sync HealthKit data. You can proceed manually.');
-      onProviderLinked('apple_health');
+      Alert.alert('Apple Health', 'Could not save Apple Health data. Nothing was marked as connected.');
     } finally {
       setSyncingProvider(null);
     }
@@ -144,7 +145,7 @@ export const Step1WearableConnect: React.FC<Step1WearableConnectProps> = ({
           <View style={styles.providerInfo}>
             <Text style={styles.providerName}>Apple Health / HealthKit</Text>
             <Text style={styles.providerSub}>
-              {isAppleHealthLinked ? '✓ Connected & Synced' : 'HR, HRV, sleep & workouts'}
+              {isAppleHealthLinked ? '✓ Connected & Synced' : 'HR, HRV, sleep, steps & active energy'}
             </Text>
           </View>
           {syncingProvider === 'apple_health' ? (

@@ -1,10 +1,30 @@
 import React, { useEffect, useContext } from 'react';
+import { AppState } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, AuthContext } from '../context/AuthContext';
 import CoachDrawer from '../components/CoachDrawer';
 import { Colors } from '../constants/Colors';
+import { syncAppleHealthOnForeground } from '../services/healthkit';
+
+function AppleHealthForegroundSync() {
+  const { authToken, apiUrl } = useContext(AuthContext);
+
+  useEffect(() => {
+    if (!authToken) return;
+    const run = () => {
+      void syncAppleHealthOnForeground({ apiUrl, authToken });
+    };
+    run();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') run();
+    });
+    return () => subscription.remove();
+  }, [authToken, apiUrl]);
+
+  return null;
+}
 
 function NavigationGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -41,6 +61,7 @@ export default function RootLayout() {
     <AuthProvider>
       <SafeAreaProvider>
         <StatusBar style="dark" />
+        <AppleHealthForegroundSync />
         <NavigationGate>
           <Stack
             screenOptions={{

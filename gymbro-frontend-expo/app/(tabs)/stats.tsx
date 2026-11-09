@@ -224,6 +224,9 @@ export default function StatsScreen() {
       if (res.ok) {
         const data = await res.json();
         setTelemetryStatus(data);
+        if (data?.apple_health?.connected) {
+          setHealthkitConnected(true);
+        }
         if (data.garmin_sync_status === 'syncing' || (data.sync_progress > 0 && data.sync_progress < 100)) {
           setGarminSyncing(true);
         } else if (data.garmin_sync_status === 'synced' && data.sync_progress >= 95) {
@@ -374,15 +377,23 @@ export default function StatsScreen() {
   };
 
   const handleSyncAppleHealthKit = async () => {
+    if (!authToken) {
+      Alert.alert('Apple Health', 'Sign in before syncing Apple Health.');
+      return;
+    }
     try {
       const { syncAppleHealthKitData } = await import('../../services/healthkit');
-      const data = await syncAppleHealthKitData();
-      if (data) {
+      const result = await syncAppleHealthKitData({ apiUrl, authToken });
+      if (result.ok) {
         setHealthkitConnected(true);
-        Alert.alert('Apple Health Synced', 'Resting HR, sleep, and workouts auto-imported!');
+        Alert.alert('Apple Health synced', result.message);
+        fetchTelemetryStatus();
+      } else {
+        Alert.alert('Apple Health', result.message);
       }
     } catch (err) {
-      Alert.alert('HealthKit Info', 'Apple Health sync is supported on physical iOS devices.');
+      console.error('HealthKit sync error:', err);
+      Alert.alert('Apple Health', 'Apple Health sync failed.');
     }
   };
 
