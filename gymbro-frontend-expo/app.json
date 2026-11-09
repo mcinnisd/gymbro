@@ -11,8 +11,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.mcinnisd.gymbro",
       "infoPlist": {
-        "NSHealthShareUsageDescription": "GYMBro reads your Apple Health Resting HR, Sleep, and HRV data to personalize your AI Coach advice.",
-        "NSHealthUpdateUsageDescription": "GYMBro syncs health metrics to build your unified fitness dashboard."
+        "NSHealthShareUsageDescription": "Gymbro reads Apple Health resting heart rate, sleep, heart rate variability, step count, and active energy to back up training metrics.",
+        "NSHealthUpdateUsageDescription": "Gymbro needs HealthKit access to read your training metrics. It does not write workouts or samples to Apple Health."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true
       }
     },
     "android": {
@@ -29,7 +32,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Gymbro reads Apple Health resting heart rate, sleep, heart rate variability, step count, and active energy to back up training metrics.",
+          "NSHealthUpdateUsageDescription": "Gymbro needs HealthKit access to read your training metrics. It does not write workouts or samples to Apple Health.",
+          "background": false
+        }
+      ]
     ]
   }
 }
