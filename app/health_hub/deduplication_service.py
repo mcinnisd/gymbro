@@ -1,18 +1,37 @@
 # app/health_hub/deduplication_service.py
 from datetime import datetime, timezone
+import json
 import logging
 from typing import List, Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
-# Default Source Priority Ranking (Lower numerical value = higher priority)
+# Default Source Priority Ranking (Lower numerical value = higher priority).
+# Fitbit is a reserved wearable slot: no API client and no OAuth. healthkit is
+# an alias of apple_health and shares its rank. Do not reorder Garmin, Strava,
+# and Apple Health relative to each other.
 DEFAULT_SOURCE_PRIORITY = {
     'garmin': 1,
     'strava': 2,
     'apple_health': 3,
     'healthkit': 3,
-    'manual': 4
+    'fitbit': 4,
+    'manual': 5,
 }
+
+# One name per rank for status listings. healthkit is omitted because it shares
+# apple_health's rank.
+SOURCE_PRIORITY_ORDER = ["garmin", "strava", "apple_health", "fitbit", "manual"]
+
+# Daily metrics merged field-by-field. The same rule covers sleep, HRV, and
+# daytime totals such as steps: the highest-priority source with a real value
+# wins, and a null from a higher source does not hide a lower source.
+BIOMETRIC_METRIC_FIELDS = [
+    'resting_hr', 'hrv', 'hrv_ms', 'hrv_status', 'sleep_score', 'sleep_hours',
+    'deep_sleep_hours', 'rem_sleep_hours', 'light_sleep_hours', 'sleep_stages',
+    'recovery_score', 'body_battery', 'stress_level', 'vo2_max', 'fitness_age',
+    'training_status', 'acute_load', 'spo2', 'respiration', 'steps', 'calories_burned',
+]
 
 def parse_iso_datetime(dt_str: Any) -> datetime:
     """Parse ISO datetime string or return datetime object."""
@@ -81,7 +100,7 @@ def extract_activity_duration(act: Dict) -> float:
 def deduplicate_activities(activities: List[Dict], custom_priority: Optional[Dict[str, int]] = None) -> List[Dict]:
     """
     Deduplicate activities occurring within +-5 minutes with similar distance/duration (within 5%).
-    Marks native recording device (Garmin > Strava > Apple Health > Manual) as primary unless custom priority is supplied.
+    Marks native recording device (Garmin > Strava > Apple Health > Fitbit > Manual) as primary unless custom priority is supplied.
     Preserves all detailed telemetry from primary source and records duplicate IDs and merged sources.
     """
     if not activities:
@@ -163,40 +182,178 @@ def deduplicate_activities(activities: List[Dict], custom_priority: Optional[Dic
 
     return deduped
 
+def source_name(record: Optional[Dict]) -> str:
+    """Normalized source label. Missing records count as manual."""
+    if not record:
+        return "manual"
+    name = str(record.get("raw_source") or record.get("source") or "manual").strip().lower()
+    return name or "manual"
+
+
+def metric_value_present(value: Any) -> bool:
+    """True when a source actually measured the field.
+
+    Null, blank text, and empty containers are not measurements, so an empty
+    Garmin day cannot hide Apple Health steps. Numeric zero is a real value.
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list, tuple)):
+        return len(value) > 0
+    return True
+
+
+def _provenance_map(existing: Optional[Dict]) -> Dict[str, str]:
+    if not existing:
+        return {}
+    raw = existing.get("field_sources")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    owners = {}
+    for key, value in raw.items():
+        if value is None or not str(value).strip():
+            continue
+        owners[str(key)] = str(value).strip().lower()
+    return owners
+
+
 def resolve_biometrics_priority(biometrics_list: List[Dict], custom_priority: Optional[Dict[str, int]] = None) -> Dict:
     """
-    Resolve biometrics from multiple sources using continuous wearable priority hierarchy.
-    Merges non-null metrics across sources prioritizing higher-tier sources (Garmin > Apple Health > Manual).
+    Field-level biometric merge.
+
+    For each metric, use the highest-priority source that has a real value.
+    Sleep and HRV follow that rule, so Garmin wins when it has them and the
+    next source fills the gap when it does not. Steps and other daytime
+    metrics follow the same rule: an empty higher-priority row does not block
+    a lower source. Null never overwrites a real value.
+
+    ``primary_source`` is the highest-priority source that contributed at least
+    one metric. ``field_sources`` records the winner of each field.
     """
     if not biometrics_list:
         return {}
 
     priority_map = get_effective_priority_map(custom_priority)
 
-    def get_rank(x):
-        src = str(x.get('raw_source') or x.get('source') or 'manual').lower()
-        return priority_map.get(src, 99)
+    def rank(record: Dict) -> int:
+        return priority_map.get(source_name(record), 99)
 
-    # Sort list from highest priority (lowest rank) to lowest priority
-    sorted_sources = sorted(biometrics_list, key=get_rank)
+    ordered = sorted(biometrics_list, key=rank)
+    merged: Dict[str, Any] = {}
+    for key in ("user_id", "date"):
+        for record in ordered:
+            if record.get(key) is not None:
+                merged[key] = record.get(key)
+                break
 
-    # Start with highest priority source
-    merged = dict(sorted_sources[0])
-    primary_src = merged.get('raw_source') or merged.get('source') or 'manual'
-    merged['primary_source'] = primary_src
-    merged['source'] = primary_src
+    field_sources: Dict[str, str] = {}
+    for field in BIOMETRIC_METRIC_FIELDS:
+        for record in ordered:
+            value = record.get(field)
+            if not metric_value_present(value):
+                continue
+            merged[field] = value
+            field_sources[field] = source_name(record)
+            break
 
-    # Fill in any missing/null metrics from lower priority sources
-    metric_fields = [
-        'resting_hr', 'hrv', 'hrv_ms', 'hrv_status', 'sleep_score', 'sleep_hours',
-        'deep_sleep_hours', 'rem_sleep_hours', 'light_sleep_hours', 'sleep_stages',
-        'recovery_score', 'body_battery', 'stress_level', 'vo2_max', 'fitness_age',
-        'training_status', 'acute_load', 'spo2', 'respiration', 'steps', 'calories_burned'
-    ]
+    if field_sources:
+        primary = min(set(field_sources.values()), key=lambda name: priority_map.get(name, 99))
+    else:
+        primary = source_name(ordered[0])
 
-    for fallback in sorted_sources[1:]:
-        for field in metric_fields:
-            if merged.get(field) is None and fallback.get(field) is not None:
-                merged[field] = fallback.get(field)
-
+    merged["primary_source"] = primary
+    merged["source"] = primary
+    merged["raw_source"] = primary
+    merged["field_sources"] = field_sources
     return merged
+
+
+def merge_daily_biometrics(
+    existing: Optional[Dict],
+    incoming: Dict,
+    custom_priority: Optional[Dict[str, int]] = None,
+) -> Dict:
+    """Merge one source write onto the stored day.
+
+    Incoming nulls and omitted fields do not erase a stored value. A later
+    Garmin remirror that has sleep but no steps keeps Apple Health steps, and
+    a later Apple Health write can refresh those steps without replacing
+    Garmin sleep or HRV.
+    """
+    incoming = dict(incoming or {})
+    inc_source = source_name(incoming)
+    incoming["source"] = inc_source
+    incoming["raw_source"] = inc_source
+
+    groups: Dict[str, Dict] = {}
+    if existing:
+        owners = _provenance_map(existing)
+        row_source = source_name(existing)
+        for field in BIOMETRIC_METRIC_FIELDS:
+            if not metric_value_present(existing.get(field)):
+                continue
+            owner = owners.get(field) or row_source
+            bucket = groups.setdefault(owner, {"source": owner, "raw_source": owner})
+            bucket[field] = existing.get(field)
+        if existing.get("user_id") is not None:
+            incoming.setdefault("user_id", existing.get("user_id"))
+        if existing.get("date"):
+            incoming.setdefault("date", existing.get("date"))
+
+    bucket = groups.setdefault(inc_source, {"source": inc_source, "raw_source": inc_source})
+    for field in BIOMETRIC_METRIC_FIELDS:
+        if metric_value_present(incoming.get(field)):
+            bucket[field] = incoming.get(field)
+    if incoming.get("user_id") is not None:
+        bucket["user_id"] = incoming.get("user_id")
+    if incoming.get("date"):
+        bucket["date"] = incoming.get("date")
+    if incoming.get("updated_at"):
+        bucket["updated_at"] = incoming.get("updated_at")
+
+    merged = resolve_biometrics_priority(list(groups.values()), custom_priority)
+    if incoming.get("updated_at"):
+        merged["updated_at"] = incoming.get("updated_at")
+    elif existing and existing.get("updated_at") and "updated_at" not in merged:
+        merged["updated_at"] = existing.get("updated_at")
+    return merged
+
+
+def persistable_biometrics_row(merged: Dict) -> Dict:
+    """Columns safe to upsert. Nulls are omitted so a partial write cannot clear a filled value."""
+    row: Dict[str, Any] = {}
+    for key in ("user_id", "date", "source", "raw_source", "updated_at"):
+        if merged.get(key) is not None:
+            row[key] = merged.get(key)
+    for field in BIOMETRIC_METRIC_FIELDS:
+        if metric_value_present(merged.get(field)):
+            row[field] = merged.get(field)
+    sources = merged.get("field_sources")
+    if isinstance(sources, dict) and sources:
+        row["field_sources"] = sources
+    return row
+
+
+def is_undefined_column_error(exc: BaseException, column: str) -> bool:
+    """True when PostgREST/Postgres rejects a column the migration has not added yet."""
+    parts = [str(exc)]
+    for attr in ("message", "details", "hint", "code"):
+        value = getattr(exc, attr, None)
+        if value:
+            parts.append(str(value))
+    blob = " ".join(parts).lower()
+    if column.lower() not in blob:
+        return False
+    return (
+        "42703" in blob
+        or "pgrst204" in blob
+        or "does not exist" in blob
+        or "schema cache" in blob
+    )

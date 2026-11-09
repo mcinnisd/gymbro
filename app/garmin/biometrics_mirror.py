@@ -7,6 +7,11 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.garmin.scope import normalize_garmin_user_id
+from app.health_hub.deduplication_service import (
+    is_undefined_column_error,
+    merge_daily_biometrics,
+    persistable_biometrics_row,
+)
 from app.supabase_client import supabase
 
 logger = logging.getLogger(__name__)
@@ -190,40 +195,124 @@ def _missing_unique(exc: BaseException) -> bool:
     return "42p10" in blob or "no unique or exclusion constraint" in blob
 
 
-def _write_one(row: dict) -> None:
+def _without_field_sources(row: dict) -> dict:
+    return {key: value for key, value in row.items() if key != "field_sources"}
+
+
+def _write_payload(row: dict) -> dict:
+    """Upsert, dropping field_sources if that column is not migrated yet."""
     try:
         supabase.table("biometrics_daily").upsert(row, on_conflict="user_id, date").execute()
+        return row
+    except Exception as exc:
+        if "field_sources" in row and is_undefined_column_error(exc, "field_sources"):
+            logger.warning("biometrics_daily.field_sources is missing; upsert continues without provenance")
+            shrunk = _without_field_sources(row)
+            supabase.table("biometrics_daily").upsert(shrunk, on_conflict="user_id, date").execute()
+            return shrunk
+        raise
+
+
+def _update_or_insert(found, payload: dict) -> None:
+    if found:
+        supabase.table("biometrics_daily").update(payload).eq("user_id", payload["user_id"]).eq("date", payload["date"]).execute()
+    else:
+        supabase.table("biometrics_daily").insert(payload).execute()
+
+
+def _write_one(row: dict) -> None:
+    try:
+        _write_payload(row)
         return
     except Exception as exc:
         if not _missing_unique(exc):
             raise
     found = supabase.table("biometrics_daily").select("id").eq("user_id", row["user_id"]).eq("date", row["date"]).execute().data
-    if found:
-        supabase.table("biometrics_daily").update(row).eq("user_id", row["user_id"]).eq("date", row["date"]).execute()
-    else:
-        supabase.table("biometrics_daily").insert(row).execute()
+    try:
+        _update_or_insert(found, row)
+    except Exception as exc:
+        if "field_sources" not in row or not is_undefined_column_error(exc, "field_sources"):
+            raise
+        _update_or_insert(found, _without_field_sources(row))
+
+
+def _existing_by_date(user_id, dates: list) -> dict:
+    try:
+        res = (
+            supabase.table("biometrics_daily")
+            .select("*")
+            .eq("user_id", user_id)
+            .in_("date", list({day for day in dates if day}))
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("biometrics_daily merge read failed for user_id=%s (%s)", user_id, type(exc).__name__)
+        return {}
+    found = {}
+    for row in res.data or []:
+        found[_day(row.get("date"))] = row
+    return found
+
+
+def _merged_payloads(coerced: list) -> list:
+    """Field-level merge onto stored days. Null Garmin columns do not clear Health values."""
+    grouped: dict = {}
+    for row in coerced:
+        grouped.setdefault(row.get("user_id"), []).append(row)
+    payloads = []
+    for user_id, user_rows in grouped.items():
+        existing = _existing_by_date(user_id, [row.get("date") for row in user_rows])
+        for row in user_rows:
+            incoming = {key: value for key, value in row.items() if value is not None}
+            day = row.get("date")
+            merged = merge_daily_biometrics(existing.get(day), incoming)
+            if row.get("updated_at"):
+                merged["updated_at"] = row.get("updated_at")
+            payload = persistable_biometrics_row(merged)
+            existing[day] = merged
+            payloads.append(payload)
+    return payloads
 
 
 def upsert_biometrics_daily(rows, *, drop_nulls: bool = False) -> int:
-    """Upsert coerced rows. Returns how many days still failed."""
+    """Upsert coerced rows. Returns how many days still failed.
+
+    Null metrics are not written, so a Garmin remirror or sync cannot replace
+    a filled Apple Health value with null. Non-null Garmin fields still win.
+    """
     if not supabase:
         return 0
     coerced = [c for row in rows if (c := coerce_biometrics_row(row, drop_nulls=drop_nulls)).get("date")]
     if not coerced:
         return 0
+    payloads = _merged_payloads(coerced)
     try:
-        supabase.table("biometrics_daily").upsert(coerced, on_conflict="user_id, date").execute()
+        _write_payloads(payloads)
         return 0
     except Exception:
         logger.warning("biometrics_daily batch upsert failed; retrying per day")
     failed = 0
-    for row in coerced:
+    for row in payloads:
         try:
             _write_one(row)
         except Exception:
             failed += 1
             logger.warning("biometrics_daily upsert failed for date=%s", row.get("date"))
     return failed
+
+
+def _write_payloads(rows: list) -> None:
+    try:
+        supabase.table("biometrics_daily").upsert(rows, on_conflict="user_id, date").execute()
+    except Exception as exc:
+        if rows and any("field_sources" in row for row in rows) and is_undefined_column_error(exc, "field_sources"):
+            logger.warning("biometrics_daily.field_sources is missing; batch upsert continues without provenance")
+            supabase.table("biometrics_daily").upsert(
+                [_without_field_sources(row) for row in rows],
+                on_conflict="user_id, date",
+            ).execute()
+            return
+        raise
 
 
 def remirror_biometrics_daily(user_id, page_size: int = 200) -> dict:
