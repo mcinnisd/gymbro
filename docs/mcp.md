@@ -32,9 +32,19 @@ Grok Bot / Cursor ──HTTP──▶ Flask :5001 /api/mcp
 
 ## Prerequisites
 
+Stdio MCP on the Hephaestus Grok Bot VM uses the repo-local interpreter
+`.venv/bin/python`. A computer reset wipes `/workspace/gymbro/.venv`, and the
+next spawn fails with `spawn …/.venv/bin/python ENOENT`. Recreate it before
+MCP or Garmin sync (safe to re-run; pip is a no-op when requirements are already met):
+
 ```bash
-pip install -r requirements.txt   # includes mcp>=1.28,<2
+scripts/ensure_venv.sh
+# equivalent when .venv/bin/python already exists:
+# .venv/bin/python -m pip install -r requirements.txt   # includes mcp>=1.28,<2
 ```
+
+Evening and morning sync should call `scripts/ensure_venv.sh` when
+`.venv/bin/python` is missing.
 
 Keep secrets in `.env` (gitignored). Never commit API keys, JWTs, or Garmin passwords.
 
@@ -111,7 +121,8 @@ After initialize, `tools/list` then `tools/call` for `get_wellness_metrics` /
 ### 2. Stdio (desktop Cursor / Claude Desktop)
 
 ```bash
-PYTHONPATH=. python -m app.mcp
+scripts/ensure_venv.sh
+PYTHONPATH=. .venv/bin/python -m app.mcp
 ```
 
 Cursor `mcp.json` example (paths and secrets stay on the machine, not in git):
@@ -120,7 +131,7 @@ Cursor `mcp.json` example (paths and secrets stay on the machine, not in git):
 {
   "mcpServers": {
     "gymbro": {
-      "command": "python",
+      "command": "/absolute/path/to/gymbro/.venv/bin/python",
       "args": ["-m", "app.mcp"],
       "cwd": "/absolute/path/to/gymbro",
       "env": {
@@ -136,7 +147,7 @@ Cursor `mcp.json` example (paths and secrets stay on the machine, not in git):
 }
 ```
 
-Prefer the venv interpreter, e.g. `"/absolute/path/to/gymbro/venv/bin/python"`.
+Use that repo-local `.venv` interpreter. On Hephaestus, run `scripts/ensure_venv.sh` first if `.venv/bin/python` is gone.
 
 ### 3. Regression tests (no server, no tunnel)
 
@@ -201,11 +212,14 @@ Read `get_readiness` first, then `get_wellness_metrics` and
 
 Live Garmin sync runs on the Hephaestus Grok Bot VM (`/workspace/gymbro`
 plus that VM's `.env`). A routine runs daily at **6:20** `America/Los_Angeles`.
+Reset wipes `.venv`; run `scripts/ensure_venv.sh` before stdio MCP or sync
+when `.venv/bin/python` is missing (evening and morning sync included).
 `remirror-biometrics` rebuilds `biometrics_daily` from rows already in
 Supabase and does not call the Garmin API:
 
 ```bash
-PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
+scripts/ensure_venv.sh
+PYTHONPATH=. .venv/bin/python -m app.garmin.cli remirror-biometrics --user-id 2
 ```
 
 Keep `.env` on that VM. Never copy `.env` secrets into cloud agents or chat.
