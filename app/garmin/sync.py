@@ -146,24 +146,27 @@ def pull_today_for_wake(user_id: str, day_iso: str, encryption_key: str) -> dict
         logger.warning("wake pull failed for user_id=%s (%s)", user_id, type(exc).__name__)
         return {"ok": False, "error": type(exc).__name__}
 
+    if sleep is None and steps is None and heart is None:
+        return {"ok": False, "error": "garmin returned no wake data"}
+
     uid = normalize_garmin_user_id(user_id)
     synced_at = datetime.now(timezone.utc).isoformat()
-    resting = heart.get("restingHeartRate") if isinstance(heart, dict) else None
-    supabase.table("garmin_sleep").upsert(
-        {"user_id": uid, "date": day_iso, "sleep_data": sleep or {}, "synced_at": synced_at},
-        on_conflict="user_id, date",
-    ).execute()
-    supabase.table("garmin_daily").upsert(
-        {
-            "user_id": uid,
-            "date": day_iso,
-            "steps": steps,
-            "heartrate": heart,
-            "resting_hr": resting,
-            "synced_at": synced_at,
-        },
-        on_conflict="user_id, date",
-    ).execute()
+    # robust_api_call returns None on failure. Skip those fields so a bad poll
+    # cannot replace a stored session with an empty shell.
+    if sleep is not None:
+        supabase.table("garmin_sleep").upsert(
+            {"user_id": uid, "date": day_iso, "sleep_data": sleep, "synced_at": synced_at},
+            on_conflict="user_id, date",
+        ).execute()
+    daily = {"user_id": uid, "date": day_iso, "synced_at": synced_at}
+    if steps is not None:
+        daily["steps"] = steps
+    if heart is not None:
+        daily["heartrate"] = heart
+        if isinstance(heart, dict) and heart.get("restingHeartRate") is not None:
+            daily["resting_hr"] = heart.get("restingHeartRate")
+    if steps is not None or heart is not None:
+        supabase.table("garmin_daily").upsert(daily, on_conflict="user_id, date").execute()
     return {"ok": True, "date": day_iso}
 
 

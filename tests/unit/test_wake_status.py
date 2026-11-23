@@ -242,3 +242,22 @@ def test_pull_today_writes_only_sleep_steps_and_hr(monkeypatch):
     assert sleep and sleep[0]["sleep_data"]["dailySleepDTO"]["id"] == 987654321
     assert daily and daily[0]["resting_hr"] == 48
     assert get_wake_status(str(UID), as_of=DAY, timezone=LA)["signal"] == "sleep_finalized"
+
+def test_failed_wake_pull_does_not_replace_stored_rows(monkeypatch):
+    start, end = _night()
+    _sleep(_session(start, end))
+    _daily(_hr("2026-11-23T06:00:00", "2026-11-23T06:20:00", 70), _buckets([
+        ("2026-11-23T06:00:00", "2026-11-23T06:15:00", 40),
+    ]))
+    api = MagicMock()
+    api.get_sleep_data.return_value = None
+    api.get_steps_data.return_value = None
+    api.get_heart_rates.return_value = None
+    monkeypatch.setattr("app.garmin.sync.init_garmin_api_for_user", lambda *args, **kwargs: api)
+    result = pull_today_for_wake(str(UID), DAY, "test-key-not-a-secret")
+    assert result["ok"] is False
+    sleep = supabase.table("garmin_sleep").select("sleep_data").eq("user_id", UID).eq("date", DAY).execute().data
+    daily = supabase.table("garmin_daily").select("steps,resting_hr").eq("user_id", UID).eq("date", DAY).execute().data
+    assert sleep[0]["sleep_data"]["dailySleepDTO"]["id"] == 987654321
+    assert daily[0]["resting_hr"] == 48
+    assert get_wake_status(str(UID), as_of=DAY, timezone=LA)["signal"] == "sleep_finalized"
