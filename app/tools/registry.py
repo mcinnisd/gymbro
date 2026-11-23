@@ -12,6 +12,7 @@ from app.tools.workout_tools import reschedule_workout, log_manual_workout
 from app.tools.activity_tools import get_recent_activities, get_wellness_metrics
 from app.tools.biomarker_tools import get_biomarkers, get_biomarker_trends_tool
 from app.tools.readiness_tools import get_readiness
+from app.tools.wake_tools import get_wake_status
 
 TOOLS_REGISTRY = [
     {
@@ -334,6 +335,37 @@ TOOLS_REGISTRY = [
     {
         "type": "function",
         "function": {
+            "name": "get_wake_status",
+            "description": (
+                "Read garmin_sleep and garmin_daily (no Garmin call). "
+                "sleep_finalized and off_wrist at or after 05:00 local set state=up immediately. "
+                "A 25-minute steps-and-heart-rate window is the fallback when neither has fired. "
+                "state=unknown means not synced yet. Does not use yesterday's sleep for today."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "as_of": {
+                        "type": "string",
+                        "description": (
+                            "Local wake date YYYY-MM-DD (Garmin calendarDate, usually today). "
+                            "Defaults to today in the athlete timezone."
+                        )
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": (
+                            "IANA timezone for the athlete's local morning. Defaults to "
+                            "users.goals.timezone, then GYMBRO_ATHLETE_TIMEZONE."
+                        )
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_biomarkers",
             "description": "Retrieve clinical lab bloodwork biomarkers, reference corridors, and abnormal flags for an athlete.",
             "parameters": {
@@ -393,6 +425,7 @@ TOOL_IMPLEMENTATIONS = {
     "get_recent_activities": get_recent_activities,
     "get_wellness_metrics": get_wellness_metrics,
     "get_readiness": get_readiness,
+    "get_wake_status": get_wake_status,
     "get_biomarkers": get_biomarkers,
     "get_biomarker_trends": get_biomarker_trends_tool
 }

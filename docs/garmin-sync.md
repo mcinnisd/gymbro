@@ -48,6 +48,8 @@ PYTHONPATH=. python -m app.garmin.cli status
 PYTHONPATH=. python -m app.garmin.cli sync --user-id 2 --mode incremental
 PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
 PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
+PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
+PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2 --json
 ```
 
 If `status` shows `garmin_connected: false`, reconnect Garmin in the Expo Stats
@@ -113,6 +115,30 @@ It does not call Garmin and does not need `ENCRYPTION_KEY`. Apply it from the
 operator environment after merge; do not run it against production from a
 cloud agent.
 
+## Wake status
+
+`get_wake_status` / `wake-status` read `garmin_sleep` and `garmin_daily` only.
+`sleep_finalized` (`enhanced_confirmed_final`, id set, non-empty `sleepLevels`,
+`sleepWindowConfirmed`) and `off_wrist` at or after 05:00 local set `state=up`
+immediately. A 25-minute steps and heart-rate window is the fallback when
+neither has fired. Windows before 05:00 are ignored. A heart-rate series that
+simply stops is not synced yet, not off-wrist. Today's missing or empty row is
+never filled from yesterday. Timezone is the athlete's configured zone:
+argument, `goals.timezone`, then `GYMBRO_ATHLETE_TIMEZONE` (David is
+currently `America/Detroit`).
+
+```bash
+PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
+PYTHONPATH=. python -m app.garmin.cli wake-poll --user-id 2
+```
+
+`wake-poll` fetches only that local date's sleep, step buckets, and heart rate
+(no activities, backfill, or remirror), upserts those two rows, then prints
+wake status. If `state` is already `up`, or `users.goals.wake_detected_on` is
+that date, it does not call Garmin. Run it every 15 minutes from 07:00
+to 11:00 in the athlete's current local timezone. Nothing in this repo
+schedules that.
+
 **User-scoped sync:** `garmin_activities.activity_id` used to be UNIQUE globally.
 Syncing a second account (user 100) with the same Garmin workouts **moved** those
 rows off user 2 (`on_conflict=activity_id` updates `user_id`). Apply
@@ -148,12 +174,14 @@ MOCK_DB=true PYTHONPATH=. python -m pytest \
   tests/unit/test_scheduler_wiring.py \
   tests/unit/test_mcp_adapter.py \
   tests/unit/test_mcp_http.py \
-  tests/unit/test_garmin_biometrics_mirror.py -v
+  tests/unit/test_garmin_biometrics_mirror.py \
+  tests/unit/test_wake_status.py -v
 ```
 
 These seed **fixture** Garmin rows in the in-memory mock DB only. They prove the
-tools read `biometrics_daily` / `garmin_activities`. They do not write fake
-athlete data to production Supabase.
+tools read `biometrics_daily` / `garmin_activities`, and that wake status reads
+`garmin_sleep` / `garmin_daily`. They do not write fake athlete data to
+production Supabase.
 
 ### 2. In-process tool probe (same functions as MCP)
 

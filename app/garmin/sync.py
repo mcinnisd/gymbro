@@ -129,6 +129,47 @@ def init_garmin_api_for_user(user_id: str, encryption_key: str = None):
         logger.error(f"Failed to log in for user {user_id}: {err}")
         return None
 
+def pull_today_for_wake(user_id: str, day_iso: str, encryption_key: str) -> dict:
+    """Upsert one day's sleep, steps, and heart rate. No activities, backfill, or remirror."""
+    from app.garmin.scope import normalize_garmin_user_id
+
+    if not supabase:
+        return {"ok": False, "error": "supabase client is not configured"}
+    api = init_garmin_api_for_user(str(user_id), encryption_key)
+    if not api:
+        return {"ok": False, "error": "garmin login failed"}
+    try:
+        sleep = robust_api_call(api.get_sleep_data, day_iso)
+        steps = robust_api_call(api.get_steps_data, day_iso)
+        heart = robust_api_call(api.get_heart_rates, day_iso)
+    except Exception as exc:
+        logger.warning("wake pull failed for user_id=%s (%s)", user_id, type(exc).__name__)
+        return {"ok": False, "error": type(exc).__name__}
+
+    if sleep is None and steps is None and heart is None:
+        return {"ok": False, "error": "garmin returned no wake data"}
+
+    uid = normalize_garmin_user_id(user_id)
+    synced_at = datetime.now(timezone.utc).isoformat()
+    # robust_api_call returns None on failure. Skip those fields so a bad poll
+    # cannot replace a stored session with an empty shell.
+    if sleep is not None:
+        supabase.table("garmin_sleep").upsert(
+            {"user_id": uid, "date": day_iso, "sleep_data": sleep, "synced_at": synced_at},
+            on_conflict="user_id, date",
+        ).execute()
+    daily = {"user_id": uid, "date": day_iso, "synced_at": synced_at}
+    if steps is not None:
+        daily["steps"] = steps
+    if heart is not None:
+        daily["heartrate"] = heart
+        if isinstance(heart, dict) and heart.get("restingHeartRate") is not None:
+            daily["resting_hr"] = heart.get("restingHeartRate")
+    if steps is not None or heart is not None:
+        supabase.table("garmin_daily").upsert(daily, on_conflict="user_id, date").execute()
+    return {"ok": True, "date": day_iso}
+
+
 def store_garmin_credentials(user_id: str, email: str, encrypted_password: str):
     """
     Stores encrypted Garmin credentials for a user.
