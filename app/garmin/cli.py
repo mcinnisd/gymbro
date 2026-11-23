@@ -9,6 +9,8 @@ Usage:
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 2
   PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
   PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
+  PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
+  PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2 --as-of 2026-11-23 --json
 """
 from __future__ import annotations
 
@@ -209,6 +211,38 @@ def cmd_verify_tools(args):
     return 0
 
 
+def cmd_wake_status(args):
+    """Read garmin_sleep / garmin_daily and report whether the athlete is up. No Garmin API."""
+    from app.supabase_client import supabase
+    from app.garmin.wake import format_wake_status_line, get_wake_status
+
+    if not supabase:
+        print("wake-status: supabase client is not configured")
+        return 1
+
+    user_id = args.user_id
+    if not user_id:
+        rows = _users_with_garmin(supabase)
+        from app.garmin.scope import select_users_for_garmin_sync
+
+        rows, err = select_users_for_garmin_sync(rows, user_id=None, all_users=False)
+        if err:
+            print(f"wake-status: {err}")
+            return 1
+        if len(rows) != 1:
+            print("wake-status: pass --user-id (athlete id from the users table)")
+            return 1
+        user_id = rows[0]["id"]
+
+    result = get_wake_status(str(user_id), as_of=args.as_of, timezone=args.timezone)
+    if args.json:
+        import json
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print(format_wake_status_line(result))
+    return 0 if result.get("status") == "success" else 1
+
+
 def cmd_remirror_biometrics(args):
     """Rebuild biometrics_daily from garmin_daily + garmin_sleep. No Garmin API."""
     from app.supabase_client import supabase
@@ -334,6 +368,23 @@ def main(argv=None):
     )
     bio_p.add_argument("--user-id", default=None, help="Athlete id (from the users table)")
 
+    wake_p = sub.add_parser(
+        "wake-status",
+        help="Read whether last night's sleep is finalized or the athlete is up (no Garmin API)",
+    )
+    wake_p.add_argument("--user-id", default=None, help="Athlete id (from the users table)")
+    wake_p.add_argument(
+        "--as-of",
+        default=None,
+        help="Local wake date YYYY-MM-DD (Garmin calendarDate). Defaults to today in the athlete timezone.",
+    )
+    wake_p.add_argument(
+        "--timezone",
+        default=None,
+        help="IANA timezone. Defaults to goals.timezone, GYMBRO_ATHLETE_TIMEZONE, or America/Los_Angeles.",
+    )
+    wake_p.add_argument("--json", action="store_true", help="Print the stable JSON object instead of a key=value line")
+
     args = parser.parse_args(argv)
     app = _load_app()
     with app.app_context():
@@ -347,6 +398,8 @@ def main(argv=None):
             return cmd_remirror_calendar(args)
         if args.command == "remirror-biometrics":
             return cmd_remirror_biometrics(args)
+        if args.command == "wake-status":
+            return cmd_wake_status(args)
         parser.error(f"unknown command {args.command}")
         return 2
 

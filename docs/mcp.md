@@ -145,7 +145,8 @@ MOCK_DB=true PYTHONPATH=. python -m pytest \
   tests/unit/test_mcp_adapter.py \
   tests/unit/test_mcp_http.py \
   tests/unit/test_activity_tools.py \
-  tests/unit/test_readiness_tools.py -v
+  tests/unit/test_readiness_tools.py \
+  tests/unit/test_wake_status.py -v
 ```
 
 Optional env:
@@ -177,14 +178,18 @@ key if a URL leaks. Auth is still required on every `/api/mcp` request.
 From `TOOL_IMPLEMENTATIONS`:
 
 - Calendar: `create_calendar_event`, `get_calendar_events`, `update_calendar_event`, `delete_calendar_event`
-- Telemetry: `get_recent_activities`, `get_wellness_metrics`, `get_readiness`, `generate_chart`, `get_biomarkers`, `get_biomarker_trends`
+- Telemetry: `get_recent_activities`, `get_wellness_metrics`, `get_readiness`, `get_wake_status`, `generate_chart`, `get_biomarkers`, `get_biomarker_trends`
 - Coach: `generate_training_plan`, `update_goal`, `reschedule_workout`, `log_manual_workout`, `log_meal`
 
 `get_wellness_metrics` reads `biometrics_daily`. `get_recent_activities` uses
 `get_unified_activities()` (Garmin-first). `get_readiness` is the sparse-aware
 composite over those signals plus optional journal/biomarkers
-(see [`docs/readiness.md`](readiness.md)). Widget-only Expo envelopes and Garmin
-credential writes stay off MCP.
+(see [`docs/readiness.md`](readiness.md)). `get_wake_status` reads
+`garmin_sleep` and `garmin_daily` only (no Garmin API) and reports whether
+last night's sleep is finalized or a morning activity / off-wrist signal says
+the athlete is up. `state=unknown` means not synced yet. Details:
+[`docs/garmin-sync.md`](garmin-sync.md#wake-status). Widget-only Expo envelopes
+and Garmin credential writes stay off MCP.
 
 ## Grok Bot agents
 
@@ -198,6 +203,15 @@ machine that holds `.env`). The HTTP connector `user-gymbro` may be
 
 Read `get_readiness` first, then `get_wellness_metrics` and
 `get_recent_activities` ([`docs/readiness.md`](readiness.md)).
+
+For the morning summary, poll `get_wake_status` (same rules as
+`python -m app.garmin.cli wake-status`). Send only when `state` is `up`.
+`unknown` means Garmin has not synced yet — retry later and do not assume the
+athlete is asleep. `latest_data_at` is the newest stored timestamp. The
+6:20 `America/Los_Angeles` routine is often earlier than a background phone
+sync, and the athlete usually takes the Garmin off after waking, so a
+finalized `sleepEndTimestampGMT` remains the wake time even if later heart-rate
+samples go null.
 
 Live Garmin sync runs on the Hephaestus Grok Bot VM (`/workspace/gymbro`
 plus that VM's `.env`). A routine runs daily at **6:20** `America/Los_Angeles`.
