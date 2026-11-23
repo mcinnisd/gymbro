@@ -337,14 +337,10 @@ TOOLS_REGISTRY = [
         "function": {
             "name": "get_wake_status",
             "description": (
-                "Read whether last night's Garmin sleep session is finalized and, if not, "
-                "whether the athlete is already up from sustained morning steps and heart rate "
-                "or from a sustained off-wrist gap. Uses garmin_sleep and garmin_daily already "
-                "in the database; does not call Garmin. state=up means send the morning summary "
-                "(signal is sleep_finalized, activity, or off_wrist). state=unknown means not "
-                "synced yet — retry later and do not assume the athlete is asleep. "
-                "state=not_yet means data is in but no up signal yet. Today's empty or missing "
-                "sleep row is never filled from yesterday."
+                "Read garmin_sleep and garmin_daily (no Garmin call). "
+                "sleep_finalized and off_wrist at or after 05:00 local set state=up immediately. "
+                "A 25-minute steps-and-heart-rate window is the fallback when neither has fired. "
+                "state=unknown means not synced yet. Does not use yesterday's sleep for today."
             ),
             "parameters": {
                 "type": "object",

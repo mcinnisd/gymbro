@@ -117,72 +117,25 @@ cloud agent.
 
 ## Wake status
 
-The morning coach should send the summary only after the athlete is actually
-up. `wake-status` and the MCP tool `get_wake_status` share one read of
-`garmin_sleep` and `garmin_daily`. They do not call Garmin and do not need
-`ENCRYPTION_KEY`.
+`get_wake_status` / `wake-status` read `garmin_sleep` and `garmin_daily` only.
+`sleep_finalized` (`enhanced_confirmed_final`, id set, non-empty `sleepLevels`,
+`sleepWindowConfirmed`) and `off_wrist` at or after 05:00 local set `state=up`
+immediately. A 25-minute steps and heart-rate window is the fallback when
+neither has fired. Windows before 05:00 are ignored. A heart-rate series that
+simply stops is not synced yet, not off-wrist. Today's missing or empty row is
+never filled from yesterday. Timezone: argument, `goals.timezone`,
+`GYMBRO_ATHLETE_TIMEZONE`, then `America/Los_Angeles`.
 
 ```bash
 PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
-PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2 --as-of 2026-11-23 --json
+PYTHONPATH=. python -m app.garmin.cli wake-poll --user-id 2
 ```
 
-Garmin's `calendarDate` on a sleep row is the wake date, so "last night" is
-that local date (`--as-of`, or today in the athlete timezone). A missing row
-or an empty shell is not replaced with yesterday's finalized session.
-
-There is no timezone column. Resolution order: `--timezone` / tool argument,
-`users.goals.timezone` (also `time_zone` or `tz`), `GYMBRO_ATHLETE_TIMEZONE`,
-then `America/Los_Angeles`. When the payload has both GMT and local sleep
-timestamps, the formatted wake time uses that offset.
-
-**Finalized sleep (primary, confidence high).** `get_sleep_data` in
-garminconnect 0.2.25 returns `dailySleepDTO` plus a root `sleepLevels` list.
-A session is finalized only when `dailySleepDTO.id` is set, `sleepLevels` is
-non-empty, `sleepWindowConfirmed` is true, and `sleepWindowConfirmationType`
-is `enhanced_confirmed_final`. Wake time is `sleepEndTimestampGMT` (epoch
-milliseconds); start time is `sleepStartTimestampGMT`. That wake time stays
-the answer if the watch comes off afterward. The athlete often removes the
-Garmin in the morning, so a later off-wrist gap must not move the wake time.
-
-**Activity (secondary, confidence medium).** Used only when sleep is not
-finalized. Sync already stores intraday series: `garmin_daily.steps` is
-`get_steps_data` (daily summary-chart buckets with `startGMT`, `endGMT`, and
-`steps`; 15 minutes when Garmin sends that) and `garmin_daily.heartrate` is
-`get_heart_rates` (`heartRateValues` as `[epoch_ms, bpm_or_null]`). No extra
-Garmin ingest was added. The athlete counts as up when steps and heart rate
-stay above the resting baseline for a sustained window (default 25 minutes)
-that does not fall back to sleep levels. Windows that start before the early
-hour (default 05:00 local) are ignored, so a night trip to let the dogs out
-does not count. Resting heart rate comes from `garmin_daily.resting_hr`, the
-heart-rate payload, or the latest `biometrics_daily.resting_hr`.
-
-**Off-wrist (secondary, confidence medium).** Explicit nulls in
-`heartRateValues` are Garmin's not-worn samples. A null run counts only when
-it lasts the sustained window, starts at or after the early hour, was
-preceded by worn overnight samples, and reaches the last sample (the watch
-stayed off). `sleepWindowConfirmationType` of `off_wrist` with a wake at or
-after the early hour is the same signal, unless heart rate after that instant
-shows the watch went back on at a resting rate. A series that simply stops,
-with no nulls, is background-sync lag, not off-wrist.
-
-**Unknown.** `state` is `unknown` and `reason` starts with
-`unknown / not synced yet` when today's sleep row is missing, still an empty
-shell, or not confirmed, and no morning samples have arrived.
-`latest_data_at` is the newest `synced_at` or intraday timestamp so the coach
-can retry. `state=not_yet` means morning data is in and no up signal fired.
-`state=up` means send the summary (`signal` is `sleep_finalized`, `activity`,
-or `off_wrist`).
-
-| Env | Default | Meaning |
-| --- | --- | --- |
-| `GYMBRO_ATHLETE_TIMEZONE` | `America/Los_Angeles` | Local morning when goals have no timezone |
-| `GYMBRO_WAKE_SUSTAINED_MINUTES` | `25` | Activity window and minimum off-wrist run |
-| `GYMBRO_WAKE_EARLY_HOUR` | `5` | Ignore activity and off-wrist that start earlier |
-| `GYMBRO_WAKE_HR_DELTA_BPM` | `12` | Heart rate above resting required to count as up |
-| `GYMBRO_WAKE_MIN_STEPS` | `80` | Prorated steps inside the activity window |
-| `GYMBRO_WAKE_SETTLE_MINUTES` | `20` | Quiet follow-up that cancels an activity spike |
-| `GYMBRO_WAKE_OFF_WRIST_MINUTES` | `25` | How long the watch must stay off |
+`wake-poll` fetches only that local date's sleep, step buckets, and heart rate
+(no activities, backfill, or remirror), upserts those two rows, then prints
+wake status. If `state` is already `up`, or `users.goals.wake_detected_on` is
+that date, it does not call Garmin. Run it about every 15 minutes from 07:00
+to 11:00 `America/Los_Angeles`. Nothing in this repo schedules that.
 
 **User-scoped sync:** `garmin_activities.activity_id` used to be UNIQUE globally.
 Syncing a second account (user 100) with the same Garmin workouts **moved** those

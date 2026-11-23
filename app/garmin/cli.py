@@ -10,7 +10,7 @@ Usage:
   PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
   PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
   PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
-  PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2 --as-of 2026-11-23 --json
+  PYTHONPATH=. python -m app.garmin.cli wake-poll --user-id 2
 """
 from __future__ import annotations
 
@@ -213,34 +213,114 @@ def cmd_verify_tools(args):
 
 def cmd_wake_status(args):
     """Read garmin_sleep / garmin_daily and report whether the athlete is up. No Garmin API."""
-    from app.supabase_client import supabase
-    from app.garmin.wake import format_wake_status_line, get_wake_status
+    from app.garmin.wake import get_wake_status
 
-    if not supabase:
-        print("wake-status: supabase client is not configured")
-        return 1
-
-    user_id = args.user_id
+    user_id = _wake_user_id(args)
     if not user_id:
-        rows = _users_with_garmin(supabase)
-        from app.garmin.scope import select_users_for_garmin_sync
+        return 1
+    result = get_wake_status(user_id, as_of=args.as_of, timezone=args.timezone)
+    _emit_wake(result, as_json=args.json)
+    return 0 if result.get("status") == "success" else 1
 
-        rows, err = select_users_for_garmin_sync(rows, user_id=None, all_users=False)
-        if err:
-            print(f"wake-status: {err}")
-            return 1
-        if len(rows) != 1:
-            print("wake-status: pass --user-id (athlete id from the users table)")
-            return 1
-        user_id = rows[0]["id"]
 
-    result = get_wake_status(str(user_id), as_of=args.as_of, timezone=args.timezone)
-    if args.json:
+def _emit_wake(result, as_json=False):
+    if as_json:
         import json
         print(json.dumps(result, indent=2, default=str))
     else:
+        from app.garmin.wake import format_wake_status_line
         print(format_wake_status_line(result))
-    return 0 if result.get("status") == "success" else 1
+
+
+def _wake_user_id(args):
+    from app.supabase_client import supabase
+    if not supabase:
+        print("wake: supabase client is not configured")
+        return None
+    if args.user_id:
+        return str(args.user_id)
+    rows = _users_with_garmin(supabase)
+    from app.garmin.scope import select_users_for_garmin_sync
+    rows, err = select_users_for_garmin_sync(rows, user_id=None, all_users=False)
+    if err or len(rows) != 1:
+        print(f"wake: {err or 'pass --user-id'}")
+        return None
+    return str(rows[0]["id"])
+
+
+def _wake_marker(user_id, day):
+    from app.garmin.scope import normalize_garmin_user_id
+    from app.supabase_client import supabase
+    try:
+        res = supabase.table("users").select("goals").eq("id", normalize_garmin_user_id(user_id)).limit(1).execute()
+    except Exception:
+        return False
+    rows = res.data or []
+    goals = (rows[0].get("goals") if rows else None) or {}
+    return isinstance(goals, dict) and goals.get("wake_detected_on") == day
+
+
+def _remember_wake(user_id, day):
+    from app.garmin.scope import normalize_garmin_user_id
+    from app.supabase_client import supabase
+    uid = normalize_garmin_user_id(user_id)
+    try:
+        res = supabase.table("users").select("goals").eq("id", uid).limit(1).execute()
+    except Exception:
+        return
+    rows = res.data or []
+    if not rows:
+        return
+    goals = dict(rows[0].get("goals") or {})
+    if goals.get("wake_detected_on") == day:
+        return
+    goals["wake_detected_on"] = day
+    supabase.table("users").update({"goals": goals}).eq("id", uid).execute()
+
+
+def cmd_wake_poll(args):
+    """Pull today's sleep, steps, and heart rate, then evaluate wake status.
+
+    Returns the stored result without calling Garmin when this local date is
+    already up. Intended to be run every ~15 minutes from 07:00–11:00 local.
+    No scheduler is installed here.
+    """
+    from app.garmin.wake import get_wake_status
+
+    user_id = _wake_user_id(args)
+    if not user_id:
+        return 1
+    current = get_wake_status(user_id, as_of=args.as_of, timezone=args.timezone)
+    if current.get("status") != "success":
+        _emit_wake(current, as_json=args.json)
+        return 1
+    day = current.get("sleep_date")
+    if current.get("state") == "up" or _wake_marker(user_id, day):
+        if current.get("state") != "up":
+            current["state"] = "up"
+            current["awake"] = True
+            current["reason"] = "wake already detected today"
+        else:
+            _remember_wake(user_id, day)
+        current["garmin_called"] = False
+        _emit_wake(current, as_json=args.json)
+        return 0
+
+    key = os.environ.get("ENCRYPTION_KEY")
+    if not key:
+        print("wake-poll: ENCRYPTION_KEY is not set; cannot decrypt the stored Garmin password.")
+        return 1
+    from app.garmin.sync import pull_today_for_wake
+    pulled = pull_today_for_wake(user_id, day, key)
+    if not pulled.get("ok"):
+        print(f"wake-poll: {pulled.get('error') or 'pull failed'}")
+        return 1
+    current = get_wake_status(user_id, as_of=day, timezone=args.timezone)
+    current["garmin_called"] = True
+    if current.get("state") == "up":
+        _remember_wake(user_id, day)
+    _emit_wake(current, as_json=args.json)
+    return 0 if current.get("status") == "success" else 1
 
 
 def cmd_remirror_biometrics(args):
@@ -385,6 +465,15 @@ def main(argv=None):
     )
     wake_p.add_argument("--json", action="store_true", help="Print the stable JSON object instead of a key=value line")
 
+    poll_p = sub.add_parser(
+        "wake-poll",
+        help="Fetch today's sleep, steps, and heart rate, then print wake status (no backfill)",
+    )
+    poll_p.add_argument("--user-id", default=None, help="Athlete id (from the users table)")
+    poll_p.add_argument("--as-of", default=None, help="Local wake date YYYY-MM-DD. Defaults to today.")
+    poll_p.add_argument("--timezone", default=None, help="IANA timezone. Defaults like wake-status.")
+    poll_p.add_argument("--json", action="store_true", help="Print JSON")
+
     args = parser.parse_args(argv)
     app = _load_app()
     with app.app_context():
@@ -400,6 +489,8 @@ def main(argv=None):
             return cmd_remirror_biometrics(args)
         if args.command == "wake-status":
             return cmd_wake_status(args)
+        if args.command == "wake-poll":
+            return cmd_wake_poll(args)
         parser.error(f"unknown command {args.command}")
         return 2
 

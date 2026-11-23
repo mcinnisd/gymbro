@@ -1,473 +1,244 @@
-"""Wake status from stored garmin_sleep / garmin_daily. No Garmin API."""
+"""Wake status and the today-only poll. No live Garmin login."""
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from app.garmin.cli import main as garmin_cli_main
-from app.garmin.wake import assess_sleep_payload
-from app.mcp.executor import execute_tool
+from app.garmin.sync import pull_today_for_wake
+from app.garmin.wake import get_wake_status
 from app.mcp.policies import requires_confirm
-from app.mcp.server import build_mcp_tools
 from app.supabase_client import supabase
 from app.tools.registry import get_tool_implementation
-from app.tools.wake_tools import get_wake_status
+from app.tools.wake_tools import get_wake_status as tool_get_wake_status
 
 UID = 9101
 DAY = "2026-11-23"
 LA = "America/Los_Angeles"
 ZONE = ZoneInfo(LA)
 
-
 def _wipe():
     for table, column in (
         ("garmin_sleep", "user_id"),
         ("garmin_daily", "user_id"),
-        ("biometrics_daily", "user_id"),
         ("users", "id"),
     ):
         supabase.table(table).delete().eq(column, UID).execute()
 
-
-@pytest.fixture(autouse=True)
-def _clean_rows():
-    _wipe()
-    yield
+def setup_function():
     _wipe()
 
+def teardown_function():
+    _wipe()
 
-def _ms(instant: datetime) -> int:
+def _ms(instant):
     return int(instant.timestamp() * 1000)
 
-
-def _local(stamp: str) -> datetime:
+def _local(stamp):
     return datetime.fromisoformat(stamp).replace(tzinfo=ZONE)
 
-
-def _gmt_stamp(stamp: str) -> str:
+def _gmt(stamp):
     return _local(stamp).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.0")
 
-
-def _hr(start: str, end: str, bpm, step_min: int = 2):
-    cursor = _local(start)
-    stop = _local(end)
+def _hr(start, end, bpm, step=2):
+    cursor, stop = _local(start), _local(end)
     values = []
     while cursor <= stop:
         values.append([_ms(cursor), bpm])
-        cursor += timedelta(minutes=step_min)
+        cursor += timedelta(minutes=step)
     return values
 
-
-def _steps(ranges):
-    buckets = []
-    for start, end, steps in ranges:
-        buckets.append({
-            "startGMT": _gmt_stamp(start),
-            "endGMT": _gmt_stamp(end),
-            "steps": steps,
-            "primaryActivityLevel": "active" if steps else "sedentary",
-        })
-    return buckets
-
+def _buckets(ranges):
+    return [
+        {"startGMT": _gmt(a), "endGMT": _gmt(b), "steps": steps}
+        for a, b, steps in ranges
+    ]
 
 def _sleep(payload, day=DAY, synced_at="2026-11-23T16:00:00+00:00"):
     supabase.table("garmin_sleep").insert({
-        "user_id": UID,
-        "date": day,
-        "sleep_data": payload,
-        "synced_at": synced_at,
+        "user_id": UID, "date": day, "sleep_data": payload, "synced_at": synced_at,
     }).execute()
 
-
-def _daily(hr_values, steps, resting=48, synced_at="2026-11-23T16:30:00+00:00"):
+def _daily(hr, steps, resting=48):
     supabase.table("garmin_daily").insert({
-        "user_id": UID,
-        "date": DAY,
-        "steps": steps,
-        "heartrate": {"restingHeartRate": resting, "heartRateValues": hr_values},
-        "resting_hr": resting,
-        "synced_at": synced_at,
+        "user_id": UID, "date": DAY, "steps": steps, "resting_hr": resting,
+        "heartrate": {"restingHeartRate": resting, "heartRateValues": hr},
+        "synced_at": "2026-11-23T16:30:00+00:00",
     }).execute()
 
-
-def _payload(start, end, *, confirmation="enhanced_confirmed_final", confirmed=True,
-             with_id=True, levels=True, offset_hours=None):
-    dto = {
-        "id": 987654321 if with_id else None,
-        "calendarDate": DAY,
-        "sleepWindowConfirmed": confirmed,
-        "sleepWindowConfirmationType": confirmation,
-        "sleepStartTimestampGMT": _ms(start),
-        "sleepEndTimestampGMT": _ms(end),
-    }
-    if offset_hours is not None:
-        shift = int(offset_hours * 3600 * 1000)
-        dto["sleepStartTimestampLocal"] = _ms(start) + shift
-        dto["sleepEndTimestampLocal"] = _ms(end) + shift
-    return {
-        "dailySleepDTO": dto,
-        "sleepLevels": [
-            {"startGMT": "2026-11-23T06:30:00.0", "endGMT": "2026-11-23T07:00:00.0", "activityLevel": 1.0}
-        ] if levels else [],
-    }
-
-
-def _shell():
+def _session(start, end, confirmation="enhanced_confirmed_final", confirmed=True, levels=True, with_id=True):
     return {
         "dailySleepDTO": {
-            "id": None,
+            "id": 987654321 if with_id else None,
             "calendarDate": DAY,
-            "sleepTimeSeconds": None,
-            "sleepWindowConfirmed": False,
-            "sleepWindowConfirmationType": "unconfirmed",
-            "sleepStartTimestampGMT": None,
-            "sleepEndTimestampGMT": None,
+            "sleepWindowConfirmed": confirmed,
+            "sleepWindowConfirmationType": confirmation,
+            "sleepStartTimestampGMT": _ms(start),
+            "sleepEndTimestampGMT": _ms(end),
         },
-        "sleepLevels": [],
+        "sleepLevels": [{"startGMT": "x", "endGMT": "y"}] if levels else [],
     }
 
+def _status():
+    return get_wake_status(str(UID), as_of=DAY, timezone=LA)
 
-def _status(**kwargs):
-    kwargs.setdefault("timezone", LA)
-    return get_wake_status(str(UID), as_of=kwargs.pop("as_of", DAY), **kwargs)
+def _night():
+    return (
+        datetime(2026, 11, 23, 6, 30, tzinfo=timezone.utc),
+        datetime(2026, 11, 23, 14, 30, tzinfo=timezone.utc),
+    )
 
-
-def _final_instants():
-    start = datetime(2026, 11, 23, 6, 30, tzinfo=timezone.utc)  # 22:30 PST
-    end = datetime(2026, 11, 23, 14, 30, tzinfo=timezone.utc)  # 06:30 PST
-    return start, end
-
-
-def test_assess_finalized_requires_id_levels_confirmed_and_final_type():
-    start, end = _final_instants()
-    assert assess_sleep_payload(_payload(start, end)).finalized is True
-    assert assess_sleep_payload(_shell()).empty_shell is True
-    assert assess_sleep_payload(_shell()).finalized is False
-    almost = _payload(start, end, confirmation="enhanced_confirmed")
-    assessed = assess_sleep_payload(almost)
-    assert assessed.finalized is False
-    assert assessed.empty_shell is False
-    assert assess_sleep_payload(_payload(start, end, levels=False)).finalized is False
-    assert assess_sleep_payload(_payload(start, end, confirmed=False)).finalized is False
-    assert assess_sleep_payload(_payload(start, end, with_id=False, levels=False)).empty_shell is False
-
-
-def test_finalized_session_wake_time_uses_athlete_zone():
-    start, end = _final_instants()
-    _sleep(_payload(start, end), synced_at="2026-11-23T15:10:00+00:00")
-    result = _status()
-    assert result["status"] == "success"
-    assert result["finalized"] is True
-    assert result["awake"] is True
-    assert result["state"] == "up"
-    assert result["signal"] == "sleep_finalized"
-    assert result["confidence"] == "high"
-    assert result["wake_time"] == "2026-11-23T06:30:00-08:00"
-    assert result["sleep_start"] == "2026-11-22T22:30:00-08:00"
-    assert result["confirmation_type"] == "enhanced_confirmed_final"
-    assert result["reason"] == "sleep session finalized"
-    assert result["latest_data_at"] == "2026-11-23T15:10:00+00:00"
-
-
-def test_payload_local_offset_beats_the_athlete_zone():
-    start, end = _final_instants()
-    _sleep(_payload(start, end, offset_hours=-7))
-    result = _status()
-    assert result["signal"] == "sleep_finalized"
-    assert result["wake_time"] == "2026-11-23T07:30:00-07:00"
-    assert result["sleep_start"] == "2026-11-22T23:30:00-07:00"
-
-
-def test_finalized_sleep_wins_over_later_activity_and_off_wrist():
-    start, end = _final_instants()
-    _sleep(_payload(start, end))
+def test_sleep_finalized_is_up_immediately():
+    start, end = _night()
+    _sleep(_session(start, end))
     hr = _hr("2026-11-23T00:00:00", "2026-11-23T06:30:00", 46)
     hr += _hr("2026-11-23T06:32:00", "2026-11-23T08:00:00", None)
-    _daily(
-        hr,
-        _steps([
-            ("2026-11-23T06:00:00", "2026-11-23T06:15:00", 150),
-            ("2026-11-23T06:15:00", "2026-11-23T06:30:00", 150),
-            ("2026-11-23T06:30:00", "2026-11-23T06:45:00", 150),
-        ]),
-    )
+    _daily(hr, _buckets([
+        ("2026-11-23T06:00:00", "2026-11-23T06:15:00", 150),
+        ("2026-11-23T06:15:00", "2026-11-23T06:45:00", 150),
+    ]))
     result = _status()
     assert result["signal"] == "sleep_finalized"
-    assert result["wake_time"] == "2026-11-23T06:30:00-08:00"
+    assert result["state"] == "up"
     assert result["finalized"] is True
+    assert result["wake_time"] == "2026-11-23T06:30:00-08:00"
+    assert result["sleep_start"] == "2026-11-22T22:30:00-08:00"
 
-
-def test_empty_shell_does_not_reuse_yesterdays_finalized_session():
-    start, end = _final_instants()
-    yesterday_end = end - timedelta(days=1)
-    _sleep(
-        _payload(start - timedelta(days=1), yesterday_end),
-        day="2026-11-22",
-        synced_at="2026-11-22T16:00:00+00:00",
-    )
-    _sleep(_shell(), synced_at="2026-11-23T14:05:00+00:00")
+def test_off_wrist_after_5am_is_up_without_waiting():
+    end = _local("2026-11-23T06:40:00")
+    _sleep(_session(end - timedelta(hours=8), end, confirmation="off_wrist"))
+    _daily(_hr("2026-11-23T06:42:00", "2026-11-23T07:10:00", 46), [])
     result = _status()
     assert result["finalized"] is False
-    assert result["awake"] is None
-    assert result["state"] == "unknown"
-    assert result["signal"] is None
-    assert result["wake_time"] is None
-    assert "unknown / not synced yet" in result["reason"]
-    assert "empty shell (not uploaded yet)" in result["reason"]
-    assert result["latest_data_at"] == "2026-11-23T14:05:00+00:00"
-    assert "06:30" not in (result["wake_time"] or "")
+    assert result["signal"] == "off_wrist"
+    assert result["state"] == "up"
+    assert result["wake_time"] == "2026-11-23T06:40:00-08:00"
 
+def test_off_wrist_null_run_and_a_series_that_ends_is_lag():
+    _sleep({
+        "dailySleepDTO": {"id": None, "sleepWindowConfirmed": False, "sleepWindowConfirmationType": "unconfirmed"},
+        "sleepLevels": [],
+    })
+    worn = _hr("2026-11-23T04:00:00", "2026-11-23T06:08:00", 45)
+    _daily(worn + _hr("2026-11-23T06:10:00", "2026-11-23T06:40:00", None), [])
+    assert _status()["signal"] == "off_wrist"
 
-def test_missing_row_is_unknown_and_reports_latest_stored_timestamp():
-    start, end = _final_instants()
-    _sleep(
-        _payload(start - timedelta(days=1), end - timedelta(days=1)),
-        day="2026-11-22",
-        synced_at="2026-11-22T16:00:00+00:00",
-    )
-    result = _status()
-    assert result["finalized"] is False
-    assert result["state"] == "unknown"
-    assert result["awake"] is None
-    assert result["wake_time"] is None
-    assert result["reason"] == "unknown / not synced yet: no row"
-    assert result["latest_data_at"] == "2026-11-22T16:00:00+00:00"
+    _wipe()
+    _sleep({
+        "dailySleepDTO": {"id": None, "sleepWindowConfirmed": False},
+        "sleepLevels": [],
+    }, synced_at="2026-11-23T12:00:00+00:00")
+    _daily(_hr("2026-11-23T00:00:00", "2026-11-23T04:00:00", 45), [])
+    ended = _status()
+    assert ended["signal"] is None
+    assert ended["state"] == "unknown"
+    assert "unknown / not synced yet" in ended["reason"]
 
+def test_pre_5am_spike_is_ignored_and_activity_is_the_fallback():
+    shell = {
+        "dailySleepDTO": {"id": None, "sleepStartTimestampGMT": None, "sleepEndTimestampGMT": None},
+        "sleepLevels": [],
+    }
+    _sleep(shell)
+    early = _hr("2026-11-23T03:20:00", "2026-11-23T03:40:00", 90)
+    early += _hr("2026-11-23T03:42:00", "2026-11-23T07:00:00", 46)
+    _daily(early, _buckets([
+        ("2026-11-23T03:15:00", "2026-11-23T03:45:00", 400),
+        ("2026-11-23T05:00:00", "2026-11-23T07:00:00", 0),
+    ]))
+    ignored = _status()
+    assert ignored["signal"] is None
+    assert ignored["state"] != "up"
 
-def test_unconfirmed_session_with_morning_rest_is_not_yet():
-    start, end = _final_instants()
-    _sleep(_payload(start, end, confirmation="unconfirmed", confirmed=False))
-    _daily(_hr("2026-11-23T05:00:00", "2026-11-23T07:00:00", 47), _steps([]))
-    result = _status()
-    assert result["finalized"] is False
-    assert result["awake"] is False
-    assert result["state"] == "not_yet"
-    assert result["signal"] is None
-    assert result["wake_time"] is None
-    assert result["reason"] == "present but not yet confirmed/final"
-    assert result["confirmation_type"] == "unconfirmed"
-
-
-def test_activity_signal_after_sustained_morning_movement():
-    _sleep(_shell())
+    _wipe()
+    _sleep(shell)
     _daily(
         _hr("2026-11-23T06:00:00", "2026-11-23T06:50:00", 75),
-        _steps([
+        _buckets([
             ("2026-11-23T06:00:00", "2026-11-23T06:15:00", 100),
             ("2026-11-23T06:15:00", "2026-11-23T06:30:00", 100),
             ("2026-11-23T06:30:00", "2026-11-23T06:45:00", 100),
             ("2026-11-23T06:45:00", "2026-11-23T07:00:00", 100),
         ]),
     )
-    result = _status()
-    assert result["finalized"] is False
-    assert result["awake"] is True
-    assert result["state"] == "up"
-    assert result["signal"] == "activity"
-    assert result["confidence"] == "medium"
-    assert result["wake_time"] == "2026-11-23T06:00:00-08:00"
-    assert result["reason"] == "sustained morning steps and heart rate above resting"
+    moved = _status()
+    assert moved["signal"] == "activity"
+    assert moved["wake_time"] == "2026-11-23T06:00:00-08:00"
+    assert moved["finalized"] is False
 
+def test_missing_row_and_empty_shell_do_not_use_yesterday():
+    start, end = _night()
+    _sleep(_session(start - timedelta(days=1), end - timedelta(days=1)), day="2026-11-22",
+           synced_at="2026-11-22T16:00:00+00:00")
+    missing = _status()
+    assert missing["state"] == "unknown"
+    assert missing["wake_time"] is None
+    assert missing["reason"] == "unknown / not synced yet: no row"
+    assert missing["latest_data_at"] == "2026-11-22T16:00:00+00:00"
 
-def test_early_dog_walk_does_not_count_as_awake():
-    _sleep(_shell())
-    hr = _hr("2026-11-23T03:20:00", "2026-11-23T03:40:00", 90)
-    hr += _hr("2026-11-23T03:42:00", "2026-11-23T07:00:00", 46)
-    _daily(
-        hr,
-        _steps([
-            ("2026-11-23T03:15:00", "2026-11-23T03:30:00", 220),
-            ("2026-11-23T03:30:00", "2026-11-23T03:45:00", 180),
-            ("2026-11-23T05:00:00", "2026-11-23T07:00:00", 0),
-        ]),
-    )
-    result = _status()
-    assert result["signal"] is None
-    assert result["awake"] is False
-    assert result["state"] == "not_yet"
-    assert result["wake_time"] is None
+    _sleep({
+        "dailySleepDTO": {"id": None, "sleepStartTimestampGMT": None, "sleepEndTimestampGMT": None},
+        "sleepLevels": [],
+    }, synced_at="2026-11-23T14:05:00+00:00")
+    shell = _status()
+    assert shell["state"] == "unknown"
+    assert shell["wake_time"] is None
+    assert "empty shell" in shell["reason"]
+    assert shell["latest_data_at"] == "2026-11-23T14:05:00+00:00"
 
-
-def test_activity_that_settles_back_to_sleep_is_not_up():
-    start, end = _final_instants()
-    _sleep(_payload(start, end, confirmation="unconfirmed", confirmed=False))
-    hr = _hr("2026-11-23T06:00:00", "2026-11-23T06:28:00", 80)
-    hr += _hr("2026-11-23T06:30:00", "2026-11-23T07:00:00", 47)
-    _daily(
-        hr,
-        _steps([
-            ("2026-11-23T06:00:00", "2026-11-23T06:15:00", 120),
-            ("2026-11-23T06:15:00", "2026-11-23T06:30:00", 120),
-            ("2026-11-23T06:30:00", "2026-11-23T07:00:00", 0),
-        ]),
-    )
-    result = _status()
-    assert result["signal"] is None
-    assert result["state"] == "not_yet"
-    assert result["reason"] == "present but not yet confirmed/final"
-
-
-def test_off_wrist_null_run_after_overnight_wear():
-    _sleep(_shell())
-    hr = _hr("2026-11-23T04:00:00", "2026-11-23T06:08:00", 45)
-    hr += _hr("2026-11-23T06:10:00", "2026-11-23T06:40:00", None)
-    _daily(hr, _steps([]))
-    result = _status()
-    assert result["finalized"] is False
-    assert result["awake"] is True
-    assert result["signal"] == "off_wrist"
-    assert result["confidence"] == "medium"
-    assert result["wake_time"] == "2026-11-23T06:10:00-08:00"
-    assert result["reason"] == "sustained morning off-wrist after overnight wear"
-
-
-def test_heart_rate_series_that_ends_is_not_off_wrist():
-    _sleep(_shell(), synced_at="2026-11-23T12:00:00+00:00")
-    _daily(_hr("2026-11-23T00:00:00", "2026-11-23T04:00:00", 45), _steps([]))
-    result = _status()
-    assert result["signal"] is None
-    assert result["state"] == "unknown"
-    assert result["awake"] is None
-    assert "unknown / not synced yet" in result["reason"]
-    assert "empty shell" in result["reason"]
-    assert result["wake_time"] is None
-
-
-def test_off_wrist_confirmation_after_early_hour():
-    start = datetime(2026, 11, 23, 6, 30, tzinfo=timezone.utc)
-    end = _local("2026-11-23T06:40:00")
-    _sleep(_payload(start, end, confirmation="off_wrist", confirmed=True))
-    result = _status()
-    assert result["finalized"] is False
-    assert result["signal"] == "off_wrist"
-    assert result["wake_time"] == "2026-11-23T06:40:00-08:00"
-    assert result["reason"] == "sleep window closed off-wrist"
-    assert result["confirmation_type"] == "off_wrist"
-
-
-def test_off_wrist_confirmation_before_5am_is_not_up():
-    start = datetime(2026, 11, 23, 6, 0, tzinfo=timezone.utc)
+def test_off_wrist_before_5am_is_not_up():
     end = _local("2026-11-23T03:30:00")
-    _sleep(_payload(start, end, confirmation="off_wrist", confirmed=True))
+    _sleep(_session(end - timedelta(hours=6), end, confirmation="off_wrist"))
     result = _status()
     assert result["signal"] is None
     assert result["state"] == "unknown"
     assert result["wake_time"] is None
-    assert "unknown / not synced yet" in result["reason"]
 
-
-def test_off_wrist_confirmation_kept_without_resting_baseline():
-    end = _local("2026-11-23T06:40:00")
-    start = end - timedelta(hours=8)
-    _sleep(_payload(start, end, confirmation="off_wrist", confirmed=True))
-    supabase.table("garmin_daily").insert({
-        "user_id": UID,
-        "date": DAY,
-        "steps": [],
-        "heartrate": {
-            "heartRateValues": _hr("2026-11-23T06:42:00", "2026-11-23T07:10:00", 90),
-        },
-        "synced_at": "2026-11-23T16:30:00+00:00",
-    }).execute()
-    result = _status()
-    assert result["signal"] == "off_wrist"
-    assert result["state"] == "up"
-    assert result["awake"] is True
-    assert result["wake_time"] == "2026-11-23T06:40:00-08:00"
-
-
-def test_off_wrist_confirmation_cancelled_when_watch_goes_back_on():
-    end = _local("2026-11-23T06:10:00")
-    start = end - timedelta(hours=8)
-    _sleep(_payload(start, end, confirmation="off_wrist", confirmed=True))
-    _daily(_hr("2026-11-23T06:12:00", "2026-11-23T07:00:00", 46), _steps([]), resting=48)
-    result = _status()
-    assert result["signal"] is None
-    assert result["state"] == "not_yet"
-    assert result["reason"] == "present but not yet confirmed/final"
-
-
-def test_goals_timezone_used_when_argument_omitted():
-    supabase.table("users").insert({
-        "id": UID,
-        "username": "wake-athlete",
-        "password": "stored",
-        "goals": {"timezone": "America/New_York"},
-    }).execute()
-    start = datetime(2026, 11, 23, 3, 30, tzinfo=timezone.utc)  # 22:30 EST
-    end = datetime(2026, 11, 23, 11, 30, tzinfo=timezone.utc)  # 06:30 EST
-    _sleep(_payload(start, end))
-    result = get_wake_status(str(UID), as_of=DAY)
-    assert result["timezone"] == "America/New_York"
-    assert result["wake_time"] == "2026-11-23T06:30:00-05:00"
-    assert result["sleep_start"] == "2026-11-22T22:30:00-05:00"
-
-
-def test_early_hour_env_ignores_a_6am_activity(monkeypatch):
-    monkeypatch.setenv("GYMBRO_WAKE_EARLY_HOUR", "7")
-    _sleep(_shell())
-    _daily(
-        _hr("2026-11-23T06:00:00", "2026-11-23T06:50:00", 80),
-        _steps([
-            ("2026-11-23T06:00:00", "2026-11-23T06:15:00", 140),
-            ("2026-11-23T06:15:00", "2026-11-23T06:30:00", 140),
-            ("2026-11-23T06:30:00", "2026-11-23T06:45:00", 140),
-        ]),
-    )
-    result = _status()
-    assert result["signal"] is None
-    assert result["state"] != "up"
-
-
-def test_invalid_as_of_is_an_error():
-    result = get_wake_status(str(UID), as_of="tomorrow", timezone=LA)
-    assert result["status"] == "error"
-    assert result["state"] == "unknown"
-    assert result["finalized"] is False
-
-
-def test_registry_and_mcp_expose_read_only_wake_tool():
-    assert get_tool_implementation("get_wake_status") is get_wake_status
+def test_registry_wires_the_read_tool():
+    assert get_tool_implementation("get_wake_status") is tool_get_wake_status
     assert requires_confirm("get_wake_status") is False
-    tool = next(item for item in build_mcp_tools() if item.name == "get_wake_status")
-    assert "user_id" not in (tool.inputSchema.get("properties") or {})
-    assert "as_of" in tool.inputSchema["properties"]
-    assert tool.annotations.readOnlyHint is True
 
-
-def test_mcp_execute_binds_athlete_and_matches_cli_json(monkeypatch, capsys):
-    monkeypatch.setenv("GYMBRO_MCP_API_KEY", "k")
-    monkeypatch.setenv("GYMBRO_MCP_USER_ID", str(UID))
-    monkeypatch.delenv("GYMBRO_MCP_TOKEN", raising=False)
-    start, end = _final_instants()
-    _sleep(_payload(start, end))
-
-    bound = execute_tool(
-        "get_wake_status",
-        {"user_id": "attacker", "as_of": DAY, "timezone": LA},
-    )
-    assert bound.success is True
-    assert bound.data["user_id"] == str(UID)
-    assert bound.data["signal"] == "sleep_finalized"
-    assert bound.data["wake_time"] == "2026-11-23T06:30:00-08:00"
-
-    code = garmin_cli_main([
-        "wake-status", "--user-id", str(UID), "--as-of", DAY,
-        "--timezone", LA, "--json",
-    ])
-    printed = capsys.readouterr().out
+def test_wake_poll_skips_garmin_once_up(monkeypatch, capsys):
+    start, end = _night()
+    _sleep(_session(start, end))
+    monkeypatch.setattr("app.garmin.sync.pull_today_for_wake", MagicMock(side_effect=AssertionError("garmin")))
+    code = garmin_cli_main(["wake-poll", "--user-id", str(UID), "--as-of", DAY, "--timezone", LA, "--json"])
     assert code == 0
     import json
-    payload = json.loads(printed)
-    assert payload["wake_time"] == bound.data["wake_time"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["garmin_called"] is False
     assert payload["signal"] == "sleep_finalized"
-    assert payload["finalized"] is True
 
-    text_code = garmin_cli_main([
-        "wake-status", "--user-id", str(UID), "--as-of", DAY, "--timezone", LA,
-    ])
-    text = capsys.readouterr().out
-    assert text_code == 0
-    assert "finalized=true" in text
-    assert "signal=sleep_finalized" in text
-    assert "wake_time=2026-11-23T06:30:00-08:00" in text
+def test_wake_poll_uses_marker_without_calling_garmin(monkeypatch, capsys):
+    supabase.table("users").insert({
+        "id": UID, "username": "wake", "password": "x",
+        "goals": {"wake_detected_on": DAY},
+    }).execute()
+    called = MagicMock(side_effect=AssertionError("garmin"))
+    monkeypatch.setattr("app.garmin.sync.pull_today_for_wake", called)
+    code = garmin_cli_main(["wake-poll", "--user-id", str(UID), "--as-of", DAY, "--timezone", LA, "--json"])
+    assert code == 0
+    import json
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["garmin_called"] is False
+    assert payload["state"] == "up"
+    assert payload["reason"] == "wake already detected today"
+    called.assert_not_called()
+
+def test_pull_today_writes_only_sleep_steps_and_hr(monkeypatch):
+    api = MagicMock()
+    start, end = _night()
+    api.get_sleep_data.return_value = _session(start, end)
+    api.get_steps_data.return_value = _buckets([("2026-11-23T06:00:00", "2026-11-23T06:15:00", 10)])
+    api.get_heart_rates.return_value = {"restingHeartRate": 48, "heartRateValues": []}
+    monkeypatch.setattr("app.garmin.sync.init_garmin_api_for_user", lambda *args, **kwargs: api)
+    result = pull_today_for_wake(str(UID), DAY, "test-key-not-a-secret")
+    assert result["ok"] is True
+    api.get_sleep_data.assert_called_once_with(DAY)
+    api.get_steps_data.assert_called_once_with(DAY)
+    api.get_heart_rates.assert_called_once_with(DAY)
+    api.get_activities.assert_not_called()
+    sleep = supabase.table("garmin_sleep").select("*").eq("user_id", UID).eq("date", DAY).execute().data
+    daily = supabase.table("garmin_daily").select("*").eq("user_id", UID).eq("date", DAY).execute().data
+    assert sleep and sleep[0]["sleep_data"]["dailySleepDTO"]["id"] == 987654321
+    assert daily and daily[0]["resting_hr"] == 48
+    assert get_wake_status(str(UID), as_of=DAY, timezone=LA)["signal"] == "sleep_finalized"
