@@ -282,7 +282,8 @@ def cmd_wake_poll(args):
     """Pull today's sleep, steps, and heart rate, then evaluate wake status.
 
     Returns the stored result without calling Garmin when this local date is
-    already up. Intended to be run every ~15 minutes from 07:00–11:00 local.
+    already up. Intended every 15 minutes from 07:00–11:00 in the athlete's
+    configured local timezone.
     No scheduler is installed here.
     """
     from app.garmin.wake import get_wake_status
@@ -461,7 +462,7 @@ def main(argv=None):
     wake_p.add_argument(
         "--timezone",
         default=None,
-        help="IANA timezone. Defaults to goals.timezone, GYMBRO_ATHLETE_TIMEZONE, or America/Los_Angeles.",
+        help="IANA timezone. Defaults to goals.timezone, then GYMBRO_ATHLETE_TIMEZONE.",
     )
     wake_p.add_argument("--json", action="store_true", help="Print the stable JSON object instead of a key=value line")
 

@@ -206,7 +206,7 @@ Read `get_readiness` first, then `get_wellness_metrics` and
 
 Send the morning summary when `get_wake_status` reports `state=up`.
 `unknown` means retry later. A host can run `wake-poll --user-id 2` about
-every 15 minutes from 07:00–11:00 `America/Los_Angeles`; it stops calling
+every 15 minutes from 07:00–11:00 in the athlete's current local timezone; it stops calling
 Garmin once that local date is already up. No scheduler is installed here.
 
 Live Garmin sync runs on the Hephaestus Grok Bot VM (`/workspace/gymbro`

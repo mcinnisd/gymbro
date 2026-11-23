@@ -356,7 +356,7 @@ TOOLS_REGISTRY = [
                         "type": "string",
                         "description": (
                             "IANA timezone for the athlete's local morning. Defaults to "
-                            "users.goals.timezone, GYMBRO_ATHLETE_TIMEZONE, or America/Los_Angeles."
+                            "users.goals.timezone, then GYMBRO_ATHLETE_TIMEZONE."
                         )
                     }
                 }

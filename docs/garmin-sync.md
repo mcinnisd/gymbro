@@ -123,8 +123,9 @@ cloud agent.
 immediately. A 25-minute steps and heart-rate window is the fallback when
 neither has fired. Windows before 05:00 are ignored. A heart-rate series that
 simply stops is not synced yet, not off-wrist. Today's missing or empty row is
-never filled from yesterday. Timezone: argument, `goals.timezone`,
-`GYMBRO_ATHLETE_TIMEZONE`, then `America/Los_Angeles`.
+never filled from yesterday. Timezone is the athlete's configured zone:
+argument, `goals.timezone`, then `GYMBRO_ATHLETE_TIMEZONE` (David is
+currently `America/Detroit`).
 
 ```bash
 PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
@@ -134,8 +135,9 @@ PYTHONPATH=. python -m app.garmin.cli wake-poll --user-id 2
 `wake-poll` fetches only that local date's sleep, step buckets, and heart rate
 (no activities, backfill, or remirror), upserts those two rows, then prints
 wake status. If `state` is already `up`, or `users.goals.wake_detected_on` is
-that date, it does not call Garmin. Run it about every 15 minutes from 07:00
-to 11:00 `America/Los_Angeles`. Nothing in this repo schedules that.
+that date, it does not call Garmin. Run it every 15 minutes from 07:00
+to 11:00 in the athlete's current local timezone. Nothing in this repo
+schedules that.
 
 **User-scoped sync:** `garmin_activities.activity_id` used to be UNIQUE globally.
 Syncing a second account (user 100) with the same Garmin workouts **moved** those

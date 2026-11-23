@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.garmin.scope import normalize_garmin_user_id
 from app.supabase_client import supabase
 
-DEFAULT_TZ = "America/Los_Angeles"
+DEFAULT_TZ = "America/Detroit"
 _EARLY = 5
 _WINDOW = 25
 _HR_DELTA = 12
