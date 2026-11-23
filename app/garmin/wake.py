@@ -507,6 +507,8 @@ def _settled_back(samples, buckets, end, resting_hr, last, cfg: WakeConfig) -> b
 
 
 def _is_quiet(samples, buckets, start, end, resting_hr, cfg: WakeConfig) -> bool:
+    if resting_hr is None:
+        return False
     if _steps_between(buckets, start, end) > cfg.settle_max_steps:
         return False
     stats = _hr_stats(samples, start, end)
@@ -519,6 +521,13 @@ def _is_quiet(samples, buckets, start, end, resting_hr, cfg: WakeConfig) -> bool
 
 
 def _returned_to_sleep(samples, end, resting_hr, cfg: WakeConfig) -> bool:
+    """True only when post-removal heart rate is actually near the resting baseline.
+
+    Missing baseline is not evidence of sleep. Garmin's off_wrist close stays
+    an up signal until samples can be compared with rest.
+    """
+    if resting_hr is None:
+        return False
     quiet_end = end + timedelta(minutes=cfg.settle_minutes)
     # Strictly after the removal instant.
     stats = _hr_stats(samples, end + timedelta(seconds=1), quiet_end + timedelta(seconds=1))
@@ -527,8 +536,6 @@ def _returned_to_sleep(samples, end, resting_hr, cfg: WakeConfig) -> bool:
     span, median, count = stats
     if count < 3 or span < timedelta(minutes=cfg.settle_minutes) * 0.5:
         return False
-    if resting_hr is None:
-        return True
     return median <= resting_hr + cfg.settle_hr_delta
 
 

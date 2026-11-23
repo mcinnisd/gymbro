@@ -356,6 +356,26 @@ def test_off_wrist_confirmation_before_5am_is_not_up():
     assert "unknown / not synced yet" in result["reason"]
 
 
+def test_off_wrist_confirmation_kept_without_resting_baseline():
+    end = _local("2026-11-23T06:40:00")
+    start = end - timedelta(hours=8)
+    _sleep(_payload(start, end, confirmation="off_wrist", confirmed=True))
+    supabase.table("garmin_daily").insert({
+        "user_id": UID,
+        "date": DAY,
+        "steps": [],
+        "heartrate": {
+            "heartRateValues": _hr("2026-11-23T06:42:00", "2026-11-23T07:10:00", 90),
+        },
+        "synced_at": "2026-11-23T16:30:00+00:00",
+    }).execute()
+    result = _status()
+    assert result["signal"] == "off_wrist"
+    assert result["state"] == "up"
+    assert result["awake"] is True
+    assert result["wake_time"] == "2026-11-23T06:40:00-08:00"
+
+
 def test_off_wrist_confirmation_cancelled_when_watch_goes_back_on():
     end = _local("2026-11-23T06:10:00")
     start = end - timedelta(hours=8)
