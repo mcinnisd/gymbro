@@ -197,6 +197,29 @@ def test_registry_wires_the_read_tool():
     assert get_tool_implementation("get_wake_status") is tool_get_wake_status
     assert requires_confirm("get_wake_status") is False
 
+def test_mcp_get_wake_status_reuses_wake_logic():
+    from app.mcp.auth import MCPAuthContext
+    from app.mcp.executor import execute_tool
+    from app.mcp.server import build_mcp_tools
+
+    tools = build_mcp_tools()
+    wake = next(tool for tool in tools if tool.name == "get_wake_status")
+    assert "as_of" in wake.inputSchema["properties"]
+    assert "timezone" in wake.inputSchema["properties"]
+    assert "user_id" not in wake.inputSchema["properties"]
+    assert wake.annotations.readOnlyHint is True
+
+    start, end = _night()
+    _sleep(_session(start, end))
+    result = execute_tool(
+        "get_wake_status",
+        {"as_of": DAY, "timezone": LA, "user_id": "999999"},
+        auth=MCPAuthContext(user_id=str(UID), auth_method="api_key"),
+    )
+    assert result.success is True
+    assert result.data["signal"] == "sleep_finalized"
+    assert result.data["user_id"] == str(UID)
+
 def test_wake_poll_skips_garmin_once_up(monkeypatch, capsys):
     start, end = _night()
     _sleep(_session(start, end))

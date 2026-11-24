@@ -15,7 +15,7 @@ from garminconnect import (
 )
 
 from app.utils.encryption import encrypt_data, decrypt_data
-from app.garmin.biometrics_mirror import upsert_biometrics_daily
+from app.garmin.biometrics_mirror import _steps as _sum_step_values, upsert_biometrics_daily
 from app.garmin.scope import normalize_garmin_user_id
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,85 @@ def safe_garmin_call(api, method_name, *args):
         logger.debug(f"Garmin API call {method_name} failed: {e}")
         return None
 
+
+
+def _parse_start_date(value):
+    """YYYY-MM-DD (or a date) for an explicit backfill start. None if omitted."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()[:10]
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("start_date must be YYYY-MM-DD") from exc
+
+
+def _day_key(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()[:10]
+    return str(value)[:10]
+
+
+def _daily_steps(steps):
+    """Integer step total for biometrics_daily. Bucket lists stay raw on garmin_daily."""
+    if isinstance(steps, dict):
+        buckets = steps.get("steps")
+        if isinstance(buckets, list) or steps.get("totalSteps") is None:
+            steps = buckets
+        else:
+            steps = steps.get("totalSteps")
+    return _sum_step_values(steps)
+
+
+def _body_battery_level(payload):
+    """Body-battery level. `charged` / `drained` are deltas, not a level."""
+    if isinstance(payload, list):
+        payload = payload[0] if payload else None
+    if isinstance(payload, bool) or payload is None:
+        return None
+    if isinstance(payload, (int, float)):
+        return int(payload)
+    if not isinstance(payload, dict):
+        return None
+    for key in ("highestBodyBattery", "currentBodyBattery", "bodyBattery", "value"):
+        level = payload.get(key)
+        if isinstance(level, bool) or not isinstance(level, (int, float)):
+            continue
+        return int(level)
+    latest = None
+    for point in payload.get("bodyBatteryValuesArray") or []:
+        if (
+            isinstance(point, (list, tuple))
+            and len(point) > 1
+            and not isinstance(point[1], bool)
+            and isinstance(point[1], (int, float))
+        ):
+            latest = int(point[1])
+    return latest
+
+
+def _sleep_is_empty_shell(sleep_data) -> bool:
+    """True when a garmin_sleep row has no session id, levels, or start/end."""
+    data = sleep_data if isinstance(sleep_data, dict) else {}
+    dto = data.get("dailySleepDTO") if isinstance(data.get("dailySleepDTO"), dict) else {}
+    levels = data.get("sleepLevels") if isinstance(data.get("sleepLevels"), list) else []
+    if not levels and isinstance(dto.get("sleepLevels"), list):
+        levels = dto["sleepLevels"]
+    start = dto.get("sleepStartTimestampGMT")
+    end = dto.get("sleepEndTimestampGMT")
+    raw_id = dto.get("id")
+    has_id = raw_id not in (None, "") and str(raw_id).strip().lower() not in {"", "null", "none"}
+    return not has_id and not levels and start is None and end is None
+
+
+def _mapping(value):
+    return value if isinstance(value, dict) else {}
 
 
 def init_garmin_api_for_user(user_id: str, encryption_key: str = None):
@@ -450,7 +529,12 @@ def update_progress(user_id: str, progress: int, stage: str = None, inception_da
         logger.warning(f"Failed to update sync progress: {e}")
 
 
-def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption_key: str = None, force_resync: bool = False, mode: str = "all_time"):
+# Default days_back is 365 for deep/all-time callers. Omitted means "not explicit"
+# so plain incremental mode can keep its 7-day window.
+_DAYS_BACK_OMITTED = object()
+
+
+def sync_all_garmin_data_for_user(user_id: str, days_back=_DAYS_BACK_OMITTED, encryption_key: str = None, force_resync: bool = False, mode: str = "all_time", start_date=None):
     """
     Unified Multi-Tier Sync Logic:
     - Automatically discovers athlete inception date for all-time deep backfills.
@@ -460,7 +544,13 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
         * Tier 3 (lifetime_archive): Multi-year history back to account inception.
     - Smart Delta date skipping to avoid redundant API hits.
     - Updates sync_stage, archive_inception_date, and progress in users.goals.
+    - Plain incremental stays on 7 days. --force, an explicit days_back above 7,
+      or start_date uses that requested window (including a lifetime backfill).
     """
+    days_back_explicit = days_back is not _DAYS_BACK_OMITTED and days_back is not None
+    if not days_back_explicit:
+        days_back = 365
+    requested_start = _parse_start_date(start_date)
     log_to_file(f"Starting unified sync for user {user_id} (Mode: {mode}, Force Resync: {force_resync}, Days Back: {days_back})")
     biometrics_failures = 0
 
@@ -511,11 +601,32 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
         daily_start_date = None
         is_initial_sync = False
 
-        if mode == "incremental" or (last_synced and not force_resync and mode != "all_time"):
-            # Incremental Sync
+        if requested_start is not None:
+            if requested_start > end_date:
+                requested_start = end_date
+            # Long windows limit activity-detail fetches the same way all-time does.
+            is_initial_sync = (end_date - requested_start).days > 30
+            start_date = requested_start
+            daily_start_date = requested_start
+            log_to_file(f"Explicit start date {requested_start}. Activities and daily biometrics through {end_date}")
+        elif mode == "incremental" or (last_synced and not force_resync and mode != "all_time"):
+            # Incremental Sync. Plain runs stay at 7 days with a short overlap.
+            # --force and/or an explicit --days-back above that use the requested window.
             is_initial_sync = False
-            incremental_days = min(days_back, 7) if (days_back and days_back < 30) else 7
-            start_date = max(last_synced - timedelta(days=3), end_date - timedelta(days=incremental_days)) # Overlap for safety
+            honor_requested_window = mode == "incremental" and (
+                force_resync or (days_back_explicit and days_back > 7)
+            )
+            if honor_requested_window:
+                incremental_days = days_back if (days_back_explicit and days_back and days_back > 0) else 7
+                is_initial_sync = incremental_days > 30
+                start_date = end_date - timedelta(days=incremental_days)
+            else:
+                incremental_days = min(days_back, 7) if days_back and days_back > 0 else 7
+                window_start = end_date - timedelta(days=incremental_days)
+                if last_synced:
+                    start_date = max(last_synced - timedelta(days=3), window_start)  # Overlap for safety
+                else:
+                    start_date = window_start
             daily_start_date = start_date
             log_to_file(f"Incremental Sync detected. Fetching from {start_date} to {end_date}")
         else:
@@ -708,6 +819,7 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
 
             # Fetch existing populated dates in this chunk for smart delta skipping
             chunk_existing_dates = set()
+            empty_sleep_dates = set()
             if not force_resync:
                 try:
                     ex_res = supabase.table("biometrics_daily")\
@@ -718,17 +830,42 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                         .execute()
                     for r in (ex_res.data or []):
                         if r.get("resting_hr") is not None or r.get("sleep_score") is not None or r.get("hrv") is not None:
-                            chunk_existing_dates.add(r["date"])
+                            chunk_existing_dates.add(_day_key(r.get("date")))
                 except Exception as e_ex:
                     log_to_file(f"Could not load existing biometrics dates for chunk {chunk_start}..{chunk_end}: {e_ex}")
+
+                # An empty garmin_sleep shell is not a finished day, even when
+                # biometrics_daily already has resting HR, sleep score, or HRV.
+                try:
+                    seen_sleep_ids = set()
+                    for sleep_uid in (user_id, uid_parsed):
+                        if sleep_uid in seen_sleep_ids:
+                            continue
+                        seen_sleep_ids.add(sleep_uid)
+                        sleep_res = supabase.table("garmin_sleep")\
+                            .select("date, sleep_data")\
+                            .eq("user_id", sleep_uid)\
+                            .gte("date", chunk_start.isoformat())\
+                            .lte("date", chunk_end.isoformat())\
+                            .execute()
+                        for r in (sleep_res.data or []):
+                            if _sleep_is_empty_shell(r.get("sleep_data")):
+                                empty_sleep_dates.add(_day_key(r.get("date")))
+                except Exception as e_sleep:
+                    log_to_file(f"Could not load garmin_sleep for chunk {chunk_start}..{chunk_end}: {e_sleep}")
 
             current_day = chunk_start
             while current_day <= chunk_end:
                 day_str = current_day.isoformat()
                 current_day += timedelta(days=1)
 
-                # Skip if already exists AND we are not forcing resync
-                if not force_resync and day_str in chunk_existing_dates:
+                # Skip if already exists AND we are not forcing resync.
+                # Empty sleep shells are refetched so a later upload can land.
+                if (
+                    not force_resync
+                    and day_str in chunk_existing_dates
+                    and day_str not in empty_sleep_dates
+                ):
                     continue
 
                 try:
@@ -800,69 +937,6 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                     except:
                         pass
 
-                    # Deep telemetry extraction: VO2 Max, Fitness Age, Body Battery, Training Status, SpO2, Respiration
-                    vo2_max_val = None
-                    fitness_age_val = None
-                    body_battery_val = None
-                    training_status_val = None
-                    acute_load_val = None
-                    spo2_val = None
-                    respiration_val = None
-
-                    max_m = safe_garmin_call(garmin_api, "get_max_metrics", day_str)
-                    if isinstance(max_m, list) and max_m:
-                        max_m = max_m[0]
-                    if isinstance(max_m, dict):
-                        generic = max_m.get("generic") or {}
-                        if isinstance(generic, dict):
-                            vo2_max_val = generic.get("vo2MaxValue") or generic.get("vo2MaxPrecision")
-                        if not vo2_max_val:
-                            vo2_max_val = max_m.get("vo2Max") or max_m.get("vo2MaxRunning") or max_m.get("vo2MaxValue")
-                        fitness_age_val = max_m.get("fitnessAge")
-
-                    ts_raw = safe_garmin_call(garmin_api, "get_training_status", day_str)
-                    if isinstance(ts_raw, dict):
-                        training_status_val = (
-                            ts_raw.get("trainingStatusKey") or 
-                            ts_raw.get("trainingStatus") or 
-                            ts_raw.get("userTrainingStatus", {}).get("trainingStatusKey")
-                        )
-                        acute_load_val = ts_raw.get("acuteTrainingLoad") or ts_raw.get("acuteLoad")
-                        if not vo2_max_val:
-                            most_recent_vo2 = ts_raw.get("mostRecentVO2Max", {})
-                            if isinstance(most_recent_vo2, dict):
-                                vo2_max_val = most_recent_vo2.get("generic", {}).get("vo2MaxValue") or most_recent_vo2.get("vo2Max")
-
-                    bb_raw = safe_garmin_call(garmin_api, "get_body_battery", day_str)
-                    if isinstance(bb_raw, list) and bb_raw:
-                        item = bb_raw[0]
-                        if isinstance(item, dict):
-                            body_battery_val = item.get("charged") or item.get("highestBodyBattery") or item.get("value")
-                            if body_battery_val is None and "bodyBatteryValuesArray" in item:
-                                vals = [v[1] for v in item.get("bodyBatteryValuesArray", []) if isinstance(v, (list, tuple)) and len(v) > 1 and v[1] is not None]
-                                if vals:
-                                    body_battery_val = max(vals)
-                    elif isinstance(bb_raw, dict):
-                        body_battery_val = bb_raw.get("charged") or bb_raw.get("highestBodyBattery") or bb_raw.get("value")
-                    elif isinstance(bb_raw, (int, float)):
-                        body_battery_val = int(bb_raw)
-
-                    spo2_raw = safe_garmin_call(garmin_api, "get_spo2_data", day_str)
-                    if isinstance(spo2_raw, dict):
-                        spo2_val = spo2_raw.get("averageSpO2") or spo2_raw.get("latestSpO2") or spo2_raw.get("avgSpO2")
-                    elif isinstance(spo2_raw, (int, float)):
-                        spo2_val = spo2_raw
-
-                    resp_raw = safe_garmin_call(garmin_api, "get_respiration_data", day_str)
-                    if isinstance(resp_raw, dict):
-                        respiration_val = (
-                            resp_raw.get("avgWakingRespirationValue") or 
-                            resp_raw.get("avgSleepRespirationValue") or 
-                            resp_raw.get("averageRespirationValue")
-                        )
-                    elif isinstance(resp_raw, (int, float)):
-                        respiration_val = resp_raw
-
                     # Normalize HRV
                     hrv_val = None
                     hrv_status = None
@@ -876,53 +950,104 @@ def sync_all_garmin_data_for_user(user_id: str, days_back: int = 365, encryption
                     except:
                         pass
 
-                    daily_doc = {
+                    synced_at = datetime.now(timezone.utc).isoformat()
+                    # Queue raw rows before derived fields. A training-status or
+                    # VO2 parse error must not drop garmin_daily / garmin_sleep.
+                    daily_batch.append({
                         "user_id": user_id,
                         "date": day_str,
                         "steps": steps,
                         "heartrate": hr,
                         "resting_hr": rhr_val,
                         "stress": stress_val,
-                        "synced_at": datetime.now(timezone.utc).isoformat()
-                    }
-
-                    # Build the athlete-facing row before queueing raw rows so a
-                    # parse error cannot commit garmin_daily without biometrics.
-                    bio_doc = {
-                        "user_id": uid_parsed,
-                        "date": day_str,
-                        "resting_hr": rhr_val,
-                        "hrv": hrv_val,
-                        "hrv_ms": hrv_val,
-                        "hrv_status": hrv_status,
-                        "sleep_score": sleep_score,
-                        "sleep_hours": sleep_hours,
-                        "deep_sleep_hours": round(deep_sleep_sec / 3600.0, 2) if deep_sleep_sec else None,
-                        "rem_sleep_hours": round(rem_sleep_sec / 3600.0, 2) if rem_sleep_sec else None,
-                        "light_sleep_hours": round(light_sleep_sec / 3600.0, 2) if light_sleep_sec else None,
-                        "sleep_stages": sleep_stages,
-                        "stress_level": stress_val,
-                        "body_battery": body_battery_val,
-                        "vo2_max": vo2_max_val,
-                        "fitness_age": fitness_age_val,
-                        "training_status": training_status_val,
-                        "acute_load": acute_load_val,
-                        "spo2": spo2_val,
-                        "respiration": respiration_val,
-                        "source": "garmin",
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    daily_batch.append(daily_doc)
-                    bio_batch.append(bio_doc)
-
+                        "synced_at": synced_at,
+                    })
                     if sleep:
-                        sleep_doc = {
+                        sleep_batch.append({
                             "user_id": user_id,
                             "date": day_str,
                             "sleep_data": sleep,
-                            "synced_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        sleep_batch.append(sleep_doc)
+                            "synced_at": synced_at,
+                        })
+
+                    try:
+                        # Deep telemetry: optional fields stay null instead of aborting the day.
+                        vo2_max_val = None
+                        fitness_age_val = None
+                        training_status_val = None
+                        acute_load_val = None
+                        spo2_val = None
+                        respiration_val = None
+
+                        max_m = safe_garmin_call(garmin_api, "get_max_metrics", day_str)
+                        if isinstance(max_m, list) and max_m:
+                            max_m = max_m[0]
+                        if isinstance(max_m, dict):
+                            generic = _mapping(max_m.get("generic"))
+                            vo2_max_val = generic.get("vo2MaxValue") or generic.get("vo2MaxPrecision")
+                            if not vo2_max_val:
+                                vo2_max_val = max_m.get("vo2Max") or max_m.get("vo2MaxRunning") or max_m.get("vo2MaxValue")
+                            fitness_age_val = max_m.get("fitnessAge")
+
+                        ts_raw = safe_garmin_call(garmin_api, "get_training_status", day_str)
+                        if isinstance(ts_raw, dict):
+                            user_status = _mapping(ts_raw.get("userTrainingStatus"))
+                            training_status_val = (
+                                ts_raw.get("trainingStatusKey")
+                                or ts_raw.get("trainingStatus")
+                                or user_status.get("trainingStatusKey")
+                            )
+                            acute_load_val = ts_raw.get("acuteTrainingLoad") or ts_raw.get("acuteLoad")
+                            if not vo2_max_val:
+                                most_recent_vo2 = _mapping(ts_raw.get("mostRecentVO2Max"))
+                                generic_vo2 = _mapping(most_recent_vo2.get("generic"))
+                                vo2_max_val = generic_vo2.get("vo2MaxValue") or most_recent_vo2.get("vo2Max")
+
+                        body_battery_val = _body_battery_level(safe_garmin_call(garmin_api, "get_body_battery", day_str))
+
+                        spo2_raw = safe_garmin_call(garmin_api, "get_spo2_data", day_str)
+                        if isinstance(spo2_raw, dict):
+                            spo2_val = spo2_raw.get("averageSpO2") or spo2_raw.get("latestSpO2") or spo2_raw.get("avgSpO2")
+                        elif isinstance(spo2_raw, (int, float)) and not isinstance(spo2_raw, bool):
+                            spo2_val = spo2_raw
+
+                        resp_raw = safe_garmin_call(garmin_api, "get_respiration_data", day_str)
+                        if isinstance(resp_raw, dict):
+                            respiration_val = (
+                                resp_raw.get("avgWakingRespirationValue")
+                                or resp_raw.get("avgSleepRespirationValue")
+                                or resp_raw.get("averageRespirationValue")
+                            )
+                        elif isinstance(resp_raw, (int, float)) and not isinstance(resp_raw, bool):
+                            respiration_val = resp_raw
+
+                        bio_batch.append({
+                            "user_id": uid_parsed,
+                            "date": day_str,
+                            "resting_hr": rhr_val,
+                            "hrv": hrv_val,
+                            "hrv_ms": hrv_val,
+                            "hrv_status": hrv_status,
+                            "sleep_score": sleep_score,
+                            "sleep_hours": sleep_hours,
+                            "deep_sleep_hours": round(deep_sleep_sec / 3600.0, 2) if deep_sleep_sec else None,
+                            "rem_sleep_hours": round(rem_sleep_sec / 3600.0, 2) if rem_sleep_sec else None,
+                            "light_sleep_hours": round(light_sleep_sec / 3600.0, 2) if light_sleep_sec else None,
+                            "sleep_stages": sleep_stages,
+                            "stress_level": stress_val,
+                            "steps": _daily_steps(steps),
+                            "body_battery": body_battery_val,
+                            "vo2_max": vo2_max_val,
+                            "fitness_age": fitness_age_val,
+                            "training_status": training_status_val,
+                            "acute_load": acute_load_val,
+                            "spo2": spo2_val,
+                            "respiration": respiration_val,
+                            "source": "garmin",
+                            "updated_at": synced_at,
+                        })
+                    except Exception as parse_err:
+                        log_to_file(f"Failed derived biometrics {day_str}: {parse_err}")
 
                 except Exception as e:
                     log_to_file(f"Failed daily {day_str}: {e}")

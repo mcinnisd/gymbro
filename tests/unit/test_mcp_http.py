@@ -178,6 +178,7 @@ def test_mcp_http_initialize_and_list_tools(client, mcp_app):
     names = {t["name"] for t in tools}
     assert "get_wellness_metrics" in names
     assert "get_readiness" in names
+    assert "get_wake_status" in names
     assert "get_calendar_events" in names
     assert "delete_calendar_event" in names
 
