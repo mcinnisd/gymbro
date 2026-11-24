@@ -162,11 +162,13 @@ def test_ingest_raw_healthkit_payload_in_prepopulate():
         "goals": {}
     }, on_conflict="id").execute()
 
+    # Prepopulate averages the last 14 days. A fixed August date falls out of that window.
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
     payload = {
         "source": "apple_health",
         "biometrics": [
             {
-                "date": "2026-08-15",
+                "date": recent,
                 "resting_hr": 52,
                 "hrv": 68,
                 "sleep_hours": 8.2,
@@ -180,7 +182,7 @@ def test_ingest_raw_healthkit_payload_in_prepopulate():
                 "name": "Morning 5k",
                 "distance": 5000.0,
                 "duration": 1500.0,
-                "start_time_local": "2026-08-15T07:00:00Z"
+                "start_time_local": f"{recent}T07:00:00Z"
             }
         ]
     }

@@ -6,7 +6,10 @@
 
 # dont wants
 venv/
+.venv/
 __pycache__/
 *.log
+logs/
+.wake-state/
 .DS_Store
 

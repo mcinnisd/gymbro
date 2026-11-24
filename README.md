@@ -4,6 +4,18 @@ GYMBro is an autonomous AI athletic coach and personal fitness tracking system. 
 
 ---
 
+## Install for your own Grok Bot
+
+Another person's bot can run this repo on its own Linux box. The portable skill is [`grokbot/skills/gymbro-coach/SKILL.md`](grokbot/skills/gymbro-coach/SKILL.md). It covers secrets, Supabase migrations, the stdio MCP server, daily sync, and the morning wake webhook.
+
+```bash
+scripts/bootstrap.sh
+```
+
+Bootstrap clones or updates `~/gymbro`, creates `.venv`, installs `requirements.txt`, and creates `.env` from [`.env.example`](.env.example) only when `.env` is absent. Then follow the skill: apply `migrations/`, run `scripts/create_athlete.sh`, and `scripts/install_cron.sh`.
+
+---
+
 ## 🚀 Quick Start Guide
 
 ### Prerequisites
@@ -15,7 +27,7 @@ GYMBro is an autonomous AI athletic coach and personal fitness tracking system. 
 
 ### 1. Environment Setup
 
-Create a `.env` file in the root directory (or use `.env.example` if available):
+Create a `.env` file in the root directory from [`.env.example`](.env.example):
 
 ```env
 FLASK_ENV=development
