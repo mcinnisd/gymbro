@@ -357,8 +357,6 @@ class AnalyticsService:
         Aggregates metrics for all available sports over the last N days.
         Returns a dictionary keyed by sport.
         """
-        from datetime import datetime, timedelta, timezone
-        
         start_date = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
         
         # 1. Fetch Activities

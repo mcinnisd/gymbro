@@ -7,6 +7,8 @@ Usage:
   PYTHONPATH=. python -m app.garmin.cli status
   PYTHONPATH=. python -m app.garmin.cli verify-tools
   PYTHONPATH=. python -m app.garmin.cli sync --mode incremental --user-id 2
+  PYTHONPATH=. python -m app.garmin.cli sync --user-id 2 --force --days-back 30
+  PYTHONPATH=. python -m app.garmin.cli sync --user-id 2 --start-date 2018-01-01
   PYTHONPATH=. python -m app.garmin.cli remirror-calendar --user-id 2
   PYTHONPATH=. python -m app.garmin.cli remirror-biometrics --user-id 2
   PYTHONPATH=. python -m app.garmin.cli wake-status --user-id 2
@@ -94,6 +96,13 @@ def cmd_sync(args):
 
     mode = args.mode
     days_back = args.days_back if args.days_back is not None else (365 if mode != "incremental" else 7)
+    if args.start_date:
+        from datetime import datetime
+        try:
+            datetime.strptime(args.start_date, "%Y-%m-%d")
+        except ValueError:
+            print("sync: --start-date must be YYYY-MM-DD")
+            return 1
     failures = 0
     for u in rows:
         uid = str(u["id"])
@@ -101,7 +110,8 @@ def cmd_sync(args):
             print(f"user_id={uid} skipped: garmin credentials incomplete")
             failures += 1
             continue
-        print(f"user_id={uid} starting mode={mode} days_back={days_back} force={args.force}")
+        window = f" start_date={args.start_date}" if args.start_date else ""
+        print(f"user_id={uid} starting mode={mode} days_back={days_back} force={args.force}{window}")
         try:
             sync_all_garmin_data_for_user(
                 uid,
@@ -109,6 +119,7 @@ def cmd_sync(args):
                 encryption_key=enc_key,
                 force_resync=args.force,
                 mode=mode,
+                start_date=args.start_date,
             )
             try:
                 AnalyticsService.calculate_baselines(uid)
@@ -420,7 +431,17 @@ def main(argv=None):
 
     sync_p = sub.add_parser("sync", help="Run Garmin sync for connected users")
     sync_p.add_argument("--mode", choices=["incremental", "deep_365", "all_time"], default="incremental")
-    sync_p.add_argument("--days-back", type=int, default=None)
+    sync_p.add_argument(
+        "--days-back",
+        type=int,
+        default=None,
+        help="Window length. Incremental defaults to 7; an explicit value is not capped at 7.",
+    )
+    sync_p.add_argument(
+        "--start-date",
+        default=None,
+        help="Inclusive YYYY-MM-DD start for a long or lifetime backfill (activities and daily biometrics).",
+    )
     sync_p.add_argument("--user-id", default=None, help="Limit to one athlete id (from the users table)")
     sync_p.add_argument(
         "--all-users",

@@ -194,8 +194,23 @@ def test_off_wrist_before_5am_is_not_up():
     assert result["wake_time"] is None
 
 def test_registry_wires_the_read_tool():
+    from app.mcp.auth import MCPAuthContext
+    from app.mcp.executor import execute_tool
+    from app.mcp.server import build_mcp_tools
+
     assert get_tool_implementation("get_wake_status") is tool_get_wake_status
     assert requires_confirm("get_wake_status") is False
+    names = {tool.name for tool in build_mcp_tools()}
+    assert "get_wake_status" in names
+    start, end = _night()
+    _sleep(_session(start, end))
+    result = execute_tool(
+        "get_wake_status",
+        {"as_of": DAY, "timezone": LA, "user_id": "999999"},
+        auth=MCPAuthContext(user_id=str(UID), auth_method="api_key"),
+    )
+    assert result.success is True and result.data["signal"] == "sleep_finalized"
+    assert result.data["user_id"] == str(UID)
 
 def test_wake_poll_skips_garmin_once_up(monkeypatch, capsys):
     start, end = _night()

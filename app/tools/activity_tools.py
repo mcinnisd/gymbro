@@ -16,19 +16,23 @@ from app.health_hub.ingestion_service import get_unified_activities
 logger = logging.getLogger(__name__)
 
 
-def _as_km(raw_dist) -> float:
+def _as_km(raw_dist):
+    if raw_dist is None or raw_dist == "":
+        return None
     try:
-        value = float(raw_dist or 0)
+        value = float(raw_dist)
     except (TypeError, ValueError):
-        return 0.0
+        return None
     return round(value / 1000.0, 2) if value > 100 else round(value, 2)
 
 
-def _as_minutes(raw_dur) -> float:
+def _as_minutes(raw_dur):
+    if raw_dur is None or raw_dur == "":
+        return None
     try:
-        value = float(raw_dur or 0)
+        value = float(raw_dur)
     except (TypeError, ValueError):
-        return 0.0
+        return None
     return round(value / 60.0, 1) if value > 300 else round(value, 1)
 
 
@@ -76,14 +80,16 @@ def get_recent_activities(user_id: str, days: int = 14, activity_type: Optional[
         total_duration = 0.0
         for act in unified:
             dist_km = _as_km(act.get("distance_km") if act.get("distance_km") is not None else act.get("distance"))
-            dur_min = _as_minutes(
-                act.get("moving_time_min")
-                or act.get("duration_min")
-                or act.get("duration")
-            )
-            pace_str = act.get("average_pace") or (
-                f"{round(dur_min / dist_km, 2)} min/km" if dist_km > 0 else "N/A"
-            )
+            dur_raw = act.get("moving_time_min")
+            if dur_raw is None:
+                dur_raw = act.get("duration_min") if act.get("duration_min") is not None else act.get("duration")
+            dur_min = _as_minutes(dur_raw)
+            if act.get("average_pace"):
+                pace_str = act.get("average_pace")
+            elif dist_km and dur_min:
+                pace_str = f"{round(dur_min / dist_km, 2)} min/km"
+            else:
+                pace_str = None
             formatted_activities.append({
                 "id": act.get("activity_id") or act.get("id"),
                 "name": act.get("name") or act.get("activity_name") or act.get("title") or "Workout",
@@ -97,8 +103,10 @@ def get_recent_activities(user_id: str, days: int = 14, activity_type: Optional[
                 "elevation_gain_m": act.get("elevation_gain") or act.get("total_elevation_gain") or act.get("elevation_m"),
                 "source": act.get("source"),
             })
-            total_distance += dist_km
-            total_duration += dur_min
+            if dist_km:
+                total_distance += dist_km
+            if dur_min:
+                total_duration += dur_min
 
         return {
             "status": "success",
