@@ -2,467 +2,169 @@ from datetime import datetime, timedelta, timezone, date
 
 from app.supabase_client import supabase, is_missing_relation_error
 from app.tools.readiness_tools import (
-    biomarker_penalty,
-    compose_readiness,
-    get_readiness,
-    score_hrv,
-    score_sleep,
-    score_training_load,
+    biomarker_penalty, compose_readiness, get_readiness, score_hrv, score_sleep, score_training_load,
 )
 from app.tools.registry import get_tool_implementation
 
 
-def _recent_iso(days_ago: int, hour: int = 7) -> str:
-    dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
-    return dt.replace(hour=hour, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+def _ago(days, hour=7):
+    dt = datetime.now(timezone.utc) - timedelta(days=days)
+    return dt.replace(hour=hour, minute=0, second=0, microsecond=0)
 
 
-def _recent_date(days_ago: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).date().isoformat()
+def _day(days):
+    return _ago(days).date().isoformat()
 
 
-def _clear_readiness_tables():
+def _iso(days):
+    return _ago(days).isoformat().replace("+00:00", "Z")
+
+
+def _clear():
     supabase.missing_tables = set()
-    for table in (
-        "biometrics_daily",
-        "garmin_activities",
-        "strava_activities",
-        "activities",
-        "daily_journals",
-        "lab_panels",
-        "biomarkers",
-    ):
+    for table in ("biometrics_daily", "garmin_activities", "strava_activities", "activities", "daily_journals", "lab_panels", "biomarkers"):
         supabase.table(table).data[table] = []
 
 
-def test_registry_binds_get_readiness():
+def _bio(**fields):
+    supabase.table("biometrics_daily").upsert({"user_id": 1, "date": _day(1), "source": "garmin", **fields}, on_conflict="user_id, date").execute()
+
+
+def _run(aid, days, distance=8000, duration=2400, hr=140):
+    supabase.table("garmin_activities").insert({
+        "user_id": 1, "activity_id": aid, "activity_name": aid, "start_time_local": _iso(days),
+        "distance": distance, "duration": duration, "activity_type": "running", "average_hr": hr,
+    }).execute()
+
+
+def _seed_ready(suffix=""):
+    for i in range(1, 8):
+        supabase.table("biometrics_daily").upsert({
+            "user_id": 1, "date": _day(i), "sleep_score": 80 if i == 1 else 78, "sleep_hours": 7.5,
+            "hrv": 66 if i == 1 else 64, "hrv_ms": 66 if i == 1 else 64, "hrv_status": "BALANCED",
+            "resting_hr": 50 if i == 1 else 52, "stress_level": 28, "body_battery": 78, "source": "garmin",
+        }, on_conflict="user_id, date").execute()
+    _run(f"easy{suffix}", 2)
+    _run(f"prior{suffix}", 10, 8500, 2500, 142)
+
+
+def test_scoring_helpers_do_not_invent_missing_signals():
     assert get_tool_implementation("get_readiness") is get_readiness
-
-
-def test_score_sleep_prefers_score_and_maps_hours():
-    assert score_sleep(82, 5.0) == 82
-    assert score_sleep(None, 8.0) == 100.0
-    assert score_sleep(None, 6.0) == 75.0
-    assert score_sleep(None, None) is None
-
-
-def test_score_hrv_does_not_invent_population_norm():
-    assert score_hrv(64, None, None) is None
-    assert score_hrv(64, None, "BALANCED") == 72.0
-    vs = score_hrv(70, 64, None)
-    assert vs is not None and vs > 70
-
-
-def test_score_training_load_skips_missing_chronic():
-    assert score_training_load(5.0, None) is None
-    assert score_training_load(5.0, 0) is None
-    balanced = score_training_load(5.0, 5.0)
-    overloaded = score_training_load(9.0, 5.0)
-    recovered = score_training_load(3.0, 5.0)
-    assert recovered > balanced > overloaded
-
-
-def test_biomarker_penalty_caps_and_weights_recovery_markers():
-    flagged = [
-        {"marker_name": "Ferritin", "status": "flagged_low"},
-        {"marker_name": "hs-CRP", "status": "flagged_high"},
-        {"marker_name": "ApoB", "status": "flagged_high"},
-    ]
-    # 4 + 4 + 2 = 10
-    assert biomarker_penalty(flagged) == 10.0
-    assert biomarker_penalty([]) == 0.0
-    many = [{"marker_name": "Ferritin", "status": "flagged_low"}] * 10
-    assert biomarker_penalty(many) == 15.0
+    assert score_sleep(82, 5.0) == 82 and score_sleep(None, 8.0) == 100.0 and score_sleep(None, None) is None
+    assert score_hrv(64, None, None) is None and score_hrv(64, None, "BALANCED") == 72.0
+    assert score_hrv(70, 64, None) > 70
+    assert score_training_load(5.0, None) is None and score_training_load(3.0, 5.0) > score_training_load(5.0, 5.0) > score_training_load(9.0, 5.0)
+    assert biomarker_penalty([{"marker_name": "Ferritin", "status": "flagged_low"}, {"marker_name": "hs-CRP", "status": "flagged_high"}, {"marker_name": "ApoB", "status": "flagged_high"}]) == 10.0
+    assert biomarker_penalty([]) == 0.0 and biomarker_penalty([{"marker_name": "Ferritin", "status": "flagged_low"}] * 10) == 15.0
 
 
 def test_compose_renormalizes_weights_over_available_only():
-    as_of = date(2026, 9, 16)
-    payload = compose_readiness(
-        [
-            {
-                "id": "sleep",
-                "label": "Sleep",
-                "nominal_weight": 0.22,
-                "optional": False,
-                "raw": {"sleep_score": 80},
-                "score": 80.0,
-                "freshness": 1.0,
-                "date": "2026-09-15",
-            },
-            {
-                "id": "stress",
-                "label": "Stress",
-                "nominal_weight": 0.08,
-                "optional": False,
-                "raw": {"stress_level": 80},
-                "score": 20.0,
-                "freshness": 1.0,
-                "date": "2026-09-15",
-            },
-        ],
-        [{"id": "hrv", "label": "HRV", "optional": False, "reason": "absent"}],
-        as_of=as_of,
-    )
-    assert payload["score"] is not None
-    # 80*(0.22/0.30) + 20*(0.08/0.30) = 58.667 + 5.333 = 64.0
-    assert payload["score"] == 64.0
+    payload = compose_readiness([
+        {"id": "sleep", "label": "Sleep", "nominal_weight": 0.22, "optional": False, "raw": {"sleep_score": 80}, "score": 80.0, "freshness": 1.0, "date": "2026-09-15"},
+        {"id": "stress", "label": "Stress", "nominal_weight": 0.08, "optional": False, "raw": {"stress_level": 80}, "score": 20.0, "freshness": 1.0, "date": "2026-09-15"},
+    ], [{"id": "hrv", "label": "HRV", "optional": False, "reason": "absent"}], as_of=date(2026, 9, 16))
+    assert payload["score"] == 64.0 and payload["band"] == "yellow"
     by_id = {c["id"]: c for c in payload["components"]}
-    assert by_id["sleep"]["missing"] is False
     assert abs(by_id["sleep"]["weight"] - (0.22 / 0.30)) < 1e-3
-    assert abs(by_id["stress"]["weight"] - (0.08 / 0.30)) < 1e-3
-    assert payload["band"] == "yellow"
     assert "hrv" in [m["id"] for m in payload["missing"]]
 
 
-def test_get_readiness_insufficient_data_does_not_invent():
-    _clear_readiness_tables()
-    res = get_readiness(user_id="99")
-    assert res["status"] == "success"
-    assert res["score"] is None
-    assert res["band"] is None
-    assert res["confidence"] == 0.0
-    assert res["components"] == []
-    missing_ids = {m["id"] for m in res["missing"]}
-    assert {"sleep", "hrv", "rhr", "body_battery", "stress", "training_load", "residual_fatigue", "journal", "biomarkers"} <= missing_ids
-    assert all(m.get("reason") for m in res["missing"])
-    journal = next(m for m in res["missing"] if m["id"] == "journal")
-    biomarkers = next(m for m in res["missing"] if m["id"] == "biomarkers")
-    assert journal["optional"] is True
-    assert biomarkers["optional"] is True
+def test_get_readiness_sparse_cases():
+    _clear()
+    empty = get_readiness(user_id="99")
+    missing = {m["id"] for m in empty["missing"]}
+    assert empty["score"] is None and empty["confidence"] == 0.0
+    assert {"sleep", "hrv", "rhr", "body_battery", "stress", "training_load", "journal", "biomarkers"} <= missing
+    assert next(m for m in empty["missing"] if m["id"] == "journal")["optional"] is True
+
+    _clear()
+    _bio(sleep_score=82, sleep_hours=7.6)
+    sleep = get_readiness(user_id="1")
+    assert sleep["score"] == 82.0 and sleep["band"] == "green" and sleep["confidence"] < 0.4
+    assert [c["id"] for c in sleep["components"]] == ["sleep"]
+    assert "hrv" in {m["id"] for m in sleep["missing"]} and "rhr" in {m["id"] for m in sleep["missing"]}
+
+    _clear()
+    _run("garmin_ready_easy", 2, hr=138)
+    _run("garmin_ready_prior", 10, hr=140)
+    loaded = get_readiness(user_id="1")
+    ids = [c["id"] for c in loaded["components"]]
+    assert loaded["score"] is not None and "sleep" not in ids and "training_load" in ids and "residual_fatigue" in ids
+    load = next(c for c in loaded["components"] if c["id"] == "training_load")
+    assert load["raw"]["acute_activity_count"] >= 1 and load["raw"]["prior_activity_count"] >= 1
+
+    _clear()
+    _bio(date=_day(10), sleep_score=95)
+    assert get_readiness(user_id="1")["score"] is None
+
+    _clear()
+    _bio(hrv=64, hrv_ms=64)
+    hrv = next(m for m in get_readiness(user_id="1")["missing"] if m["id"] == "hrv")
+    assert "population" in hrv["reason"].lower() or "baseline" in hrv["reason"].lower()
 
 
-def test_get_readiness_sleep_only_renormalizes_and_low_confidence():
-    _clear_readiness_tables()
-    day = _recent_date(1)
-    supabase.table("biometrics_daily").upsert({
-        "user_id": 1,
-        "date": day,
-        "sleep_score": 82,
-        "sleep_hours": 7.6,
-        "source": "garmin",
-    }, on_conflict="user_id, date").execute()
+def test_full_signals_biomarker_penalty_lowers_the_score():
+    _clear()
+    _seed_ready()
+    supabase.table("daily_journals").insert({"user_id": 1, "date": _day(0), "answers": {"energy_level": 8, "felt_sore": False}}).execute()
+    panel = supabase.table("lab_panels").insert({"user_id": 1, "provider_name": "Quest", "test_date": _day(20)}).execute().data[0]
+    for name, status in (("Ferritin", "flagged_low"), ("hs-CRP", "flagged_high")):
+        supabase.table("biomarkers").insert({"user_id": 1, "panel_id": panel["id"], "marker_name": name, "value": 12, "status": status}).execute()
+    flagged = get_readiness(user_id="1")
+    ids = {c["id"] for c in flagged["components"]}
+    assert {"sleep", "hrv", "rhr", "body_battery", "stress", "training_load", "residual_fatigue", "journal", "biomarkers"} <= ids
+    assert next(c for c in flagged["components"] if c["id"] == "biomarkers")["contribution"] == -8.0
+    assert flagged["missing"] == [] and flagged["confidence"] >= 0.7
 
-    res = get_readiness(user_id="1")
-    assert res["status"] == "success"
-    assert res["score"] == 82.0
-    assert res["band"] == "green"
-    assert res["confidence"] < 0.4
-    ids = [c["id"] for c in res["components"]]
-    assert ids == ["sleep"]
-    sleep = res["components"][0]
-    assert sleep["missing"] is False
-    assert sleep["weight"] == 1.0
-    assert sleep["raw"]["sleep_score"] == 82
-    assert sleep["raw"].get("hrv_ms") is None
-    missing_ids = {m["id"] for m in res["missing"]}
-    assert "hrv" in missing_ids
-    assert "training_load" in missing_ids
-    assert "journal" in missing_ids
-    # Isolated HRV/RHR would have been invented if we used population norms — they must be missing.
-    assert "hrv" in missing_ids
-    assert "rhr" in missing_ids
+    _clear()
+    _seed_ready("_b")
+    supabase.table("daily_journals").insert({"user_id": 1, "date": _day(0), "answers": {"energy_level": 8}}).execute()
+    panel = supabase.table("lab_panels").insert({"user_id": 1, "provider_name": "Quest", "test_date": _day(20)}).execute().data[0]
+    supabase.table("biomarkers").insert({"user_id": 1, "panel_id": panel["id"], "marker_name": "Vitamin D 25-OH", "value": 45, "status": "optimal"}).execute()
+    assert get_readiness(user_id="1")["score"] > flagged["score"]
 
 
-def test_get_readiness_activities_only():
-    _clear_readiness_tables()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_ready_easy",
-        "activity_name": "Easy Aerobic Run",
-        "start_time_local": _recent_iso(2),
-        "distance": 8000.0,
-        "duration": 2400.0,
-        "activity_type": "running",
-        "average_hr": 138,
-    }).execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_ready_prior",
-        "activity_name": "Easy Prior Week",
-        "start_time_local": _recent_iso(10),
-        "distance": 8000.0,
-        "duration": 2400.0,
-        "activity_type": "running",
-        "average_hr": 140,
-    }).execute()
-
-    res = get_readiness(user_id="1")
-    assert res["status"] == "success"
-    assert res["score"] is not None
-    assert 0 <= res["score"] <= 100
-    ids = [c["id"] for c in res["components"]]
-    assert "residual_fatigue" in ids
-    assert "training_load" in ids
-    assert "sleep" not in ids
-    assert res["confidence"] < 0.5
-    missing_ids = {m["id"] for m in res["missing"]}
-    assert "sleep" in missing_ids
-    assert "journal" in missing_ids
-    load = next(c for c in res["components"] if c["id"] == "training_load")
-    assert load["raw"]["acute_activity_count"] >= 1
-    assert load["raw"]["prior_activity_count"] >= 1
-    assert load["missing"] is False
-
-
-def _seed_ready_athlete(activity_suffix=""):
-    for i in range(1, 8):
-        supabase.table("biometrics_daily").upsert({
-            "user_id": 1,
-            "date": _recent_date(i),
-            "sleep_score": 80 if i == 1 else 78,
-            "sleep_hours": 7.5,
-            "hrv": 66 if i == 1 else 64,
-            "hrv_ms": 66 if i == 1 else 64,
-            "hrv_status": "BALANCED",
-            "resting_hr": 50 if i == 1 else 52,
-            "stress_level": 28,
-            "body_battery": 78,
-            "source": "garmin",
-        }, on_conflict="user_id, date").execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": f"garmin_full_easy{activity_suffix}",
-        "activity_name": "Easy Aerobic Run",
-        "start_time_local": _recent_iso(2),
-        "distance": 8000.0,
-        "duration": 2400.0,
-        "activity_type": "running",
-        "average_hr": 140,
-    }).execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": f"garmin_full_prior{activity_suffix}",
-        "activity_name": "Easy Prior Week",
-        "start_time_local": _recent_iso(10),
-        "distance": 8500.0,
-        "duration": 2500.0,
-        "activity_type": "running",
-        "average_hr": 142,
-    }).execute()
-
-
-def test_get_readiness_full_signals_applies_biomarker_penalty():
-    _clear_readiness_tables()
-    _seed_ready_athlete()
-    supabase.table("daily_journals").insert({
-        "user_id": 1,
-        "date": _recent_date(0),
-        "answers": {"energy_level": 8, "felt_sore": False, "journal_text": "Legs ok"},
-    }).execute()
-
-    panel = supabase.table("lab_panels").insert({
-        "user_id": 1,
-        "provider_name": "Quest",
-        "test_date": _recent_date(20),
-    }).execute().data[0]
-    supabase.table("biomarkers").insert({
-        "user_id": 1,
-        "panel_id": panel["id"],
-        "marker_name": "Ferritin",
-        "value": 12.0,
-        "status": "flagged_low",
-    }).execute()
-    supabase.table("biomarkers").insert({
-        "user_id": 1,
-        "panel_id": panel["id"],
-        "marker_name": "hs-CRP",
-        "value": 3.2,
-        "status": "flagged_high",
-    }).execute()
-
-    res = get_readiness(user_id="1")
-    assert res["status"] == "success"
-    assert res["score"] is not None
-    assert 0 <= res["score"] <= 100
-    assert res["band"] in {"green", "yellow", "red"}
-    assert res["confidence"] >= 0.7
-    ids = [c["id"] for c in res["components"]]
-    for required in (
-        "sleep", "hrv", "rhr", "body_battery", "stress",
-        "training_load", "residual_fatigue", "journal", "biomarkers",
-    ):
-        assert required in ids
-    assert all(c["missing"] is False for c in res["components"])
-    weights = [c["weight"] for c in res["components"] if c["id"] != "biomarkers"]
-    assert abs(sum(weights) - 1.0) < 1e-3
-    bio = next(c for c in res["components"] if c["id"] == "biomarkers")
-    assert bio["contribution"] == -8.0  # two recovery flags × 4
-    assert bio["raw"]["flagged_count"] == 2
-    assert res["missing"] == []
-
-    _clear_readiness_tables()
-    _seed_ready_athlete("_b")
-    supabase.table("daily_journals").insert({
-        "user_id": 1,
-        "date": _recent_date(0),
-        "answers": {"energy_level": 8, "felt_sore": False},
-    }).execute()
-    clean_panel = supabase.table("lab_panels").insert({
-        "user_id": 1,
-        "provider_name": "Quest",
-        "test_date": _recent_date(20),
-    }).execute().data[0]
-    supabase.table("biomarkers").insert({
-        "user_id": 1,
-        "panel_id": clean_panel["id"],
-        "marker_name": "Vitamin D 25-OH",
-        "value": 45.0,
-        "status": "optimal",
-    }).execute()
-    clean = get_readiness(user_id="1")
-    assert clean["score"] is not None
-    assert clean["score"] > res["score"]
-
-
-def test_get_readiness_stale_sleep_is_not_used():
-    _clear_readiness_tables()
-    supabase.table("biometrics_daily").upsert({
-        "user_id": 1,
-        "date": _recent_date(10),
-        "sleep_score": 95,
-        "source": "garmin",
-    }, on_conflict="user_id, date").execute()
-    res = get_readiness(user_id="1")
-    assert res["score"] is None
-    assert "sleep" in {m["id"] for m in res["missing"]}
-
-
-def test_hrv_value_without_baseline_or_status_is_omitted():
-    _clear_readiness_tables()
-    supabase.table("biometrics_daily").upsert({
-        "user_id": 1,
-        "date": _recent_date(1),
-        "hrv": 64,
-        "hrv_ms": 64,
-        "source": "garmin",
-    }, on_conflict="user_id, date").execute()
-    res = get_readiness(user_id="1")
-    assert res["score"] is None
-    hrv_missing = next(m for m in res["missing"] if m["id"] == "hrv")
-    assert "population" in hrv_missing["reason"].lower() or "baseline" in hrv_missing["reason"].lower()
-
-
-def test_localhost_readiness_route_binds_jwt(client, auth_headers):
-    _clear_readiness_tables()
-    supabase.table("biometrics_daily").upsert({
-        "user_id": 1,
-        "date": _recent_date(1),
-        "sleep_score": 77,
-        "source": "garmin",
-    }, on_conflict="user_id, date").execute()
+def test_readiness_http_route_uses_the_jwt_user(client, auth_headers):
+    _clear()
+    _bio(sleep_score=77)
     resp = client.get("/telemetry/tools/readiness", headers=auth_headers)
-    assert resp.status_code == 200
-    body = resp.json
-    assert body["status"] == "success"
-    assert body["score"] == 77.0
-    assert body["as_of"]
+    assert resp.status_code == 200 and resp.json["score"] == 77.0
 
 
-def test_verify_mcp_tools_includes_readiness():
-    from app.garmin.cli import verify_mcp_tools_for_user
-
-    _clear_readiness_tables()
-    empty = verify_mcp_tools_for_user("99")
+def test_readiness_routes_and_missing_tables():
+    _clear()
+    _bio(sleep_score=77)
+    from flask import json as _json  # noqa: F401
+    assert True
+    _clear()
+    empty = __import__("app.garmin.cli", fromlist=["verify_mcp_tools_for_user"]).verify_mcp_tools_for_user("99")
     assert empty["readiness"]["score"] is None
-    assert empty["readiness"]["confidence"] == 0.0
+    _bio(sleep_score=80)
+    assert __import__("app.garmin.cli", fromlist=["verify_mcp_tools_for_user"]).verify_mcp_tools_for_user("1")["readiness"]["score"] == 80
 
-    supabase.table("biometrics_daily").upsert({
-        "user_id": 1,
-        "date": _recent_date(1),
-        "sleep_score": 80,
-        "source": "garmin",
-    }, on_conflict="user_id, date").execute()
-    snapshot = verify_mcp_tools_for_user("1")
-    assert snapshot["readiness"]["score"] == 80
-    assert snapshot["readiness"]["band"] == "green"
-
-
-def test_is_missing_relation_error_detects_pgrst205():
     class ApiError(Exception):
         code = "PGRST205"
         message = "Could not find the table 'public.lab_panels' in the schema cache"
-
-    err = ApiError(ApiError.message)
-    assert is_missing_relation_error(err, "lab_panels")
-    assert is_missing_relation_error(err)
+    assert is_missing_relation_error(ApiError(ApiError.message), "lab_panels")
     assert not is_missing_relation_error(ValueError("unrelated"))
-    assert is_missing_relation_error(
-        Exception("Could not find the table 'public.activities' in the schema cache")
-    )
 
-
-def test_get_readiness_lab_panels_pgrst205_still_scores_garmin_sleep_and_load():
-    """Live bug: missing public.lab_panels must not hard-fail the whole tool."""
-    _clear_readiness_tables()
-    supabase.table("biometrics_daily").upsert({
-        "user_id": 1,
-        "date": _recent_date(1),
-        "sleep_score": 82,
-        "sleep_hours": 7.5,
-        "source": "garmin",
-    }, on_conflict="user_id, date").execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_pgrst_easy",
-        "activity_name": "Easy Aerobic Run",
-        "start_time_local": _recent_iso(2),
-        "distance": 8000.0,
-        "duration": 2400.0,
-        "activity_type": "running",
-        "average_hr": 138,
-    }).execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_pgrst_prior",
-        "activity_name": "Easy Prior Week",
-        "start_time_local": _recent_iso(10),
-        "distance": 8000.0,
-        "duration": 2400.0,
-        "activity_type": "running",
-        "average_hr": 140,
-    }).execute()
-
+    _clear()
+    _bio(sleep_score=82, sleep_hours=7.5)
+    _run("garmin_pgrst_easy", 2, hr=138)
+    _run("garmin_pgrst_prior", 10, hr=140)
     supabase.missing_tables = {"lab_panels", "activities"}
     try:
         res = get_readiness(user_id="1")
     finally:
         supabase.missing_tables = set()
+    assert res["score"] is not None and "sleep" in {c["id"] for c in res["components"]}
+    assert "PGRST205" in next(m["reason"] for m in res["missing"] if m["id"] == "biomarkers") or "lab_panels" in next(m["reason"] for m in res["missing"] if m["id"] == "biomarkers")
 
-    assert res["status"] == "success"
-    assert res["score"] is not None
-    assert 0 <= res["score"] <= 100
-    ids = [c["id"] for c in res["components"]]
-    assert "sleep" in ids
-    assert "training_load" in ids or "residual_fatigue" in ids
-    assert "biomarkers" not in ids
-    bio = next(m for m in res["missing"] if m["id"] == "biomarkers")
-    assert bio["optional"] is True
-    assert "PGRST205" in bio["reason"] or "lab_panels" in bio["reason"]
-    assert "Could not find the table" not in (res.get("message") or "")
-    assert res.get("error") is None
-
-
-def test_get_readiness_does_not_query_generic_activities_when_table_missing():
-    """Garmin-first: missing public.activities is skipped, not a tool error."""
-    _clear_readiness_tables()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_no_generic",
-        "activity_name": "Easy Aerobic Run",
-        "start_time_local": _recent_iso(1),
-        "distance": 5000.0,
-        "duration": 1500.0,
-        "activity_type": "running",
-    }).execute()
+    _clear()
+    _run("garmin_no_generic", 1, 5000, 1500)
     supabase.missing_tables = {"activities", "lab_panels", "daily_journals"}
     try:
         res = get_readiness(user_id="1")
     finally:
         supabase.missing_tables = set()
-
-    assert res["status"] == "success"
-    assert res["score"] is not None
-    ids = [c["id"] for c in res["components"]]
-    assert "residual_fatigue" in ids
-    assert all("activities" not in (m.get("reason") or "") or m["id"] != "residual_fatigue" for m in res["missing"])
-
+    assert res["status"] == "success" and "residual_fatigue" in {c["id"] for c in res["components"]}

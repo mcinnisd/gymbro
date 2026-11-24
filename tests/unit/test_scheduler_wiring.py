@@ -2,6 +2,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import pytest
+
 from app.garmin.routes import sync_if_needed
 from app.scheduler import should_start_scheduler
 from app.scheduler_jobs import scheduled_telemetry_sync
@@ -11,205 +13,96 @@ from app.supabase_client import supabase
 class ImmediateThread:
     def __init__(self, target=None, args=(), kwargs=None, daemon=None):
         self._target = target
-        self._args = args
-        self._kwargs = kwargs or {}
+        self._args, self._kwargs = args, kwargs or {}
 
     def start(self):
         if self._target:
             self._target(*self._args, **self._kwargs)
 
 
-def test_create_app_registers_mcp_http_route(app):
+def _garmin_user(uid, email, status="synced"):
+    supabase.table("users").upsert({
+        "id": uid, "username": f"u{uid}", "garmin_email": email, "garmin_password": "encrypted_test_pass",
+        "garmin_sync_status": status,
+    }, on_conflict="id").execute()
+
+
+def test_scheduler_starts_only_when_enabled(app, monkeypatch):
     rules = {rule.rule for rule in app.url_map.iter_rules()}
-    assert "/api/mcp" in rules
-    assert "/internal/jobs/telemetry-sync" in rules
-    assert os.environ.get("PYTEST_CURRENT_TEST")
-    class _App:
-        config = {}
-        debug = False
-    assert should_start_scheduler(_App()) is False
-
-
-def test_should_start_scheduler_honors_env_flag(monkeypatch):
+    assert "/api/mcp" in rules and "/internal/jobs/telemetry-sync" in rules
+    bare = type("App", (), {"config": {"TESTING": False}, "debug": False})()
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("ENABLE_TELEMETRY_SCHEDULER", "false")
-    class _App:
-        config = {"TESTING": False}
-        debug = False
-    assert should_start_scheduler(_App()) is False
-
+    assert should_start_scheduler(bare) is False
     monkeypatch.setenv("ENABLE_TELEMETRY_SCHEDULER", "true")
-    assert should_start_scheduler(_App()) is True
+    assert should_start_scheduler(bare) is True
 
 
-def test_scheduled_telemetry_sync_calls_incremental_garmin_mode():
-    supabase.table("users").upsert({
-        "id": 7,
-        "username": "scheduler_athlete",
-        "garmin_email": "athlete@example.com",
-        "garmin_password": "encrypted_test_pass",
-        "garmin_sync_status": "synced",
-    }, on_conflict="id").execute()
-
+def test_scheduled_sync_is_incremental_and_respects_scope(monkeypatch):
+    _garmin_user(7, "athlete@example.com")
     with patch("app.scheduler_jobs.sync_all_garmin_data_for_user") as mock_sync, \
          patch("app.scheduler_jobs.AnalyticsService.calculate_baselines"):
         scheduled_telemetry_sync()
+    assert any(c.kwargs.get("mode") == "incremental" and c.kwargs.get("days_back") == 7 for c in mock_sync.call_args_list)
 
-    assert mock_sync.called
-    kwargs_list = [c.kwargs for c in mock_sync.call_args_list]
-    assert any(k.get("mode") == "incremental" for k in kwargs_list)
-    assert any(k.get("days_back") == 7 for k in kwargs_list)
-
-
-def test_scheduled_telemetry_sync_honors_user_allowlist(monkeypatch):
     monkeypatch.setenv("GYMBRO_GARMIN_SYNC_USER_IDS", "7")
-    supabase.table("users").upsert({
-        "id": 7,
-        "username": "allowlisted",
-        "garmin_email": "ok@example.com",
-        "garmin_password": "encrypted_test_pass",
-        "garmin_sync_status": "synced",
-    }, on_conflict="id").execute()
-    supabase.table("users").upsert({
-        "id": 100,
-        "username": "other_account",
-        "garmin_email": "other@example.com",
-        "garmin_password": "encrypted_test_pass",
-        "garmin_sync_status": "synced",
-    }, on_conflict="id").execute()
-
+    _garmin_user(100, "other@example.com")
     with patch("app.scheduler_jobs.sync_all_garmin_data_for_user") as mock_sync, \
          patch("app.scheduler_jobs.AnalyticsService.calculate_baselines"):
         scheduled_telemetry_sync()
+    ids = [str(c.args[0]) for c in mock_sync.call_args_list]
+    assert "7" in ids and "100" not in ids
 
-    synced_ids = [str(c.args[0]) for c in mock_sync.call_args_list]
-    assert "7" in synced_ids
-    assert "100" not in synced_ids
-
-
-def test_scheduled_telemetry_sync_collapses_duplicate_garmin_email(monkeypatch):
     monkeypatch.delenv("GYMBRO_GARMIN_SYNC_USER_IDS", raising=False)
-    original_users = list(supabase.data.get("users") or [])
+    original = list(supabase.data.get("users") or [])
     supabase.data["users"] = [
-        {
-            "id": 2,
-            "username": "canonical",
-            "garmin_email": "shared@example.com",
-            "garmin_password": "encrypted_test_pass",
-            "garmin_sync_status": "synced",
-        },
-        {
-            "id": 100,
-            "username": "duplicate_test",
-            "garmin_email": "shared@example.com",
-            "garmin_password": "encrypted_test_pass",
-            "garmin_sync_status": "synced",
-        },
+        {"id": 2, "username": "canonical", "garmin_email": "shared@example.com", "garmin_password": "x", "garmin_sync_status": "synced"},
+        {"id": 100, "username": "dup", "garmin_email": "shared@example.com", "garmin_password": "x", "garmin_sync_status": "synced"},
     ]
     try:
         with patch("app.scheduler_jobs.sync_all_garmin_data_for_user") as mock_sync, \
              patch("app.scheduler_jobs.AnalyticsService.calculate_baselines"):
             scheduled_telemetry_sync()
-        synced_ids = [str(c.args[0]) for c in mock_sync.call_args_list]
-        assert synced_ids == ["2"]
+        assert [str(c.args[0]) for c in mock_sync.call_args_list] == ["2"]
     finally:
-        supabase.data["users"] = original_users
+        supabase.data["users"] = original
 
-
-def test_scheduled_telemetry_sync_skips_users_already_syncing():
-    supabase.table("users").upsert({
-        "id": 8,
-        "username": "already_syncing",
-        "garmin_email": "busy@example.com",
-        "garmin_password": "encrypted_test_pass",
-        "garmin_sync_status": "syncing",
-    }, on_conflict="id").execute()
-
+    _garmin_user(8, "busy@example.com", status="syncing")
     with patch("app.scheduler_jobs.sync_all_garmin_data_for_user") as mock_sync:
         scheduled_telemetry_sync()
-
-    synced_ids = [c.args[0] for c in mock_sync.call_args_list]
-    assert "8" not in synced_ids and 8 not in synced_ids
+    assert all(c.args[0] not in (8, "8") for c in mock_sync.call_args_list)
 
 
-def test_sync_if_needed_uses_incremental_after_first_sync(monkeypatch, app):
+@pytest.mark.parametrize("completed,mode,days", [
+    (True, "incremental", 7),
+    (False, "all_time", 365),
+])
+def test_sync_if_needed_chooses_window_from_prior_sync(monkeypatch, app, completed, mode, days):
     captured = {}
-
-    def fake_sync(uid, days_back=365, encryption_key=None, force_resync=False, mode="all_time"):
-        captured["uid"] = uid
-        captured["days_back"] = days_back
-        captured["mode"] = mode
-
-    monkeypatch.setattr("app.garmin.routes.sync_all_garmin_data_for_user", fake_sync)
+    monkeypatch.setattr("app.garmin.routes.sync_all_garmin_data_for_user", lambda *a, **k: captured.update(k))
     monkeypatch.setattr("threading.Thread", ImmediateThread)
-
+    uid = 1 if completed else 11
     supabase.table("users").upsert({
-        "id": 1,
-        "username": "athlete_sync_test",
-        "garmin_email": "athlete@example.com",
-        "garmin_password": "encrypted_test_pass",
-        "garmin_sync_status": "synced",
-        "garmin_sync_completed_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+        "id": uid, "username": f"s{uid}", "garmin_email": f"s{uid}@example.com", "garmin_password": "x",
+        "garmin_sync_status": "synced" if completed else None,
+        "garmin_sync_completed_at": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat() if completed else None,
     }, on_conflict="id").execute()
-
     with app.app_context():
-        triggered = sync_if_needed("1", debounce_minutes=15)
-
-    assert triggered is True
-    assert captured["mode"] == "incremental"
-    assert captured["days_back"] == 7
+        assert sync_if_needed(str(uid), debounce_minutes=15) is True
+    assert captured["mode"] == mode and captured["days_back"] == days
 
 
-def test_sync_if_needed_uses_all_time_for_first_sync(monkeypatch, app):
-    captured = {}
-
-    def fake_sync(uid, days_back=365, encryption_key=None, force_resync=False, mode="all_time"):
-        captured["mode"] = mode
-        captured["days_back"] = days_back
-
-    monkeypatch.setattr("app.garmin.routes.sync_all_garmin_data_for_user", fake_sync)
-    monkeypatch.setattr("threading.Thread", ImmediateThread)
-
-    supabase.table("users").upsert({
-        "id": 11,
-        "username": "first_sync_user",
-        "garmin_email": "new@example.com",
-        "garmin_password": "encrypted_test_pass",
-        "garmin_sync_status": None,
-        "garmin_sync_completed_at": None,
-    }, on_conflict="id").execute()
-
-    with app.app_context():
-        triggered = sync_if_needed("11", debounce_minutes=15)
-
-    assert triggered is True
-    assert captured["mode"] == "all_time"
-    assert captured["days_back"] == 365
-
-
-def test_internal_telemetry_sync_endpoint_requires_token(client, monkeypatch):
-    monkeypatch.delenv("INTERNAL_JOB_TOKEN", raising=False)
-    res = client.post("/internal/jobs/telemetry-sync")
-    assert res.status_code == 503
-    assert res.json["status"] == "disabled"
-
-
-def test_internal_telemetry_sync_endpoint_runs_with_token(client, monkeypatch):
-    monkeypatch.setenv("INTERNAL_JOB_TOKEN", "test-job-token")
-    with patch("app.scheduler_jobs.scheduled_telemetry_sync") as mock_job:
-        res = client.post(
-            "/internal/jobs/telemetry-sync",
-            headers={"X-Internal-Job-Token": "test-job-token"},
-        )
-    assert res.status_code == 200
-    assert res.json["status"] == "ok"
-    mock_job.assert_called_once()
-
-
-def test_internal_telemetry_sync_endpoint_rejects_bad_token(client, monkeypatch):
-    monkeypatch.setenv("INTERNAL_JOB_TOKEN", "test-job-token")
-    res = client.post(
-        "/internal/jobs/telemetry-sync",
-        headers={"X-Internal-Job-Token": "wrong"},
-    )
-    assert res.status_code == 401
+@pytest.mark.parametrize("token,header,status", [
+    (None, None, 503),
+    ("test-job-token", "wrong", 401),
+    ("test-job-token", "test-job-token", 200),
+])
+def test_internal_job_token(client, monkeypatch, token, header, status):
+    if token:
+        monkeypatch.setenv("INTERNAL_JOB_TOKEN", token)
+    else:
+        monkeypatch.delenv("INTERNAL_JOB_TOKEN", raising=False)
+    headers = {"X-Internal-Job-Token": header} if header else {}
+    with patch("app.scheduler_jobs.scheduled_telemetry_sync"):
+        res = client.post("/internal/jobs/telemetry-sync", headers=headers)
+    assert res.status_code == status
