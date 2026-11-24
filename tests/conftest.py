@@ -1,7 +1,48 @@
-import pytest
 import os
+import sys
+from datetime import date, datetime, timezone
+
+# Dummy Fernet key so Garmin connect tests do not depend on a real secret.
+from cryptography.fernet import Fernet
+os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
+
+import pytest
 from urllib.parse import urlparse
 from app import create_app
+
+# June 2026 fixtures stay inside 90 days and August 2026 fixtures inside 14 days.
+FROZEN_NOW = datetime(2026, 8, 20, 15, 0, tzinfo=timezone.utc)
+
+
+class FrozenDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        if tz is None:
+            return FROZEN_NOW.replace(tzinfo=None)
+        return FROZEN_NOW.astimezone(tz)
+
+
+class FrozenDate(date):
+    @classmethod
+    def today(cls):
+        return FROZEN_NOW.date()
+
+
+@pytest.fixture(autouse=True)
+def pin_clock(monkeypatch):
+    """Pin datetime.now / date.today inside app and tests. The stdlib types are immutable."""
+    import datetime as dt
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    for mod in list(sys.modules.values()):
+        path = getattr(mod, "__file__", None) or ""
+        if not path.startswith(root):
+            continue
+        if "/app/" not in path and "/tests/" not in path:
+            continue
+        if getattr(mod, "datetime", None) is dt.datetime:
+            monkeypatch.setattr(mod, "datetime", FrozenDateTime, raising=False)
+        if getattr(mod, "date", None) is dt.date:
+            monkeypatch.setattr(mod, "date", FrozenDate, raising=False)
 
 # Skip the Streamable HTTP runtime for the general suite (no background thread).
 # tests/unit/test_mcp_http.py unsets this so it can exercise POST /api/mcp.

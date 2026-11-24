@@ -279,7 +279,7 @@ def populate_calendar_from_plan(user_id: str):
                     "description": details,
                     "event_type": event_type,
                     "status": "planned",
-                    "created_by": "coach_plan",
+                    "created_by": "coach",
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
 

@@ -373,8 +373,6 @@ def _get_garmin_summary(user_id: str) -> str:
     holistic health (sleep/HR), and strict activity filtering.
     """
     try:
-        from datetime import datetime, timedelta, timezone
-        
         # 1. Fetch Baselines (Running)
         base_res = supabase.table("user_baselines").select("baselines").eq("user_id", user_id).eq("metric_category", "running").execute()
         baselines = base_res.data[0]["baselines"] if base_res.data else None

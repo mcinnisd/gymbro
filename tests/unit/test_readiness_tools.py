@@ -204,9 +204,7 @@ def test_get_readiness_activities_only():
     assert load["missing"] is False
 
 
-def test_get_readiness_full_signals_applies_biomarker_penalty():
-    _clear_readiness_tables()
-    # Several days so HRV/RHR baselines exist (do not score a single isolated point).
+def _seed_ready_athlete(activity_suffix=""):
     for i in range(1, 8):
         supabase.table("biometrics_daily").upsert({
             "user_id": 1,
@@ -221,10 +219,9 @@ def test_get_readiness_full_signals_applies_biomarker_penalty():
             "body_battery": 78,
             "source": "garmin",
         }, on_conflict="user_id, date").execute()
-
     supabase.table("garmin_activities").insert({
         "user_id": 1,
-        "activity_id": "garmin_full_easy",
+        "activity_id": f"garmin_full_easy{activity_suffix}",
         "activity_name": "Easy Aerobic Run",
         "start_time_local": _recent_iso(2),
         "distance": 8000.0,
@@ -234,7 +231,7 @@ def test_get_readiness_full_signals_applies_biomarker_penalty():
     }).execute()
     supabase.table("garmin_activities").insert({
         "user_id": 1,
-        "activity_id": "garmin_full_prior",
+        "activity_id": f"garmin_full_prior{activity_suffix}",
         "activity_name": "Easy Prior Week",
         "start_time_local": _recent_iso(10),
         "distance": 8500.0,
@@ -243,6 +240,10 @@ def test_get_readiness_full_signals_applies_biomarker_penalty():
         "average_hr": 142,
     }).execute()
 
+
+def test_get_readiness_full_signals_applies_biomarker_penalty():
+    _clear_readiness_tables()
+    _seed_ready_athlete()
     supabase.table("daily_journals").insert({
         "user_id": 1,
         "date": _recent_date(0),
@@ -289,42 +290,8 @@ def test_get_readiness_full_signals_applies_biomarker_penalty():
     assert bio["raw"]["flagged_count"] == 2
     assert res["missing"] == []
 
-    # Penalty actually lowers the composite versus the same inputs without flags.
     _clear_readiness_tables()
-    for i in range(1, 8):
-        supabase.table("biometrics_daily").upsert({
-            "user_id": 1,
-            "date": _recent_date(i),
-            "sleep_score": 80 if i == 1 else 78,
-            "sleep_hours": 7.5,
-            "hrv": 66 if i == 1 else 64,
-            "hrv_ms": 66 if i == 1 else 64,
-            "hrv_status": "BALANCED",
-            "resting_hr": 50 if i == 1 else 52,
-            "stress_level": 28,
-            "body_battery": 78,
-            "source": "garmin",
-        }, on_conflict="user_id, date").execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_full_easy_b",
-        "activity_name": "Easy Aerobic Run",
-        "start_time_local": _recent_iso(2),
-        "distance": 8000.0,
-        "duration": 2400.0,
-        "activity_type": "running",
-        "average_hr": 140,
-    }).execute()
-    supabase.table("garmin_activities").insert({
-        "user_id": 1,
-        "activity_id": "garmin_full_prior_b",
-        "activity_name": "Easy Prior Week",
-        "start_time_local": _recent_iso(10),
-        "distance": 8500.0,
-        "duration": 2500.0,
-        "activity_type": "running",
-        "average_hr": 142,
-    }).execute()
+    _seed_ready_athlete("_b")
     supabase.table("daily_journals").insert({
         "user_id": 1,
         "date": _recent_date(0),

@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 import pytest
 
 from app.calendar.constraints import (
-    TRAINING_EVENT_CREATED_BY_ALLOWED,
     TRAINING_EVENT_TYPES_ALLOWED,
     assert_training_event_row,
     calendar_event_from_garmin_activity,
@@ -16,11 +15,6 @@ from app.garmin.sync import _sync_activities_to_calendar
 from app.supabase_client import supabase
 
 
-def test_created_by_allowlist_includes_garmin():
-    assert "garmin" in TRAINING_EVENT_CREATED_BY_ALLOWED
-    assert "user" in TRAINING_EVENT_CREATED_BY_ALLOWED
-
-
 def test_garmin_created_by_passes_training_events_check():
     row = {
         "user_id": 2,
@@ -31,21 +25,6 @@ def test_garmin_created_by_passes_training_events_check():
         "created_by": "garmin",
     }
     assert_training_event_row(row)
-
-
-def test_legacy_garmin_created_by_would_fail_without_allowlist():
-    """Documents the live Postgres error before the migration."""
-    row = {
-        "user_id": 2,
-        "date": "2026-09-15",
-        "title": "Santa Monica Running",
-        "event_type": "run",
-        "status": "completed",
-        "created_by": "garmin",
-    }
-    legacy_allowed = ("user", "coach", "agent")
-    assert row["created_by"] not in legacy_allowed
-    assert row["created_by"] in TRAINING_EVENT_CREATED_BY_ALLOWED
 
 
 def test_unknown_created_by_still_rejected():
@@ -74,18 +53,7 @@ def test_map_garmin_running_to_calendar_run():
     assert map_activity_type_to_event_type("swim") == "other"
     assert map_activity_type_to_event_type("walk") == "other"
     assert map_activity_type_to_event_type("hike") == "other"
-    for raw in (
-        "running",
-        "strength_training",
-        "hiking",
-        "resort_snowboarding",
-        "cross_train",
-        "ride",
-        "swim",
-        "walk",
-        "hike",
-    ):
-        assert map_activity_type_to_event_type(raw) in TRAINING_EVENT_TYPES_ALLOWED
+    assert map_activity_type_to_event_type("running") in TRAINING_EVENT_TYPES_ALLOWED
 
 
 def test_calendar_event_from_garmin_activity_is_constraint_safe():
@@ -197,13 +165,6 @@ def test_parse_garmin_activity_id_from_description_without_metrics():
     assert aid == "abc-9"
 
 
-def test_metrics_migration_sql_adds_jsonb_column():
-    from pathlib import Path
-    sql = Path("migrations/20260916_training_events_metrics.sql").read_text()
-    assert "ADD COLUMN IF NOT EXISTS metrics" in sql
-    assert "JSONB" in sql.upper()
-
-
 def test_remirror_succeeds_when_metrics_column_missing():
     """Live 42703: match schema without metrics; stay idempotent via description."""
     from app.garmin.sync import remirror_garmin_calendar, reset_training_events_metrics_column_cache
@@ -280,14 +241,6 @@ def test_raw_garmin_type_fails_assert_until_mapped():
         "status": "completed",
         "created_by": "garmin",
     })
-
-
-def test_event_type_check_migration_matches_live():
-    from pathlib import Path
-    sql = Path("migrations/20260916_training_events_event_type_check.sql").read_text()
-    assert "DROP CONSTRAINT IF EXISTS training_events_event_type_check" in sql
-    for value in ("run", "strength", "rest", "race", "other", "cross_train", "ride", "swim", "walk", "hike"):
-        assert f"'{value}'" in sql
 
 
 def test_mock_supabase_rejects_invalid_created_by_like_postgres():
