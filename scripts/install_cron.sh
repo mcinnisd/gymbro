@@ -2,13 +2,14 @@
 # Install cron if it is missing, then add the wake-poll lines for this user.
 # Schedule is the machine's local time: every 15 minutes from 07:00 through
 # 10:45, plus 11:00. Set the box timezone to the athlete's IANA zone first.
+# GYMBRO_AUTO_UPDATE=1 also runs scripts/update_check.sh daily at 04:10.
 # Re-running replaces the previous gymbro block and does not duplicate lines.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 POLL="$ROOT/scripts/wake_poll_cron.sh"
-chmod +x "$POLL" "$ROOT/scripts/load_dotenv.sh" "$ROOT/scripts/bootstrap.sh" \
-  "$ROOT/scripts/ensure_venv.sh" "$ROOT/scripts/create_athlete.sh"
+chmod +x "$POLL" "$ROOT/scripts/update_check.sh" "$ROOT/scripts/load_dotenv.sh" \
+  "$ROOT/scripts/bootstrap.sh" "$ROOT/scripts/ensure_venv.sh" "$ROOT/scripts/create_athlete.sh"
 
 as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -55,11 +56,16 @@ fi
 
 BEGIN="# BEGIN gymbro wake-poll"
 END="# END gymbro wake-poll"
+UPDATE=""
+if [[ "${GYMBRO_AUTO_UPDATE:-}" == "1" || "${1:-}" == "--auto-update" ]]; then
+  UPDATE="10 4 * * * $ROOT/scripts/update_check.sh"
+fi
 BLOCK="$(cat <<EOF
 $BEGIN
 # Gymbro wake poll. Times are this machine's local timezone.
 */15 7-10 * * * $POLL
 0 11 * * * $POLL
+$UPDATE
 $END
 EOF
 )"
@@ -79,5 +85,8 @@ stripped="$(printf '%s\n' "$existing" | awk -v begin="$BEGIN" -v end="$END" '
 } | crontab -
 
 echo "install_cron: installed for $(id -un). Local times: 07:00-10:45 every 15 minutes, plus 11:00."
+if [[ -n "$UPDATE" ]]; then
+  echo "install_cron: auto-update daily at 04:10 local: $ROOT/scripts/update_check.sh"
+fi
 echo "install_cron: $POLL"
 crontab -l | awk -v begin="$BEGIN" -v end="$END" '$0 == begin, $0 == end'

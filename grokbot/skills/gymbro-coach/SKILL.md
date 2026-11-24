@@ -195,6 +195,18 @@ Cron times are the box's local time: every 15 minutes from 07:00 through 10:45, 
 
 `wake-poll` itself stops calling Garmin once that local date is already up.
 
+## 9. App updates
+
+The checkout must stay on `main`. The watcher never checks out a pull request or another branch.
+
+```bash
+GYMBRO_AUTO_UPDATE=1 ~/gymbro/scripts/install_cron.sh
+```
+
+That adds a daily 04:10 local cron for `scripts/update_check.sh`. It runs `git fetch origin main` and fast-forwards only. If a requirements file changed, it reinstalls with `scripts/ensure_venv.sh`. It then runs `python -m app.garmin.cli status` (and imports `app.mcp`). If that fails, it returns to the previous commit and reinstalls. The last line is `old_sha`, `new_sha`, `result` (`updated`, `up_to_date`, or `rolled_back`), and the commit subjects. It does not print secrets.
+
+A daily routine, or a routine that runs when a Gymbro pull request merges, can run `~/gymbro/scripts/update_check.sh` instead of cron. Tell the user the subjects. If `result=updated`, restart the gymbro stdio MCP connector. If `result=rolled_back`, tell them the update was reverted.
+
 ## Gotchas
 
 - **Empty sleep shells.** Garmin often writes a `garmin_sleep` row before the watch uploads the night. The row has no sleep id, no stage list, and no start or end. Wake status says `empty shell (not uploaded yet)` and `state` stays `unknown` or `not_yet`. Incremental sync will not refill a day it already stored. Run `sync --force --days-back 4`, then `remirror-biometrics`.
