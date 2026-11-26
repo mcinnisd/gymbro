@@ -1,0 +1,9 @@
+# Gymbro prod wake poller (box clock is America/Detroit). Installed by
+# ops/wake-poll/install.sh as /workspace/gymbro-ops/crontab.installed.
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+*/15 7-10 * * * /workspace/gymbro-ops/wake_poll_cron.sh --trigger cron
+0 11 * * * /workspace/gymbro-ops/wake_poll_cron.sh --trigger cron
+* 7-11 * * * /workspace/gymbro-ops/wake_poll_catchup.sh catchup
+@reboot /workspace/gymbro-ops/wake_poll_catchup.sh reboot
+*/10 * * * * /workspace/gymbro-ops/ensure_cron.sh
