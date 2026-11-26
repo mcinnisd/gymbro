@@ -1,6 +1,9 @@
 # app/garmin/sync.py
 
 import logging
+import os
+import time
+from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
 from flask import current_app
 from app.supabase_client import supabase
@@ -114,20 +117,72 @@ def init_garmin_api_for_user(user_id: str, encryption_key: str = None):
         logger.error(f"Error decrypting Garmin password for user {user_id}: {e}")
         return None
 
-    try:
-        logger.info(f"Logging in to Garmin for user {user_id}...")
-        api = Garmin(email=garmin_email, password=garmin_password)
-        api.login()
-        logger.info("Garmin login successful.")
-        return api
-    except (
-        GarminConnectAuthenticationError,
-        GarminConnectConnectionError,
-        requests.exceptions.HTTPError,
-        GarthHTTPError,
-    ) as err:
-        logger.error(f"Failed to log in for user {user_id}: {err}")
+    # Reuse cached garth tokens first. garth refreshes the OAuth2 token from the
+    # long-lived OAuth1 token, so polls skip the SSO login Garmin throttles.
+    tokens = _load_garmin_tokens(user_id, encryption_key)
+    if tokens:
+        try:
+            api = Garmin(email=garmin_email, password=garmin_password)
+            api.login(tokenstore=tokens)
+            _save_garmin_tokens(user_id, api, encryption_key)
+            return api
+        except Exception as err:
+            logger.warning("Cached Garmin tokens rejected for user %s (%s); logging in again.", user_id, type(err).__name__)
+
+    for attempt in (1, 2):
+        try:
+            logger.info(f"Logging in to Garmin for user {user_id}...")
+            api = Garmin(email=garmin_email, password=garmin_password)
+            api.login()
+            logger.info("Garmin login successful.")
+            _save_garmin_tokens(user_id, api, encryption_key)
+            return api
+        except (
+            GarminConnectAuthenticationError,
+            GarminConnectConnectionError,
+            requests.exceptions.HTTPError,
+            GarthHTTPError,
+        ) as err:
+            if attempt == 2:
+                logger.error(f"Failed to log in for user {user_id}: {err}")
+                return None
+            logger.warning("Garmin login failed for user %s (%s); retrying once.", user_id, type(err).__name__)
+            time.sleep(GARMIN_LOGIN_RETRY_DELAY_SEC)
+
+
+GARMIN_LOGIN_RETRY_DELAY_SEC = 10
+
+
+def _garmin_token_path(user_id) -> Path:
+    root = os.environ.get("GARMIN_TOKEN_DIR") or os.path.expanduser("~/.gymbro/garmin-tokens")
+    return Path(root) / f"user-{normalize_garmin_user_id(user_id)}.enc"
+
+
+def _load_garmin_tokens(user_id, encryption_key):
+    path = _garmin_token_path(user_id)
+    if not path.is_file():
         return None
+    try:
+        return decrypt_data(path.read_text().strip(), key=encryption_key)
+    except Exception:
+        logger.warning("Ignoring unreadable Garmin token cache for user %s.", user_id)
+        return None
+
+
+def _save_garmin_tokens(user_id, api, encryption_key):
+    """Encrypt garth tokens to a 0600 file outside the repo. Best effort."""
+    path = _garmin_token_path(user_id)
+    try:
+        blob = encrypt_data(api.garth.dumps(), key=encryption_key)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(blob)
+        os.replace(tmp, path)
+    except Exception as err:
+        logger.warning("Could not cache Garmin tokens for user %s (%s).", user_id, type(err).__name__)
+
 
 def pull_today_for_wake(user_id: str, day_iso: str, encryption_key: str) -> dict:
     """Upsert one day's sleep, steps, and heart rate. No activities, backfill, or remirror."""

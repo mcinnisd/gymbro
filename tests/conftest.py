@@ -1,5 +1,18 @@
-import pytest
 import os
+import tempfile
+
+# Tests must never reach the live Supabase project or the real Garmin token
+# cache. Set these before app.config runs load_dotenv(), which does not
+# override variables that already exist, so a local .env cannot win.
+os.environ["MOCK_DB"] = "true"
+os.environ["SUPABASE_URL"] = ""
+os.environ["SUPABASE_KEY"] = ""
+# Box .env pins these to the live athlete; tests choose their own users.
+os.environ["GYMBRO_GARMIN_SYNC_USER_IDS"] = ""
+os.environ["GYMBRO_MCP_USER_ID"] = ""
+os.environ["GARMIN_TOKEN_DIR"] = tempfile.mkdtemp(prefix="gymbro-test-garmin-")
+
+import pytest
 from urllib.parse import urlparse
 from app import create_app
 
@@ -111,3 +124,9 @@ def auth_headers(app):
         token = create_access_token(identity="1")
         return {"Authorization": f"Bearer {token}"}
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _refuse_live_supabase():
+    from app.supabase_client import supabase
+    from app.mock_supabase import MockSupabaseClient
+    assert isinstance(supabase, MockSupabaseClient), "tests must run on the mock DB"

@@ -261,3 +261,37 @@ def test_failed_wake_pull_does_not_replace_stored_rows(monkeypatch):
     assert sleep[0]["sleep_data"]["dailySleepDTO"]["id"] == 987654321
     assert daily[0]["resting_hr"] == 48
     assert get_wake_status(str(UID), as_of=DAY, timezone=LA)["signal"] == "sleep_finalized"
+
+def test_login_retries_once_then_reuses_cached_tokens(monkeypatch, tmp_path):
+    import requests
+    from cryptography.fernet import Fernet
+    from app.garmin import sync
+    from app.utils.encryption import encrypt_data
+
+    key = Fernet.generate_key().decode()
+    db = MagicMock()
+    db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"garmin_email": "athlete@example.test", "garmin_password": encrypt_data("pw", key=key)},
+    ]
+    monkeypatch.setattr(sync, "supabase", db)
+    monkeypatch.setenv("GARMIN_TOKEN_DIR", str(tmp_path))
+    monkeypatch.setattr(sync, "GARMIN_LOGIN_RETRY_DELAY_SEC", 0)
+    logins = []
+
+    class FakeGarmin:
+        def __init__(self, email, password):
+            self.garth = MagicMock()
+            self.garth.dumps.return_value = "garth-token-blob"
+
+        def login(self, tokenstore=None):
+            logins.append(tokenstore)
+            if len(logins) == 1:
+                raise requests.exceptions.HTTPError("401 Client Error: Unauthorized")
+
+    monkeypatch.setattr(sync, "Garmin", FakeGarmin)
+    assert sync.init_garmin_api_for_user(str(UID), key) is not None
+    cache = tmp_path / f"user-{UID}.enc"
+    assert cache.stat().st_mode & 0o777 == 0o600
+    assert "garth-token-blob" not in cache.read_text()
+    assert sync.init_garmin_api_for_user(str(UID), key) is not None
+    assert logins == [None, None, "garth-token-blob"]
